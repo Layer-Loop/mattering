@@ -67,7 +67,7 @@ export {
   type PreparedBid,
 } from "./auction.ts";
 export { inclusionProof, leafHash, merkleRoot, rootFromInclusionProof } from "./merkle.ts";
-export type { BeaconSource } from "./source.ts";
+export { deadlineRound, type BeaconSource } from "./source.ts";
 export {
   COSIGNATURE_FORMAT,
   Cosigner,

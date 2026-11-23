@@ -2,7 +2,7 @@
 
 A small HTTP service that keeps the witness log, enforces deadlines on the beacon's clock, collects cosignatures, stores envelopes, and publishes everything a verifier needs. The registry is the same service read as a public record.
 
-**Status: experimental and unreviewed.** It has been tested on localhost against a simulated beacon, and its start-up has been checked. It has not been run against live drand by its author, and it has never been deployed anywhere.
+**Status: experimental and unreviewed.** It is tested on localhost against a simulated beacon. Its first run against live drand found a deadline bug, since fixed. It has never been deployed anywhere.
 
 ## Running it
 
@@ -57,7 +57,7 @@ A cosigner has one route, `POST /cosign` with `{ policyHash, policy, closing }`.
 - The policy is registered, names this witness, and uses this witness's beacon.
 - The submission is well-formed and signed.
 - The envelope is the one the submission names, is locked to the policy's release round on the policy's beacon, and carries the expected context.
-- By the service's own view of the beacon, the policy's close round has not been emitted.
+- The policy's close round has not been emitted as far as the service has seen, and is not yet due by the service's own clock and the beacon's schedule.
 
 It does not and cannot check what is inside the envelope.
 

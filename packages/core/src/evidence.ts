@@ -9,7 +9,7 @@ import { hashCanonical } from "./canonical.ts";
 import { MatteringError } from "./errors.ts";
 import type { Check, VerifierPolicy } from "./seal.ts";
 import { signCanonical, verifyCanonical, generateKeyPair, type KeyPair } from "./signing.ts";
-import type { BeaconSource } from "./source.ts";
+import { deadlineRound, type BeaconSource } from "./source.ts";
 import { logRoot, verifyCheckpointSignature, type Checkpoint, type Submission } from "./witness.ts";
 
 /** The fields every policy has, whatever it is a policy for. */
@@ -110,8 +110,10 @@ export class Cosigner {
       if (previous.checkpoint === checkpointId(closing)) return previous;
       throw new MatteringError("POLICY", "already cosigned a different closing checkpoint for this policy");
     }
-    const observed = await this.source.latest();
-    if (observed.round >= terms.releaseRound) throw new MatteringError("POLICY", "too late: the release round has been emitted");
+    // Late is judged by the later of what this cosigner has seen and what its
+    // clock says, so a lagging relay cannot make it sign after the release.
+    const { latest: observed, round } = await deadlineRound(this.source);
+    if (round >= terms.releaseRound) throw new MatteringError("POLICY", "too late: the release round has been emitted");
     if (observed.round < terms.closeRound) throw new MatteringError("POLICY", "too early: this cosigner has not seen the close round");
     const unsigned: Omit<Cosignature, "signature"> = { format: COSIGNATURE_FORMAT, cosigner: this.publicKey, checkpoint: checkpointId(closing), observed };
     const cosignature = { ...unsigned, signature: signCanonical(COSIGNATURE_LABEL, unsigned, this.keys.secretKey) };

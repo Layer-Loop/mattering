@@ -125,6 +125,34 @@ test("the deadline holds even when nobody called tick", async () => {
   await rejects(d.client.registerPolicy({ ...d.auction, auctionId: "too-late", closeRound: 90 }), "POLICY");
 });
 
+test("a relay that serves a stale 'latest' cannot keep the deadline open", async () => {
+  // Found by running against live drand: relays cache "latest", so a witness
+  // that trusted it alone accepted a bid after the scheduled close.
+  const beacon = new TestBeacon();
+  const clock = new TestClock(beacon, 10);
+  const lagging = clock.source(3);
+  const service = new WitnessService({ dataDir: mkdtempSync(join(tmpdir(), "mattering-witness-")), source: lagging });
+  const policy: AuctionPolicy = { format: POLICY_FORMAT, auctionId: "lag", beacon: beacon.info, closeRound: 100, releaseRound: 110, witness: service.publicKey, cosigners: [], cosignerThreshold: 0, minBid: 100, maxBid: 10_000, rule: "highest-bid", tieBreak: "release-round-signature" };
+  await service.registerPolicy(policy);
+  clock.advanceTo(99);
+  const inTime = await prepareBid(policy, 3000, generateKeyPair());
+  await service.submit(inTime.submission, inTime.envelope);
+  clock.advanceTo(100);
+  assert.equal((await lagging.latest()).round, 97, "the relay still says round 97");
+  const late = await prepareBid(policy, 9999, generateKeyPair());
+  await rejects(service.submit(late.submission, late.envelope), "POLICY");
+  assert.equal(service.log().size, 1);
+
+  // A cosigner with a lagging relay must not sign after the release either.
+  const cosigner = new Cosigner(clock.source(20));
+  const terms: AuctionPolicy = { ...policy, auctionId: "lag-2", cosigners: [cosigner.publicKey], cosignerThreshold: 1 };
+  const witness = new Witness();
+  const closing = witness.close(policyHash({ ...terms, witness: witness.publicKey }), beacon.info, beacon.release(100));
+  clock.advanceTo(110);
+  assert.equal((await clock.source(20).latest()).round, 90);
+  await rejects(cosigner.cosign(policyHash({ ...terms, witness: witness.publicKey }), { ...terms, witness: witness.publicKey }, closing), "POLICY");
+});
+
 test("the witness refuses what it can tell is wrong while bids are sealed", async () => {
   const d = await deployment(0);
   await d.client.registerPolicy(d.auction);

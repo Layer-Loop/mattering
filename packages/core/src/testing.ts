@@ -51,11 +51,16 @@ export class TestClock {
     if (round < this.now) throw new Error("time does not go backwards");
     this.now = round;
   }
-  source(): BeaconSource {
+  /**
+   * One party's view. `lag` makes that party's relay serve "latest" that many
+   * rounds behind, as real relays sometimes do, while its clock stays right.
+   */
+  source(lag = 0): BeaconSource {
     return {
       beacon: this.testBeacon.info,
-      latest: async () => this.testBeacon.release(this.now),
+      latest: async () => this.testBeacon.release(Math.max(1, this.now - lag)),
       get: async (round) => (round <= this.now ? this.testBeacon.release(round) : undefined),
+      scheduledRound: () => this.now,
     };
   }
 }

@@ -67,8 +67,8 @@ Tests are in `tests/service.test.ts`, over HTTP on localhost with a simulated be
 
 | # | Claim | Rests on | Assumes | Test | Status |
 | --- | --- | --- | --- | --- | --- |
-| 27 | An auction can be run through the service and verified from what it publishes | The evidence endpoint returns the verifier's inputs | A7, A8 | "an auction run entirely through the hosted witness" | Shown on localhost. Against live drand: `npm run example:hosted`, **not yet run** |
-| 28 | The deadline holds without any timer firing | The service checks its beacon view on every submission | A7 | "the deadline holds even when nobody called tick" | Shown |
+| 27 | An auction can be run through the service and verified from what it publishes | The evidence endpoint returns the verifier's inputs | A7, A8 | "an auction run entirely through the hosted witness" | Shown on localhost. Against live drand: `npm run example:hosted`. Its first run, on 2026-11-23, exposed the stale-relay bug in claim 28; **it has not been re-run since the fix** |
+| 28 | The deadline holds without any timer firing, and when a relay serves a stale "latest" round | On every submission the service checks both its beacon view and its own clock against the beacon's schedule | A7; the witness's clock is roughly right | "the deadline holds even when nobody called tick", "a relay that serves a stale 'latest'" | Shown. The second test exists because the first live run accepted a late bid |
 | 29 | The service refuses submissions it can tell are wrong while sealed | Signature, policy, envelope id, round and context checks | none | "the witness refuses what it can tell is wrong" | Shown |
 | 30 | State survives a restart | Plain files reloaded at start | The disk | "state survives a restart" | Shown |
 | 31 | A statement was committed before the close and is unchanged | Same log, cosignatures and sealing as bids | A1 to A8 | "registry: sealed statements" | Shown |

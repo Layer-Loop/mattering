@@ -11,4 +11,21 @@ export interface BeaconSource {
   latest(): Promise<Release>;
   /** The signature for `round`, verified, or undefined if it has not been emitted. */
   get(round: number): Promise<Release | undefined>;
+  /**
+   * The round that should be current by this party's own clock and the
+   * beacon's published schedule. A relay's idea of "latest" can lag the real
+   * beacon by a round or more, so anything that enforces a deadline must use
+   * this as well. Absent for beacons with no real schedule.
+   */
+  scheduledRound?(): number;
+}
+
+/**
+ * The round to enforce deadlines against: the later of what this party has
+ * seen and what its clock says should exist. Being early by a moment is safe
+ * for a deadline; being late is not.
+ */
+export async function deadlineRound(source: BeaconSource): Promise<{ latest: Release; round: number }> {
+  const latest = await source.latest();
+  return { latest, round: Math.max(latest.round, source.scheduledRound?.() ?? 0) };
 }

@@ -127,7 +127,7 @@ It states that the submission is entry `index` of a tree with `size` entries and
 
 **Deadline.** A policy names a **close round** and a later **release round**. Once the witness has seen the close round's signature it issues the closing checkpoint for the policy, with `observed` set to that signature, and refuses further submissions under the policy. A submission is on time if its index is below the closing checkpoint's `size`. The verifier requires `observed.round` to equal the close round, so a witness cannot close early.
 
-The deadline is measured on the beacon's clock as seen by the witness. A bidder's own clock and any timestamp a bidder supplies play no part.
+The witness treats a policy as closed from whichever comes first: it has seen the close round, or the close round is due by the witness's own clock and the beacon's published schedule. The second rule is needed because relays can serve a "latest" round that is behind the real beacon; a witness relying on the relay alone accepted a late submission when first run against live drand. A bidder's own clock and any timestamp a bidder supplies play no part. A verifier cannot check when an entry arrived: that the witness applied this rule is part of trusting the witness.
 
 What this gives, and what it does not:
 

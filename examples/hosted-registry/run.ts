@@ -90,16 +90,24 @@ say(`   registry, while sealed: ${JSON.stringify((await client.submitter(agents[
 
 say("\n2. Close");
 await until(closeRound, "the close");
-await service.tick();
-const closed = await client.evidence(auctionHash);
-say(`   auction is ${closed.state}; closing checkpoint covers ${closed.closing?.size} entries, ${closed.cosignatures?.length} cosignature(s)`);
+// A late bid is refused from the scheduled close time, even before the witness
+// has obtained the close round's signature and published its closing checkpoint.
+let lateOutcome = "";
 try {
   const late = await prepareBid(auction, 9999, generateKeyPair());
   await client.submit(late.submission, late.envelope);
-  say("   a late bid was accepted: THIS SHOULD NOT HAPPEN");
+  lateOutcome = "a late bid was accepted: THIS SHOULD NOT HAPPEN";
 } catch (error) {
-  say(`   a late bid of 9999: refused (${(error as Error).message})`);
+  lateOutcome = `a late bid of 9999: refused (${(error as Error).message})`;
 }
+let closed = await client.evidence(auctionHash);
+for (let i = 0; i < 20 && (closed.state === "open" || (closed.cosignatures?.length ?? 0) < 1); i++) {
+  await new Promise((resolve) => setTimeout(resolve, clock ? 0 : 500));
+  await service.tick().catch(() => {});
+  closed = await client.evidence(auctionHash);
+}
+say(`   auction is ${closed.state}; closing checkpoint covers ${closed.closing?.size} entries, ${closed.cosignatures?.length} cosignature(s)`);
+say(`   ${lateOutcome}`);
 
 say("\n3. Release");
 await until(releaseRound, "the release");
@@ -118,4 +126,6 @@ for (const c of (await client.submitter(auctionResult.winner?.submitter ?? agent
 }
 
 clearInterval(ticker);
-process.exit(auctionResult.ok && statements.ok && auctionResult.winner?.amount === 4370 ? 0 : 1);
+const good = auctionResult.ok && statements.ok && auctionResult.winner?.amount === 4370 && auctionResult.bids.length === 3;
+say(good ? "\nOK" : "\nNOT OK: the run did not go as it should");
+process.exit(good ? 0 : 1);

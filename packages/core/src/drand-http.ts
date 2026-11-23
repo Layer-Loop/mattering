@@ -50,11 +50,19 @@ export async function fetchRelease(
  */
 export function drandSource(beacon: BeaconInfo, relays: readonly string[] = DEFAULT_RELAYS, fetchFn: typeof fetch = fetch, maxLagSeconds = 30): BeaconSource {
   const known = new Map<number, Release>();
-  let cached: { at: number; release: Release } | undefined;
+  let best: Release | undefined;
+  const scheduledRound = (): number => Math.max(1, Math.floor((Date.now() / 1000 - beacon.genesisTime) / beacon.period) + 1);
+  const remember = (release: Release): Release => {
+    known.set(release.round, release);
+    if (!best || release.round > best.round) best = release;
+    return release;
+  };
   return {
     beacon,
+    scheduledRound,
     async latest() {
-      if (cached && Date.now() - cached.at < beacon.period * 1000) return cached.release;
+      // Reuse what we have only while the schedule says nothing newer exists.
+      if (best && best.round >= scheduledRound()) return best;
       const failures: string[] = [];
       for (const relay of relays) {
         try {
@@ -63,24 +71,34 @@ export function drandSource(beacon: BeaconInfo, relays: readonly string[] = DEFA
           const body = (await response.json()) as { round?: unknown; signature?: unknown };
           const release = { round: Number(body.round), signature: String(body.signature).toLowerCase() };
           if (!verifyRelease(beacon, release)) throw new Error("invalid signature");
-          if (Date.now() / 1000 - timeOfRound(beacon, release.round) > maxLagSeconds) throw new Error("stale: far behind the beacon's schedule");
-          known.set(release.round, release);
-          cached = { at: Date.now(), release };
-          return release;
+          remember(release);
+          break;
         } catch (error) {
           failures.push(`${relay}: ${(error as Error).message}`);
         }
       }
-      throw new MatteringError("UNAVAILABLE", `cannot establish the latest beacon round: ${failures.join("; ")}`);
+      // Relays cache "latest" and can serve a round or two behind. Ask for the
+      // scheduled round by number, which is not subject to that.
+      const expected = scheduledRound();
+      if (!best || best.round < expected) {
+        try {
+          remember(await fetchRelease(beacon, expected, relays, fetchFn));
+        } catch {
+          // not emitted yet, or unreachable; fall through with what we have
+        }
+      }
+      if (!best) throw new MatteringError("UNAVAILABLE", `cannot establish the latest beacon round: ${failures.join("; ")}`);
+      if (Date.now() / 1000 - timeOfRound(beacon, best.round) > maxLagSeconds) {
+        throw new MatteringError("UNAVAILABLE", "the newest beacon round obtainable is far behind the beacon's schedule");
+      }
+      return best;
     },
     async get(round) {
       const have = known.get(round);
       if (have) return have;
       if (Date.now() / 1000 < timeOfRound(beacon, round)) return undefined;
       try {
-        const release = await fetchRelease(beacon, round, relays, fetchFn);
-        known.set(round, release);
-        return release;
+        return remember(await fetchRelease(beacon, round, relays, fetchFn));
       } catch {
         return undefined;
       }

@@ -18,6 +18,7 @@ import {
   STATEMENT_POLICY_FORMAT,
   Witness,
   assertEnvelope,
+  deadlineRound,
   envelopeId,
   policyHash,
   sameBeacon,
@@ -158,7 +159,7 @@ export class WitnessService {
       if (this.policies.has(hash)) return { policyHash: hash };
       if (typed.witness !== this.publicKey) throw new MatteringError("POLICY", "the policy names a different witness");
       if (!sameBeacon(typed.beacon, this.options.source.beacon)) throw new MatteringError("POLICY", "this witness does not watch the policy's beacon");
-      if (typed.closeRound <= (await this.options.source.latest()).round) throw new MatteringError("POLICY", "the policy's close round has already passed");
+      if (typed.closeRound <= (await deadlineRound(this.options.source)).round) throw new MatteringError("POLICY", "the policy's close round has already passed");
       writeFileSync(join(this.options.dataDir, "policies", `${hash}.json`), JSON.stringify(typed, null, 2) + "\n");
       this.policies.set(hash, { hash, kind, policy: typed, cosignatures: [] });
       return { policyHash: hash };
@@ -180,10 +181,11 @@ export class WitnessService {
       if ((record.kind === "auction") !== (submission.commitment !== undefined)) {
         throw new MatteringError("MALFORMED", record.kind === "auction" ? "an auction submission needs a commitment" : "a statement submission carries no commitment");
       }
-      // The deadline, on the beacon's clock as this witness sees it. Nothing the
-      // submitter says about time is consulted.
-      const latest = await this.closeDue();
-      if (record.closing || record.policy.closeRound <= latest.round) {
+      // The deadline: the close round has been emitted as far as this witness
+      // has seen, or is due by this witness's clock and the beacon's schedule,
+      // whichever comes first. Nothing the submitter says about time is consulted.
+      const now = await this.closeDue();
+      if (record.closing || record.policy.closeRound <= now) {
         throw new MatteringError("POLICY", "late: this policy closed at its close round");
       }
       const receipt = this.witness.submit(submission);
@@ -200,20 +202,21 @@ export class WitnessService {
     });
   }
 
-  private async closeDue(): Promise<Release> {
+  /** Returns the round deadlines are judged against. */
+  private async closeDue(): Promise<number> {
     const source = this.options.source;
-    const latest = await source.latest();
+    const { latest, round: now } = await deadlineRound(source);
     for (const record of this.policies.values()) {
       const terms: PolicyTerms = record.policy;
-      if (!record.closing && terms.closeRound <= latest.round) {
+      if (!record.closing && terms.closeRound <= now) {
         const closeRelease = await source.get(terms.closeRound);
         // Without the close round's signature the closing checkpoint cannot be
-        // made yet. submit() refuses on `latest` alone, so nothing gets in meanwhile.
+        // made yet. submit() already refuses, so nothing gets in meanwhile.
         if (!closeRelease) continue;
         record.closing = this.witness.close(record.hash, source.beacon, closeRelease);
         this.saveClosing(record);
       }
-      if (record.closing && latest.round < terms.releaseRound && this.options.cosign) {
+      if (record.closing && now < terms.releaseRound && latest.round >= terms.closeRound && this.options.cosign) {
         const have = new Set(record.cosignatures.map((c) => c.cosigner));
         for (const cosigner of terms.cosigners) {
           if (have.has(cosigner)) continue;
@@ -225,7 +228,7 @@ export class WitnessService {
         }
       }
     }
-    return latest;
+    return now;
   }
 
   private saveClosing(record: PolicyRecord): void {
