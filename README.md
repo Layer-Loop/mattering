@@ -1,10 +1,36 @@
 # Mattering
 
+> **Experimental proof of concept. It has not had a security review. Do not protect anything valuable with it.**
+> It exists to be read, run and criticised.
+
 Seal digital information until a future time, and let anyone check the seal and the opening for themselves.
 
-**Status: experimental proof of concept. It has not had a security review. Do not protect anything valuable with it.** It exists to be read, run and criticised.
+**See it running:** [mattering.ai/demo](https://mattering.ai/demo) runs a sealed-bid auction between three software agents on this code, against a public clock, and invites you to cheat it.
 
-Mattering does not invent cryptography. The time lock is [drand](https://drand.love)'s tlock, called through drand's own library. What Mattering adds is a documented envelope format, the checks around it, and (planned) a witness log, a commitment registry and an auction between software agents that shows it working.
+Mattering does not invent cryptography. The time lock is [drand](https://drand.love)'s tlock, called through drand's own library. What Mattering adds is a documented envelope format, a witness log with receipts and deadlines, a verifier that recomputes an outcome from published evidence, and a demonstration that shows them working.
+
+## How this was built
+
+Mattering was conceived and directed by Johannes Smith at Layer & Loop, and implemented with an AI coding agent (Claude Code) in November 2026. The commit history shows this plainly: the commits are the agent's.
+
+The division of work:
+
+- **The person** wrote the brief, chose the scope, made the product and trade-off decisions, ran everything against the live drand network, and decided what the project should and should not claim. He is not a cryptographer, and said so in the brief.
+- **The agent** wrote the code, the tests and the documentation, and proposed the designs that the person accepted, changed or rejected.
+
+Three rules shaped it:
+
+1. **No new cryptography.** Established libraries only. Where the project had to compose them itself, the composition is written down as a question for a reviewer ([docs/research-questions.md](docs/research-questions.md)).
+2. **Every claim has a test, or is marked as not made.** [docs/claims.md](docs/claims.md) lists each one with what it rests on.
+3. **Limits are stated where the reader will see them**, including on the demonstration page itself.
+
+What went wrong along the way, and is now covered by a test:
+
+- **A late bid won the first live auction.** The witness trusted a relay's cached answer about the time, and accepted a bid after the deadline. The offline tests could not have caught it; running against the real network did.
+- **A copied bid could knock out the genuine one.** Someone who resubmitted a rival's sealed bid and reached the log first got the original thrown out as a duplicate. A test written to check copying exposed it.
+- **Whoever supplied the evidence could void the top bid** by handing over the wrong envelope in its place, so that the runner-up won. Found while designing the demonstration's cheat buttons.
+
+What has not happened: nobody qualified has reviewed the design or the code. Until that happens, treat every claim here as tested, not as verified.
 
 ## What works today
 
@@ -29,11 +55,11 @@ Mattering does not invent cryptography. The time lock is [drand](https://drand.l
 - **Sealed statements**: commit to a prediction or decision before a deadline; it opens for everyone at a set time.
 - A **registry view**: everything one key has committed to, and what each commitment opened to.
 
-The service runs on localhost and has never been deployed; [docs/service.md](docs/service.md) lists what stands between it and a real one. Not built: range proofs, recipient encryption, durable storage. [docs/claims.md](docs/claims.md) lists every claim with its status, and is the document to check before saying anything about what Mattering guarantees.
+The service runs the demonstration at mattering.ai, where each visitor gets a throwaway instance. It has not been run as a real, shared service; [docs/service.md](docs/service.md) lists what stands between it and one. Not built: range proofs, recipient encryption, durable storage. [docs/claims.md](docs/claims.md) lists every claim with its status, and is the document to check before saying anything about what Mattering guarantees.
 
 ## See it
 
-**The Sealed Room** is a web page that runs a sealed-bid auction between three agents and invites you to cheat. It is the quickest way to see what this does.
+**The Sealed Room** is a web page that runs a sealed-bid auction between three agents and invites you to cheat. It is the quickest way to see what this does. It is live at [mattering.ai/demo](https://mattering.ai/demo), or run it yourself:
 
 ```bash
 npm install

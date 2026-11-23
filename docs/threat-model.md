@@ -49,5 +49,5 @@ Mattering has no mitigation for any of these. A use that cannot accept them shou
 5. **The chain hash is not recomputed** from the beacon parameters. Beacons are accepted by exact match against a pinned list.
 6. **Cosigners are trusted, not proven, to sign before release.** A cosignature shows a lower bound on the cosigner's time. A policy with no cosigners trusts the witness completely.
 7. **A cosigner can be fooled about the time** by an attacker who controls its network and its clock together. Its beacon source rejects a "latest" round far behind schedule by its own clock, and nothing more.
-8. **The service is not hardened.** Its key is a file, it has no abuse limits, and it has never been deployed. See [service.md](service.md).
+8. **The service is not hardened.** Its key is a file, it has no abuse limits, and its only deployment is a demonstration with throwaway instances. See [service.md](service.md).
 9. **Timing.** No attempt has been made at constant-time behaviour beyond what the libraries do. Opening only handles public inputs, so this is believed not to matter, but it has not been examined.

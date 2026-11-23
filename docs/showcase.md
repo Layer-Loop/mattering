@@ -4,7 +4,7 @@ A web page for showing Mattering to people who do not read code. Three software 
 
 ![The Sealed Room after the bids have opened](showcase.png)
 
-**Status:** runs on a laptop. It has not been deployed. It is a demonstration, and the service behind it is not hardened ([service.md](service.md)).
+**Status:** runs on a laptop, and is live at [mattering.ai/demo](https://mattering.ai/demo). It is a demonstration, and the service behind it is not hardened ([service.md](service.md)).
 
 ## Running it
 
@@ -74,4 +74,4 @@ The auctioneer and the cosigner still run in the same place, so the cosigner is 
 
 `tests/showcase.test.ts` runs an auction through the room and verifies it as the page does. The page itself was checked by driving it in a headless browser by hand; there is no browser test in the suite. On a laptop, online mode against live drand was run by hand on 2026-11-23 and behaved as described.
 
-The Cloudflare version was run by hand in Cloudflare's local runtime with the simulated clock: a full auction in the real site page, with all four cheats refused. It has not been run against live drand, and it has not been deployed.
+The Cloudflare version was run by hand in Cloudflare's local runtime with the simulated clock: a full auction in the real site page, with all four cheats refused. It was deployed to mattering.ai on 2026-11-23 and run there by hand against live drand, and worked. Nothing checks the deployed version automatically.

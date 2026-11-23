@@ -2,7 +2,7 @@
 
 A small HTTP service that keeps the witness log, enforces deadlines on the beacon's clock, collects cosignatures, stores envelopes, and publishes everything a verifier needs. The registry is the same service read as a public record.
 
-**Status: experimental and unreviewed.** It is tested on localhost against a simulated beacon. Its first run against live drand found a deadline bug, since fixed. It has never been deployed anywhere.
+**Status: experimental and unreviewed.** It is tested on localhost against a simulated beacon. Its first run against live drand found a deadline bug, since fixed. Its only deployment is the demonstration at mattering.ai, where each visitor gets a throwaway instance; it has not been run as a shared, long-lived service.
 
 ## Running it
 
