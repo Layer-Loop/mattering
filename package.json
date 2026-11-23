@@ -20,10 +20,13 @@
     "example:verify": "tsx examples/agent-auction/verify.ts",
     "witness": "tsx apps/witness/src/main.ts witness",
     "cosigner": "tsx apps/witness/src/main.ts cosigner",
-    "example:hosted": "tsx examples/hosted-registry/run.ts"
+    "example:hosted": "tsx examples/hosted-registry/run.ts",
+    "showcase": "tsx apps/showcase/src/server.ts",
+    "showcase:offline": "tsx apps/showcase/src/server.ts offline"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "esbuild": "^0.28.2",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
   },

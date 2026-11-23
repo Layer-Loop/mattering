@@ -55,8 +55,8 @@ Tests are in `tests/auction.test.ts`. The witness in these tests is an in-proces
 | 19 | A commitment that does not match the sealed amount is caught | The commitment's opening is inside the sealed bid | A4 | "substitution" | Shown. Caught **after** opening only; before opening it is undetectable, and the test shows that too |
 | 20 | Out-of-range and malformed bids are rejected without stopping the auction | Deterministic checks on the opened bid | none | "boundary bids", "garbage in a well-formed envelope" | Shown. The amount of an invalid bid becomes public at opening like every other |
 | 21 | The winner follows from the policy and the evidence, and anyone can recompute it | Deterministic verifier; tie-break from the release round's signature | A1 | "three bidders", "ties", "coordinator announces the wrong winner"; `npm run example:verify` | Shown |
-| 22 | A coordinator who withholds an envelope cannot change the result, only block it | A missing on-time envelope makes the outcome unresolved | none | "coordinator withholds an envelope" | Shown |
-| 23 | A coordinator cannot swap an envelope, the policy or the release signature | Envelope id, policy hash and signature checks | A4 | "coordinator swaps" | Shown |
+| 22 | A coordinator who withholds or swaps an envelope cannot change the result, only block it | An envelope is identified by its hash; a missing or wrong one leaves the bid unresolved and the auction without a result | A4 | "coordinator withholds an envelope", "coordinator swaps an envelope" | Shown. An earlier version treated a swapped envelope as an invalid bid, which let a coordinator void the top bid; fixed |
+| 23 | A coordinator cannot substitute the policy or the release signature | Policy hash and signature checks | A4 | "coordinator swaps an envelope or edits the policy" | Shown |
 | 24 | Cryptography and adjudication run without any AI model | No model is called anywhere in `packages/core`; the example's agents are plain functions | none | whole suite | Shown |
 | 25 | The witness cannot rewrite the log after it can read the bids | The closing checkpoint must be countersigned before the release round by the policy's cosigners, who sign one checkpoint per policy | A8 | `tests/service.test.ts` "a witness that rewrites the log", "cosigners" | Shown for policies that require cosigners. With a threshold of 0 it is pure trust in the witness, and the same test shows the forgery succeeding |
 | 26 | The witness cannot add an entry between the close round and the cosignatures | Nothing | A7 | none | **Not provided.** Such an entry is blind (the bids are still sealed) but late |
@@ -74,12 +74,21 @@ Tests are in `tests/service.test.ts`, over HTTP on localhost with a simulated be
 | 31 | A statement was committed before the close and is unchanged | Same log, cosignatures and sealing as bids | A1 to A8 | "registry: sealed statements" | Shown |
 | 32 | The registry shows nothing of a commitment before its release round | It serves only envelopes and submissions until the beacon releases | A1, A3 | "registry: sealed statements" | Shown |
 
+## The showcase page
+
+| # | Claim | Rests on | Test | Status |
+| --- | --- | --- | --- | --- |
+| 33 | The page's result is computed in the browser from evidence, not taken from the server | The page bundles the same library and calls `verifyAuction` itself | `tests/showcase.test.ts` checks the server side; the page was driven once in a headless browser by hand | Shown by hand, not by an automated browser test |
+| 34 | A visitor's bid amount never reaches the server | The bid is sealed in the browser before it is sent | Same | Shown by hand |
+| 35 | Each cheat button makes a real attempt | The buttons call the library and the service; see [showcase.md](showcase.md) | `tests/showcase.test.ts` covers the late bid and the rewritten log | Shown |
+
 ## Not claimed
 
 | Statement | Why not |
 | --- | --- |
 | "Trustless" or "fully disintermediated" | Mattering holds no plaintext and no keys, but the design trusts drand for time, a witness to accept submissions, and cosigners not to collude with it |
 | "A statement in the registry is that agent's only prediction" | A key can be made freely. One party can commit to every outcome under different keys and show only the right one |
+| "The showcase's cosigner is independent" | It runs in the same process as the auctioneer. The page says so |
 | "The service is ready to host" | See the list at the end of [service.md](service.md) |
 | "Proves when something was sealed" | An envelope carries no trustworthy time. The witness log says a submission was on time, and that is only as good as the witness (A7) |
 | "The witness cannot censor" | A witness can refuse to issue a receipt, and nobody can prove it |

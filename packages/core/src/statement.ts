@@ -8,6 +8,7 @@ import type { Release } from "./beacon.ts";
 import { canonicalBytes, hashCanonical } from "./canonical.ts";
 import { envelopeId, type Context, type Envelope } from "./envelope.ts";
 import { MatteringError } from "./errors.ts";
+import { suppliedEnvelope } from "./auction.ts";
 import { assertTerms, verifyEvidence, type Evidence, type PolicyTerms } from "./evidence.ts";
 import { open, seal, verifyEnvelope, type Check, type VerifierPolicy } from "./seal.ts";
 import type { KeyPair } from "./signing.ts";
@@ -135,7 +136,7 @@ export async function verifyStatements(inputs: StatementInputs, verifier: Verifi
     const base = { index, author: submission.submitter, envelopeId: submission.envelopeId };
     if (!counts) statements.push({ ...base, status: "invalid", reason: "a later submission by the same author" });
     else {
-      const envelope = envelopes.get(submission.envelopeId);
+      const envelope = suppliedEnvelope(envelopes, submission.envelopeId);
       if (!envelope) statements.push({ ...base, status: "unresolved", reason: "envelope not supplied" });
       else statements.push({ ...base, ...(await judge(inputs.policy, hash, submission, envelope, inputs.release, verifier)) });
     }

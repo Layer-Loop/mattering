@@ -1,0 +1,8 @@
+{
+  "name": "@mattering/showcase",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "dependencies": { "@mattering/core": "0.1.0", "@mattering/witness": "0.1.0" }
+}

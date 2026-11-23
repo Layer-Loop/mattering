@@ -9,7 +9,20 @@
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ],
+    "lib": [
+      "ES2024",
+      "DOM",
+      "DOM.Iterable"
+    ]
   },
-  "include": ["packages/*/src", "apps/*/src", "tests", "examples"]
+  "include": [
+    "packages/*/src",
+    "apps/*/src",
+    "apps/*/web",
+    "tests",
+    "examples"
+  ]
 }

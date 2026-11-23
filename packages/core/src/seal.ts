@@ -11,6 +11,7 @@ import { assertCanonicalizable, canonicalEquals } from "./canonical.ts";
 import {
   armor,
   assertEnvelope,
+  base64Decode,
   ENVELOPE_FORMAT,
   envelopeId,
   frame,
@@ -59,7 +60,7 @@ function decodeAnyArmor(text: string): Uint8Array {
     .map((line) => line.trim())
     .filter((line) => line !== "" && !line.startsWith("-----"))
     .join("");
-  return new Uint8Array(Buffer.from(body, "base64"));
+  return base64Decode(body);
 }
 
 // --- verification before opening --------------------------------------------

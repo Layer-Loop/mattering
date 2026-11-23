@@ -206,7 +206,10 @@ export async function verifyAuction(inputs: AuctionInputs, verifier: VerifierPol
       bids.push({ ...base, status: "invalid", reason: "a later submission by the same bidder" });
       continue;
     }
-    const envelope = envelopes.get(submission.envelopeId);
+    // An envelope is identified by its hash. Anything else offered under that
+    // id is simply not the envelope, so the bid is unresolved, never invalid:
+    // otherwise whoever supplies the evidence could void a bid by swapping it.
+    const envelope = suppliedEnvelope(envelopes, submission.envelopeId);
     if (!envelope) {
       bids.push({ ...base, status: "unresolved", reason: "envelope not supplied" });
       continue;
@@ -224,6 +227,16 @@ export async function verifyAuction(inputs: AuctionInputs, verifier: VerifierPol
     .filter((b) => b.amount === top)
     .sort((a, b) => (tieBreakKey(release, a.envelopeId) < tieBreakKey(release, b.envelopeId) ? -1 : 1))[0]!;
   return { ok: true, checks, bids, winner: { submitter: best.submitter, envelopeId: best.envelopeId, amount: best.amount! } };
+}
+
+/** The envelope supplied for `id`, if and only if it really is that envelope. */
+export function suppliedEnvelope(envelopes: ReadonlyMap<string, Envelope>, id: string): Envelope | undefined {
+  const envelope = envelopes.get(id);
+  try {
+    return envelope && envelopeId(envelope) === id ? envelope : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Does a result announced by someone else match what the evidence gives? */

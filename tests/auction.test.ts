@@ -375,9 +375,16 @@ test("coordinator swaps an envelope or edits the policy: rejected", async () => 
   const inputs = close(w);
   const forged = await prepareBid(w.policy, 9000, w.keys[0]!);
   const swapped = new Map(w.envelopes).set(w.prepared[0]!.submission.envelopeId, forged.envelope);
+  // A swapped envelope is not the submitted envelope. It must block the result,
+  // never void the bid: here the top bid is the one swapped, and the runner-up must not win.
   const r1 = await verifyAuction({ ...inputs, envelopes: swapped }, verifier);
-  assert.equal(r1.bids[0]!.status, "invalid");
-  assert.equal(r1.winner?.amount, 4200);
+  assert.equal(r1.bids[0]!.status, "unresolved");
+  assert.equal(r1.ok, false);
+  assert.equal(r1.winner, undefined);
+  const topSwapped = new Map(w.envelopes).set(w.prepared[1]!.submission.envelopeId, forged.envelope);
+  const r1b = await verifyAuction({ ...inputs, envelopes: topSwapped }, verifier);
+  assert.equal(r1b.bids[1]!.status, "unresolved");
+  assert.equal(r1b.winner, undefined);
   const r2 = await verifyAuction({ ...inputs, policy: { ...w.policy, maxBid: 4000 } }, verifier);
   assert.equal(r2.ok, false, "a different policy has a different hash, so the checkpoint is not for it");
   const r3 = await verifyAuction({ ...inputs, release: { round: RELEASE, signature: beacon.release(RELEASE + 1).signature } }, verifier);

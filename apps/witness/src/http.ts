@@ -4,7 +4,7 @@
  * is nothing private to protect. Submissions authenticate themselves by
  * signature.
  */
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type RequestListener, type Server, type ServerResponse } from "node:http";
 import { MatteringError, type Checkpoint, type Cosigner, type Envelope, type PolicyTerms, type Submission } from "@mattering/core";
 import type { WitnessService } from "./service.ts";
 
@@ -42,8 +42,8 @@ function sendError(response: ServerResponse, error: unknown): void {
 
 type Handler = (parts: string[], request: IncomingMessage, url: URL) => Promise<unknown> | unknown;
 
-function serve(routes: Record<string, Handler>): Server {
-  return createServer((request, response) => {
+function listener(routes: Record<string, Handler>): RequestListener {
+  return (request, response) => {
     void (async () => {
       try {
         const url = new URL(request.url ?? "/", "http://localhost");
@@ -57,11 +57,16 @@ function serve(routes: Record<string, Handler>): Server {
         sendError(response, error);
       }
     })();
-  });
+  };
 }
 
 export function witnessServer(service: WitnessService): Server {
-  return serve({
+  return createServer(witnessListener(service));
+}
+
+/** The witness's routes as a request listener, for mounting inside another server. */
+export function witnessListener(service: WitnessService): RequestListener {
+  return listener({
     "GET ": () => ({ service: "mattering-witness", notice: "Experimental. Not security reviewed.", ...service.info() }),
     "GET policies": ([hash, what]) => {
       if (hash === undefined) return service.listPolicies();
@@ -88,7 +93,7 @@ export function witnessServer(service: WitnessService): Server {
 
 /** A cosigner as a service: one route that countersigns closing checkpoints. */
 export function cosignerServer(cosigner: Cosigner, onSigned?: () => void): Server {
-  return serve({
+  return createServer(listener({
     "GET ": () => ({ service: "mattering-cosigner", notice: "Experimental. Not security reviewed.", cosigner: cosigner.publicKey }),
     "POST cosign": async (_parts, request) => {
       const body = (await readJson(request)) as { policyHash?: string; policy?: PolicyTerms; closing?: Checkpoint } | null;
@@ -97,5 +102,7 @@ export function cosignerServer(cosigner: Cosigner, onSigned?: () => void): Serve
       onSigned?.();
       return cosignature;
     },
-  });
+  }));
 }
+
+export { readJson, send, sendError };

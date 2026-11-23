@@ -93,9 +93,27 @@ export function serializeEnvelope(envelope: Envelope): string {
 const ARMOR_BEGIN = "-----BEGIN AGE ENCRYPTED FILE-----";
 const ARMOR_END = "-----END AGE ENCRYPTED FILE-----";
 
+// Base64 and Latin-1 without Node's Buffer, so this file also runs in a browser.
+function toLatin1(data: Uint8Array): string {
+  let out = "";
+  for (let i = 0; i < data.length; i += 8192) out += String.fromCharCode(...data.subarray(i, i + 8192));
+  return out;
+}
+
+export function base64Encode(data: Uint8Array): string {
+  return btoa(toLatin1(data));
+}
+
+export function base64Decode(text: string): Uint8Array {
+  const binary = atob(text);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+  return out;
+}
+
 /** The one accepted armor layout: 64-column standard base64, "\n" line ends. */
 export function armor(data: Uint8Array): string {
-  const b64 = Buffer.from(data).toString("base64");
+  const b64 = base64Encode(data);
   const lines = b64.match(/.{1,64}/g) ?? [];
   return [ARMOR_BEGIN, ...lines, ARMOR_END, ""].join("\n");
 }
@@ -111,14 +129,19 @@ export function parseArmor(text: string): Uint8Array {
   }
   const body = lines.slice(1, -2).join("");
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(body)) throw new MatteringError("MALFORMED", "ciphertext: bad base64");
-  const data = new Uint8Array(Buffer.from(body, "base64"));
+  let data: Uint8Array;
+  try {
+    data = base64Decode(body);
+  } catch {
+    throw new MatteringError("MALFORMED", "ciphertext: bad base64");
+  }
   if (armor(data) !== text) throw new MatteringError("MALFORMED", "ciphertext: armor is not in canonical layout");
   return data;
 }
 
 /** The (unauthenticated until opened) tlock stanza arguments in the age header. */
 export function readStanza(ciphertext: string): { round: number; chainHash: string } {
-  const text = Buffer.from(parseArmor(ciphertext)).toString("latin1");
+  const text = toLatin1(parseArmor(ciphertext));
   const headerEnd = text.indexOf("\n--- ");
   if (headerEnd < 0) throw new MatteringError("MALFORMED", "ciphertext: no age header");
   const lines = text.slice(0, headerEnd).split("\n");

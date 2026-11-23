@@ -31,6 +31,17 @@ Mattering does not invent cryptography. The time lock is [drand](https://drand.l
 
 The service runs on localhost and has never been deployed; [docs/service.md](docs/service.md) lists what stands between it and a real one. Not built: range proofs, recipient encryption, durable storage. [docs/claims.md](docs/claims.md) lists every claim with its status, and is the document to check before saying anything about what Mattering guarantees.
 
+## See it
+
+**The Sealed Room** is a web page that runs a sealed-bid auction between three agents and invites you to cheat. It is the quickest way to see what this does.
+
+```bash
+npm install
+npm run showcase
+```
+
+Then open http://127.0.0.1:8790. Use `npm run showcase:offline` if you have no internet connection. More in [docs/showcase.md](docs/showcase.md).
+
 ## Try it
 
 Needs Node.js 22 or later.
@@ -105,11 +116,13 @@ The full list is in [docs/threat-model.md](docs/threat-model.md).
 | `packages/core` | The SDK: envelopes, witness log, commitments, auction verifier |
 | `apps/cli` | The `mattering` command |
 | `apps/witness` | The witness and registry service, a cosigner, and a client |
+| `apps/showcase` | The Sealed Room: a web page for demonstrations |
 | `examples/agent-auction` | Three agents, one auction, and a standalone verifier |
 | `examples/hosted-registry` | The same through the hosted service, plus sealed predictions |
-| `tests` | 50 tests: sealing, tampering, replay, early opening, cheating bidders, a cheating witness, a cheating coordinator, and the service over HTTP |
+| `tests` | 52 tests: sealing, tampering, replay, early opening, cheating bidders, a cheating witness, a cheating coordinator, and the service over HTTP |
 | `docs/protocol.md` | The envelope, submission, log, auction and statement formats |
 | `docs/service.md` | Running the witness service, its interface, and what it lacks |
+| `docs/showcase.md` | The demonstration page: what is real and what is staged |
 | `docs/claims.md` | Every claim, what it rests on, and which test shows it |
 | `docs/threat-model.md` | Who can attack what, and what is out of scope |
 | `docs/research-questions.md` | Questions for a cryptographer |
@@ -130,6 +143,7 @@ The full list is in [docs/threat-model.md](docs/threat-model.md).
 | [@noble/curves](https://github.com/paulmillr/noble-curves) | 1.9.7 | MIT | Beacon signature verification (BLS12-381), Ed25519 signatures, Ristretto255 commitments |
 | [@noble/hashes](https://github.com/paulmillr/noble-hashes) | 1.8.0 | MIT | SHA-256, SHA3-512 |
 | [canonicalize](https://github.com/erdtman/canonicalize) | 2.1.0 | Apache-2.0 | RFC 8785 canonical JSON |
+| [esbuild](https://esbuild.github.io) | development only | MIT | Bundling the library for the showcase page |
 
 Versions are pinned exactly. `tlock-js` was last published in July 2025; whether it is maintained actively enough to build on is an open question in [docs/research-questions.md](docs/research-questions.md).
 
