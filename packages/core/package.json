@@ -14,5 +14,6 @@
     "canonicalize": "2.1.0",
     "drand-client": "1.2.5",
     "tlock-js": "0.9.0"
-  }
+  },
+  "license": "MIT"
 }

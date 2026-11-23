@@ -117,8 +117,6 @@ The full list is in [docs/threat-model.md](docs/threat-model.md).
 
 Versions are pinned exactly. `tlock-js` was last published in July 2025; whether it is maintained actively enough to build on is an open question in [docs/research-questions.md](docs/research-questions.md).
 
-Mattering's own licence has not been chosen yet.
+## Licence
 
-## Relationship to Timelox
-
-Mattering is separate from Timelox: its own repository, no shared code, no shared service. Convergence is a question for after both work.
+[MIT](LICENSE).

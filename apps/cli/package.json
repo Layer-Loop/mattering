@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "bin": { "mattering": "./src/main.ts" },
-  "dependencies": { "@mattering/core": "0.1.0" }
+  "bin": {
+    "mattering": "./src/main.ts"
+  },
+  "dependencies": {
+    "@mattering/core": "0.1.0"
+  },
+  "license": "MIT"
 }
