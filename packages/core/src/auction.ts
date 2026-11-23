@@ -4,37 +4,24 @@
  * public artifacts alone. See docs/protocol.md section 7.
  */
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
-import { assertBeaconInfo, assertRound, isLowerHex, verifyRelease, type BeaconInfo, type Release } from "./beacon.ts";
+import type { BeaconInfo, Release } from "./beacon.ts";
 import { canonicalBytes, hashCanonical, hashLabelled } from "./canonical.ts";
 import { commit, opensTo, randomBlinding } from "./commitment.ts";
 import { envelopeId, type Context, type Envelope } from "./envelope.ts";
 import { MatteringError } from "./errors.ts";
 import { open, seal, verifyEnvelope, type Check, type VerifierPolicy } from "./seal.ts";
 import type { KeyPair } from "./signing.ts";
-import {
-  logRoot,
-  signSubmission,
-  verifyCheckpointSignature,
-  verifySubmissionSignature,
-  type Checkpoint,
-  type Submission,
-} from "./witness.ts";
+import { assertTerms, verifyEvidence, type Cosignature, type PolicyTerms } from "./evidence.ts";
+import { signSubmission, verifySubmissionSignature, type Checkpoint, type Submission } from "./witness.ts";
 
 export const POLICY_FORMAT = "mattering.auction-policy/1";
 export const BID_FORMAT = "mattering.bid/1";
 const POLICY_LABEL = "mattering/auction-policy/v1";
 const TIE_BREAK_LABEL = "mattering/tie-break/v1";
 
-export interface AuctionPolicy {
+export interface AuctionPolicy extends PolicyTerms {
   format: typeof POLICY_FORMAT;
   auctionId: string;
-  beacon: BeaconInfo;
-  /** Submissions close when the witness sees this round. */
-  closeRound: number;
-  /** Bids open at this round. Must be later than `closeRound`. */
-  releaseRound: number;
-  /** The witness's Ed25519 public key. */
-  witness: string;
   minBid: number;
   maxBid: number;
   rule: "highest-bid";
@@ -43,14 +30,10 @@ export interface AuctionPolicy {
 
 export function assertPolicy(policy: AuctionPolicy): void {
   const keys = Object.keys(policy).sort().join(",");
-  if (keys !== "auctionId,beacon,closeRound,format,maxBid,minBid,releaseRound,rule,tieBreak,witness") throw new MatteringError("MALFORMED", `policy: unexpected fields (${keys})`);
+  if (keys !== "auctionId,beacon,closeRound,cosignerThreshold,cosigners,format,maxBid,minBid,releaseRound,rule,tieBreak,witness") throw new MatteringError("MALFORMED", `policy: unexpected fields (${keys})`);
   if (policy.format !== POLICY_FORMAT) throw new MatteringError("MALFORMED", "policy.format");
   if (typeof policy.auctionId !== "string" || policy.auctionId === "") throw new MatteringError("MALFORMED", "policy.auctionId");
-  assertBeaconInfo(policy.beacon, "policy.beacon");
-  assertRound(policy.closeRound, "policy.closeRound");
-  assertRound(policy.releaseRound, "policy.releaseRound");
-  if (policy.releaseRound <= policy.closeRound) throw new MatteringError("MALFORMED", "policy: releaseRound must be after closeRound");
-  if (!isLowerHex(policy.witness, 32)) throw new MatteringError("MALFORMED", "policy.witness");
+  assertTerms(policy);
   if (!Number.isSafeInteger(policy.minBid) || !Number.isSafeInteger(policy.maxBid) || policy.minBid < 0 || policy.maxBid < policy.minBid) throw new MatteringError("MALFORMED", "policy: bid range");
   if (policy.rule !== "highest-bid" || policy.tieBreak !== "release-round-signature") throw new MatteringError("MALFORMED", "policy: unsupported rule");
 }
@@ -137,6 +120,8 @@ export interface AuctionInputs {
   /** The witness's log, in order, at least up to the closing checkpoint's size. */
   entries: readonly Submission[];
   closing: Checkpoint;
+  /** Cosignatures on the closing checkpoint, if the policy requires any. */
+  cosignatures?: readonly Cosignature[];
   /** Envelopes by envelope id. Missing ones leave their bids unresolved. */
   envelopes: ReadonlyMap<string, Envelope> | Record<string, Envelope>;
   /** The beacon's signature for the policy's release round. */
@@ -179,6 +164,7 @@ async function judge(policy: AuctionPolicy, hash: string, submission: Submission
   if (bid.policyHash !== hash) return { status: "invalid", reason: "bid was sealed for a different policy" };
   if (bid.bidder !== submission.submitter) return { status: "invalid", reason: "bid was sealed by a different bidder" };
   if (!Number.isSafeInteger(bid.amount)) return { status: "invalid", reason: "amount is not an integer" };
+  if (submission.commitment === undefined) return { status: "invalid", reason: "submission carries no commitment", amount: bid.amount };
   if (!opensTo(submission.commitment, bid.amount, bid.blinding)) return { status: "invalid", reason: "commitment does not match the sealed amount", amount: bid.amount };
   if (bid.amount < policy.minBid || bid.amount > policy.maxBid) return { status: "invalid", reason: "amount is outside the permitted range", amount: bid.amount };
   return { status: "valid", amount: bid.amount };
@@ -189,7 +175,7 @@ async function judge(policy: AuctionPolicy, hash: string, submission: Submission
  * same inputs always give the same result, whoever runs it.
  */
 export async function verifyAuction(inputs: AuctionInputs, verifier: VerifierPolicy): Promise<AuctionResult> {
-  const { policy, entries, closing, release } = inputs;
+  const { policy, release } = inputs;
   const envelopes = inputs.envelopes instanceof Map ? inputs.envelopes : new Map(Object.entries(inputs.envelopes));
   const checks: Check[] = [];
   const add = (name: string, ok: boolean, detail?: string): boolean => {
@@ -205,34 +191,21 @@ export async function verifyAuction(inputs: AuctionInputs, verifier: VerifierPol
     add("policy-well-formed", false, (error as Error).message);
     return { ok: false, checks, bids: [] };
   }
-  add("beacon-accepted", verifier.acceptedBeacons.some((b) => canonicalEq(b, policy.beacon)), "the policy's beacon is not one this verifier accepts");
-  add("closing-checkpoint-signed-by-witness", verifyCheckpointSignature(closing, policy.witness));
-  add("closing-checkpoint-is-for-this-policy", closing.closes === hash);
-  add(
-    "closed-at-the-close-round",
-    closing.observed?.round === policy.closeRound && verifyRelease(policy.beacon, closing.observed),
-    "the closing checkpoint must cite the beacon's signature for the close round",
-  );
-  const haveLog = entries.length >= closing.size;
-  add("log-matches-closing-checkpoint", haveLog && logRoot(entries.slice(0, closing.size)) === closing.root, "the supplied log is not the one the witness signed");
-  add("release-valid", release.round === policy.releaseRound && verifyRelease(policy.beacon, release), "not the beacon's signature for the release round");
-  if (!checks.every((c) => c.ok)) return { ok: false, checks, bids: [] };
+  const evidence = verifyEvidence(hash, policy, inputs, verifier);
+  checks.push(...evidence.checks);
+  if (!evidence.ok) return { ok: false, checks, bids: [] };
 
   const bids: BidOutcome[] = [];
-  const seenSubmitters = new Set<string>();
-  for (let index = 0; index < closing.size; index++) {
-    const submission = entries[index]!;
-    if (submission.policyHash !== hash) continue;
+  for (const { index, submission, counts } of evidence.onTime) {
     const base = { index, submitter: submission.submitter, envelopeId: submission.envelopeId };
-    if (seenSubmitters.has(submission.submitter)) {
-      bids.push({ ...base, status: "invalid", reason: "a later submission by the same bidder" });
-      continue;
-    }
     // Entries are not de-duplicated by envelope. An envelope names its bidder
     // inside the seal, so only that bidder's own submission of it can be valid;
     // refusing "repeats" would let a copier who reached the log first void the
     // genuine bid.
-    seenSubmitters.add(submission.submitter);
+    if (!counts) {
+      bids.push({ ...base, status: "invalid", reason: "a later submission by the same bidder" });
+      continue;
+    }
     const envelope = envelopes.get(submission.envelopeId);
     if (!envelope) {
       bids.push({ ...base, status: "unresolved", reason: "envelope not supplied" });
@@ -251,10 +224,6 @@ export async function verifyAuction(inputs: AuctionInputs, verifier: VerifierPol
     .filter((b) => b.amount === top)
     .sort((a, b) => (tieBreakKey(release, a.envelopeId) < tieBreakKey(release, b.envelopeId) ? -1 : 1))[0]!;
   return { ok: true, checks, bids, winner: { submitter: best.submitter, envelopeId: best.envelopeId, amount: best.amount! } };
-}
-
-function canonicalEq(a: unknown, b: unknown): boolean {
-  return bytesToHex(canonicalBytes(a)) === bytesToHex(canonicalBytes(b));
 }
 
 /** Does a result announced by someone else match what the evidence gives? */

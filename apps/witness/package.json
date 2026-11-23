@@ -1,0 +1,11 @@
+{
+  "name": "@mattering/witness",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": { "@mattering/core": "0.1.0" }
+}

@@ -17,7 +17,10 @@
     "test:live": "MATTERING_LIVE=1 node --import tsx --test tests/live.test.ts",
     "mattering": "tsx apps/cli/src/main.ts",
     "example": "tsx examples/agent-auction/run.ts",
-    "example:verify": "tsx examples/agent-auction/verify.ts"
+    "example:verify": "tsx examples/agent-auction/verify.ts",
+    "witness": "tsx apps/witness/src/main.ts witness",
+    "cosigner": "tsx apps/witness/src/main.ts cosigner",
+    "example:hosted": "tsx examples/hosted-registry/run.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

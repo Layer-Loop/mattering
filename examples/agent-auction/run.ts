@@ -54,6 +54,8 @@ const policy: AuctionPolicy = {
   closeRound: 100,
   releaseRound: 110,
   witness: witness.publicKey,
+  cosigners: [],
+  cosignerThreshold: 0,
   minBid: 100,
   maxBid: 10_000,
   rule: "highest-bid",

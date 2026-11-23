@@ -67,3 +67,27 @@ export {
   type PreparedBid,
 } from "./auction.ts";
 export { inclusionProof, leafHash, merkleRoot, rootFromInclusionProof } from "./merkle.ts";
+export type { BeaconSource } from "./source.ts";
+export {
+  COSIGNATURE_FORMAT,
+  Cosigner,
+  checkpointId,
+  verifyCosignature,
+  verifyEvidence,
+  type Cosignature,
+  type Evidence,
+  type PolicyTerms,
+} from "./evidence.ts";
+export {
+  STATEMENT_FORMAT,
+  STATEMENT_POLICY_FORMAT,
+  prepareStatement,
+  statementPolicyHash,
+  verifySealedStatement,
+  verifyStatements,
+  type Statement,
+  type StatementInputs,
+  type StatementOutcome,
+  type StatementPolicy,
+  type StatementsResult,
+} from "./statement.ts";

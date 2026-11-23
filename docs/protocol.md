@@ -1,6 +1,6 @@
 # Protocol note
 
-**Version:** envelope format 1. **Status:** sections 1 to 7 are implemented, except where a paragraph says "not built". Section 8 is an intention only.
+**Version:** envelope format 1. **Status:** implemented, except where a paragraph says "not built".
 
 This note is meant to be enough to write a second implementation, and enough for a reviewer to find what is wrong.
 
@@ -11,7 +11,8 @@ This note is meant to be enough to write a second implementation, and enough for
 | **Sealer** | Creates an envelope | Nothing. Knows the payload and may reveal it |
 | **Beacon** (drand quicknet) | Emits one BLS signature per round | Not emitting early (secrecy) and emitting at all (opening) |
 | **Verifier / opener** | Checks and opens envelopes | Nothing. Anyone can be one |
-| **Witness** | Records submissions in a log | Not backdating entries. Other misbehaviour is detectable |
+| **Witness** | Records submissions in a log and closes policies | Not refusing submissions. With cosigners, nothing else |
+| **Cosigner** | Countersigns a closing checkpoint before the release round | Not colluding with the witness. A policy says how many must sign |
 
 There is no party that holds plaintext or keys on anyone's behalf.
 
@@ -101,10 +102,10 @@ All signatures are Ed25519 over `H(label, canonical(object without its signature
 **Submission**, signed by the submitter (label `mattering/submission/v1`):
 
 ```text
-{ format: "mattering.submission/1", policyHash, envelopeId, submitter, commitment, signature }
+{ format: "mattering.submission/1", policyHash, envelopeId, submitter, commitment?, signature }
 ```
 
-`submitter` is an Ed25519 public key. What that key stands for is outside Mattering.
+`submitter` is an Ed25519 public key. What that key stands for is outside Mattering. `commitment` is present for auction bids and absent otherwise.
 
 **Log.** A Merkle tree as in RFC 6962 section 2.1 (Certificate Transparency), over SHA-256. A leaf is the canonical JSON of a submission. Entries are in arrival order. The implementation is checked against the Certificate Transparency reference vectors.
 
@@ -137,10 +138,23 @@ What this gives, and what it does not:
 | The log given to a verifier is the one the witness signed | Yes. The verifier recomputes the root |
 | The witness cannot show two different logs | Detectable when two checkpoints of the same size are compared |
 | The witness cannot refuse a submission | **No.** Refusal leaves no evidence |
-| The witness cannot add a submission after the close round and before signing the closing checkpoint | **No.** Nothing bounds the checkpoint's time from above. That needs the checkpoint to be anchored somewhere the witness does not control before the release round. **Not built** |
+| The witness cannot rewrite the log after the release round, when it can read every entry | Yes, if the policy requires cosigners and fewer than the threshold collude with it. With no cosigners: **no** |
+| The witness cannot add a submission between the close round and the cosignatures | **No.** It cannot read the other entries at that point, so the entry is blind, but it is late |
 | The witness cannot reorder entries before signing | **No.** Order does not affect the outcome (section 7) |
 
-Also not built: consistency proofs between checkpoints (a verifier is given the whole log instead), persistence, and any network interface. The witness is an in-process object.
+**Cosignatures** (label `mattering/cosignature/v1`). A policy names a list of cosigner keys and a threshold.
+
+```text
+{ format: "mattering.cosignature/1", cosigner, checkpoint, observed: { round, signature }, signature }
+```
+
+`checkpoint` is `H("mattering/checkpoint-id/v1", canonical(closing checkpoint))`. `observed` is the latest beacon round the cosigner had seen when it signed. A cosigner signs only if the checkpoint is a valid closing checkpoint for the policy, the cosigner's own view of the beacon is at or past the close round and before the release round, and it has not signed a different closing checkpoint for that policy. A verifier counts a cosignature only if `observed.round` is in that range, and requires the threshold number from distinct named cosigners.
+
+Why this matters: after the release round the witness can read every bid. Without cosigners it could then build a different log with a winning entry of its own and sign a closing checkpoint for it. With cosigners, the checkpoint was fixed before anything could be read, and a second one will not be countersigned.
+
+What `observed` proves is only a lower bound on the cosigner's time. That the cosigner signed before the release round rests on the cosigner's honesty, not on cryptography.
+
+Not built: consistency proofs between checkpoints (a verifier is given the whole log instead), and anchoring checkpoints to a public ledger, which would replace trust in cosigners with trust in that ledger.
 
 ## 7. Sealed bids
 
@@ -148,7 +162,7 @@ Also not built: consistency proofs between checkpoints (a verifier is given the 
 
 ```text
 { format: "mattering.auction-policy/1", auctionId, beacon, closeRound, releaseRound, witness,
-  minBid, maxBid, rule: "highest-bid", tieBreak: "release-round-signature" }
+  cosigners, cosignerThreshold, minBid, maxBid, rule: "highest-bid", tieBreak: "release-round-signature" }
 ```
 
 **Bid**, the payload sealed to `releaseRound`, as canonical JSON:
@@ -163,7 +177,7 @@ The envelope's `context` is `{ kind: "mattering.bid/1", policyHash, bidder }`. T
 
 **After release**, the verifier takes the policy, the log, the closing checkpoint, the envelopes and the release round's signature, and:
 
-1. Checks the evidence: policy well-formed, beacon accepted by the verifier, closing checkpoint signed by the policy's witness and citing the close round, log root equal to the checkpoint's, release signature valid.
+1. Checks the evidence: policy well-formed, beacon accepted by the verifier, closing checkpoint signed by the policy's witness and citing the close round, enough valid cosignatures, log root equal to the checkpoint's, release signature valid.
 2. Takes the entries below the closing size that name this policy, in order. Only a submitter's first entry counts.
 3. For each, opens the envelope and requires: the payload is a canonical bid; `policyHash` and `bidder` inside the bid equal the policy's hash and the submission's `submitter`; `C` opens to `amount` and `blinding`; `minBid ≤ amount ≤ maxBid`.
 4. A bid failing any check is **invalid**, with the reason, and attributable to its submitter's key. A bid whose envelope was not supplied is **unresolved**, and the auction then has no result.
@@ -175,9 +189,27 @@ Arrival order does not affect who wins. The tie-break depends on a value nobody 
 
 **What the commitment is for.** In this auction, nothing that the opened bid does not already give: every bid is opened, so the amount and the range are checked in the clear. It is included so that a later version can keep losing bids sealed and prove facts about them. The link between commitment and ciphertext is checked **after** opening only. Before opening, a submission can carry a commitment to one amount beside a ciphertext holding another, and nobody can tell; the tests demonstrate this. Closing that gap needs a proof this design does not have. See research question 9.
 
-## 8. Commitment registry
+## 8. Sealed statements and the registry
 
-The same log, read as a public record: who committed to what envelope, when, under which policy, and what it opened to. The intended first use is agents that seal a prediction or a decision before an outcome is known. Not designed in detail and not built.
+A **statement** is text committed before a deadline and opened for everyone at a set round: a prediction, a decision, an answer.
+
+**Statement policy**, identified by `H("mattering/statement-policy/v1", canonical(policy))`:
+
+```text
+{ format: "mattering.statement-policy/1", topic, beacon, closeRound, releaseRound, witness, cosigners, cosignerThreshold }
+```
+
+**Statement**, the sealed payload, at most 16,384 bytes as canonical JSON:
+
+```text
+{ format: "mattering.statement/1", policyHash, author, text }
+```
+
+The envelope's context is `{ kind: "mattering.statement/1", policyHash, author }`. The submission carries no commitment. Deadlines, receipts, cosignatures and verification are exactly as for bids: after release, a verifier checks the evidence and opens each on-time envelope, and a statement is valid if it is canonical, names this policy, and names the submitter as its author. One statement per author counts.
+
+The **registry** is the witness log read as a public record: for any key, what it committed to, under which policy, and what each commitment opened to. The service in [service.md](service.md) serves this view. It is a convenience over the evidence, which anyone can fetch and check.
+
+A statement proves that a key committed to some text before the close. It says nothing about who or what controls the key, or whether the same party also committed to the opposite under another key.
 
 ## 9. Things this design does not do
 

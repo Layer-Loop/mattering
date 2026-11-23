@@ -47,7 +47,7 @@ const CLOSE = 500;
 const RELEASE = 510;
 
 function makePolicy(witness: Witness, auctionId = "gpu-hours-lot-1"): AuctionPolicy {
-  return { format: POLICY_FORMAT, auctionId, beacon: beacon.info, closeRound: CLOSE, releaseRound: RELEASE, witness: witness.publicKey, minBid: 100, maxBid: 10_000, rule: "highest-bid", tieBreak: "release-round-signature" };
+  return { format: POLICY_FORMAT, auctionId, beacon: beacon.info, closeRound: CLOSE, releaseRound: RELEASE, witness: witness.publicKey, cosigners: [], cosignerThreshold: 0, minBid: 100, maxBid: 10_000, rule: "highest-bid", tieBreak: "release-round-signature" };
 }
 
 interface World {
@@ -220,7 +220,7 @@ test("replay: a submission from auction A does not count in auction B", async ()
   // Replay 1: the original signed submission, verbatim. It names policy A, so B ignores it.
   // Replay 2: a thief re-signs A's envelope as their own entry in B.
   const thief = generateKeyPair();
-  const lifted = signSubmission({ policyHash: policyHash(policyB), envelopeId: a.prepared[0]!.submission.envelopeId, commitment: a.prepared[0]!.submission.commitment }, thief);
+  const lifted = signSubmission({ policyHash: policyHash(policyB), envelopeId: a.prepared[0]!.submission.envelopeId, commitment: a.prepared[0]!.submission.commitment! }, thief);
   witnessB.submit(lifted);
   const envelopes = new Map([...a.envelopes, [honest.submission.envelopeId, honest.envelope]]);
   const closing = witnessB.close(policyHash(policyB), beacon.info, beacon.release(CLOSE));
@@ -235,7 +235,7 @@ test("copying: resubmitting a rival's sealed bid under your own key is invalid",
   const w = await world([4200, 3000]);
   const copier = generateKeyPair();
   const victim = w.prepared[0]!;
-  const copy = signSubmission({ policyHash: policyHash(w.policy), envelopeId: victim.submission.envelopeId, commitment: victim.submission.commitment }, copier);
+  const copy = signSubmission({ policyHash: policyHash(w.policy), envelopeId: victim.submission.envelopeId, commitment: victim.submission.commitment! }, copier);
   w.witness.submit(copy);
   const result = await verifyAuction(close(w), verifier);
   assert.equal(result.ok, true);
@@ -248,7 +248,7 @@ test("copying: resubmitting a rival's sealed bid under your own key is invalid",
   const p2 = makePolicy(w2);
   const alice = generateKeyPair();
   const bid = await prepareBid(p2, 4200, alice);
-  w2.submit(signSubmission({ policyHash: policyHash(p2), envelopeId: bid.submission.envelopeId, commitment: bid.submission.commitment }, copier));
+  w2.submit(signSubmission({ policyHash: policyHash(p2), envelopeId: bid.submission.envelopeId, commitment: bid.submission.commitment! }, copier));
   w2.submit(bid.submission);
   const r2 = await verifyAuction({ policy: p2, entries: w2.entries(), closing: w2.close(policyHash(p2), beacon.info, beacon.release(CLOSE)), envelopes: { [bid.submission.envelopeId]: bid.envelope }, release: beacon.release(RELEASE) }, verifier);
   assert.deepEqual(r2.bids.map((b) => b.status), ["invalid", "valid"]);

@@ -22,7 +22,14 @@ Mattering does not invent cryptography. The time lock is [drand](https://drand.l
 - A **verifier** that recomputes an auction's outcome from published files, and says which bids were invalid and why.
 - An **example** in which three software agents bid, go away, and the result is checked by a separate program.
 
-The witness is a library object, not a hosted service. Not built: anchoring the log externally, range proofs, recipient encryption, durable storage. [docs/claims.md](docs/claims.md) lists every claim with its status, and is the document to check before saying anything about what Mattering guarantees.
+**A witness and registry service**
+
+- An **HTTP service** that keeps the log, enforces deadlines, stores envelopes and publishes the evidence for anyone to check.
+- **Cosigners**: independent parties who countersign an auction's close before any bid can be read, so the witness cannot rewrite the log afterwards.
+- **Sealed statements**: commit to a prediction or decision before a deadline; it opens for everyone at a set time.
+- A **registry view**: everything one key has committed to, and what each commitment opened to.
+
+The service runs on localhost and has never been deployed; [docs/service.md](docs/service.md) lists what stands between it and a real one. Not built: range proofs, recipient encryption, durable storage. [docs/claims.md](docs/claims.md) lists every claim with its status, and is the document to check before saying anything about what Mattering guarantees.
 
 ## Try it
 
@@ -51,7 +58,13 @@ npm run example
 npm run example:verify
 ```
 
-The example runs offline against a local test beacon. Its agents are plain functions; an agent driven by a language model would plug in at the same point and would have no more say in the checks than these do.
+Run the witness service with a cosigner, an auction and a round of sealed predictions, over HTTP against the real drand network (about 45 seconds):
+
+```bash
+npm run example:hosted
+```
+
+The first example runs offline against a local test beacon. Its agents are plain functions; an agent driven by a language model would plug in at the same point and would have no more say in the checks than these do.
 
 From code:
 
@@ -78,7 +91,7 @@ It gives you, assuming drand behaves as designed:
 It does not give you:
 
 - **Secrecy from the sender.** The sender knows the payload and can disclose it whenever they like.
-- **Proof of when it was sealed.** An envelope carries no trustworthy creation time. The witness log supplies a deadline, and it is only as trustworthy as the witness.
+- **Proof of when it was sealed.** An envelope carries no trustworthy creation time. The witness log supplies a deadline, and it is only as trustworthy as the witness and its cosigners.
 - **Secrecy after the round.** Opening is public. There is no private recipient in this version.
 - **Protection if drand fails.** If a threshold of drand's operators collude, seals open early. If the network stops, they do not open. If the envelope file is lost, it is gone.
 - **Long-term or post-quantum secrecy.** The time lock rests on pairing-based cryptography that a large quantum computer would break. Someone who stores an envelope today could open it then.
@@ -91,9 +104,12 @@ The full list is in [docs/threat-model.md](docs/threat-model.md).
 | --- | --- |
 | `packages/core` | The SDK: envelopes, witness log, commitments, auction verifier |
 | `apps/cli` | The `mattering` command |
+| `apps/witness` | The witness and registry service, a cosigner, and a client |
 | `examples/agent-auction` | Three agents, one auction, and a standalone verifier |
-| `tests` | 43 tests: sealing, tampering, replay, early opening, cheating bidders, a cheating witness and a cheating coordinator |
-| `docs/protocol.md` | The envelope, submission, log and auction formats |
+| `examples/hosted-registry` | The same through the hosted service, plus sealed predictions |
+| `tests` | 50 tests: sealing, tampering, replay, early opening, cheating bidders, a cheating witness, a cheating coordinator, and the service over HTTP |
+| `docs/protocol.md` | The envelope, submission, log, auction and statement formats |
+| `docs/service.md` | Running the witness service, its interface, and what it lacks |
 | `docs/claims.md` | Every claim, what it rests on, and which test shows it |
 | `docs/threat-model.md` | Who can attack what, and what is out of scope |
 | `docs/research-questions.md` | Questions for a cryptographer |

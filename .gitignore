@@ -3,3 +3,5 @@ dist/
 *.log
 .tmp/
 examples/agent-auction/out/
+witness-data/
+cosigner-data/

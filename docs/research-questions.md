@@ -18,9 +18,9 @@ The aim is to find where this breaks. Each question says what the code or design
 
 ## About the witness and the auction
 
-7. **Minimum assumptions for a deadline.** The witness log has signed checkpoints that cite a drand round (a lower bound on time). Anchoring them externally (an upper bound) is not built, so a witness can add its own late entry while unable to read the others. What is the weakest anchoring that makes backdating by the witness detectable, and is embedding the drand round worth doing?
+7. **Minimum assumptions for a deadline.** The closing checkpoint cites the close round (a lower bound on its time) and must be countersigned by independent cosigners who refuse after the release round (an upper bound that rests on their honesty). Is cosigning the right tool, or should the checkpoint be anchored to a public ledger instead? What is the weakest anchoring that makes backdating by the witness detectable, and is embedding the drand round worth doing?
 
-8. **Reuse.** The tree is RFC 6962, but the receipt and checkpoint formats are ad hoc JSON. Which existing transparency-log format should this adopt instead: RFC 6962, the C2SP checkpoint and tiles specifications, something else?
+8. **Reuse.** The tree is RFC 6962, but the receipt, checkpoint and cosignature formats are ad hoc JSON. Which existing transparency-log format should this adopt instead: RFC 6962, the C2SP checkpoint and tiles specifications, something else?
 
 9. **Linking a range proof to a time-locked ciphertext.** The design puts the opening of a Pedersen commitment inside the sealed payload, so that the link is checked after release. That makes a range proof before release nearly worthless here, because the ciphertext could hold anything. What is the simplest credible way to prove before release that a tlock ciphertext holds the committed value: verifiable encryption over BLS12-381, a different time-lock construction, a general-purpose proof system? Or is the honest answer that this auction does not need it?
 
@@ -30,8 +30,10 @@ The aim is to find where this breaks. Each question says what the code or design
 
 12. **Tie-breaking from the release round's signature.** Unknown to bidders at submission, but known to a drand threshold. Is that an acceptable source for this purpose?
 
+13. **Sybil statements.** One party can seal contradictory statements under many keys and later show only the correct one. The registry cannot see this. Is there a minimal mechanism, short of an identity system, that makes a track record mean something?
+
 ## About direction
 
-13. **Long-term secrecy.** tlock is not post-quantum. What realistic options exist for sealing over decades, and does combining several beacons improve availability without making early disclosure as easy as breaking the weakest one?
+14. **Long-term secrecy.** tlock is not post-quantum. What realistic options exist for sealing over decades, and does combining several beacons improve availability without making early disclosure as easy as breaking the weakest one?
 
-14. **What is over-engineered?** What is the smallest protocol that would still be worth a reviewer's time?
+15. **What is over-engineered?** What is the smallest protocol that would still be worth a reviewer's time?

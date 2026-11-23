@@ -29,8 +29,8 @@ export interface Submission {
   envelopeId: string;
   /** Submitter's Ed25519 public key. What that key stands for is outside Mattering. */
   submitter: string;
-  /** Pedersen commitment to the sealed amount. */
-  commitment: string;
+  /** Pedersen commitment to a sealed amount, where the policy calls for one. */
+  commitment?: string;
   signature: string;
 }
 
@@ -46,12 +46,12 @@ export function isWellFormedSubmission(value: unknown): value is Submission {
   return (
     s !== null &&
     typeof s === "object" &&
-    Object.keys(s).sort().join(",") === "commitment,envelopeId,format,policyHash,signature,submitter" &&
+    ["commitment,envelopeId,format,policyHash,signature,submitter", "envelopeId,format,policyHash,signature,submitter"].includes(Object.keys(s).sort().join(",")) &&
     s.format === SUBMISSION_FORMAT &&
     isLowerHex(s.policyHash, 32) &&
     isLowerHex(s.envelopeId, 32) &&
     isLowerHex(s.submitter, 32) &&
-    isCommitment(s.commitment) &&
+    (s.commitment === undefined ? !("commitment" in s) : isCommitment(s.commitment)) &&
     isLowerHex(s.signature, 64)
   );
 }
@@ -149,8 +149,21 @@ export class Witness {
   private readonly log: Submission[] = [];
   private readonly closed = new Map<string, Checkpoint>();
 
-  constructor(secretKey?: string) {
+  /** Pass previously persisted state to resume a log. */
+  constructor(secretKey?: string, state?: { entries: readonly Submission[]; closings: Iterable<[string, Checkpoint]> }) {
     this.keys = generateKeyPair(secretKey);
+    if (state) {
+      this.log.push(...state.entries.map((e) => ({ ...e })));
+      for (const [hash, checkpoint] of state.closings) this.closed.set(hash, checkpoint);
+    }
+  }
+
+  get size(): number {
+    return this.log.length;
+  }
+
+  closingOf(policyHash: string): Checkpoint | undefined {
+    return this.closed.get(policyHash);
   }
 
   get publicKey(): string {

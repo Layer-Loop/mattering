@@ -20,7 +20,8 @@ Every statement about what Mattering guarantees should trace to a row here. If a
 | A4 | **Standard primitives hold.** SHA-256 is collision resistant; BLS12-381 pairings and ChaCha20-Poly1305 are secure against classical attackers. |
 | A5 | **The verifier pins the beacon.** The verifier decides which beacons count as clocks, and does not accept one named by the sender. |
 | A6 | **The envelope is available.** Someone still has the envelope file when it is to be opened. |
-| A7 | **Witness honesty.** The witness does not refuse submissions, and does not add its own after the close round. Dropping a receipted entry and forking the log are detectable; these two are not. |
+| A7 | **Witness honesty.** The witness does not refuse submissions. For a policy with no cosigners, it also does not rewrite the log after release. Dropping a receipted entry and forking the log are detectable; these are not. |
+| A8 | **Cosigner independence.** Fewer than the policy's threshold of cosigners collude with the witness, and an honest cosigner's view of the beacon is current. |
 
 ## Phase 1: sealing
 
@@ -57,13 +58,29 @@ Tests are in `tests/auction.test.ts`. The witness in these tests is an in-proces
 | 22 | A coordinator who withholds an envelope cannot change the result, only block it | A missing on-time envelope makes the outcome unresolved | none | "coordinator withholds an envelope" | Shown |
 | 23 | A coordinator cannot swap an envelope, the policy or the release signature | Envelope id, policy hash and signature checks | A4 | "coordinator swaps" | Shown |
 | 24 | Cryptography and adjudication run without any AI model | No model is called anywhere in `packages/core`; the example's agents are plain functions | none | whole suite | Shown |
-| 25 | The witness cannot slip in a submission of its own after the close round | External anchoring of the closing checkpoint before the release round | A7 | none | **Not built.** Today this is pure trust in the witness |
+| 25 | The witness cannot rewrite the log after it can read the bids | The closing checkpoint must be countersigned before the release round by the policy's cosigners, who sign one checkpoint per policy | A8 | `tests/service.test.ts` "a witness that rewrites the log", "cosigners" | Shown for policies that require cosigners. With a threshold of 0 it is pure trust in the witness, and the same test shows the forgery succeeding |
+| 26 | The witness cannot add an entry between the close round and the cosignatures | Nothing | A7 | none | **Not provided.** Such an entry is blind (the bids are still sealed) but late |
+
+## The hosted service and registry
+
+Tests are in `tests/service.test.ts`, over HTTP on localhost with a simulated beacon clock.
+
+| # | Claim | Rests on | Assumes | Test | Status |
+| --- | --- | --- | --- | --- | --- |
+| 27 | An auction can be run through the service and verified from what it publishes | The evidence endpoint returns the verifier's inputs | A7, A8 | "an auction run entirely through the hosted witness" | Shown on localhost. Against live drand: `npm run example:hosted`, **not yet run** |
+| 28 | The deadline holds without any timer firing | The service checks its beacon view on every submission | A7 | "the deadline holds even when nobody called tick" | Shown |
+| 29 | The service refuses submissions it can tell are wrong while sealed | Signature, policy, envelope id, round and context checks | none | "the witness refuses what it can tell is wrong" | Shown |
+| 30 | State survives a restart | Plain files reloaded at start | The disk | "state survives a restart" | Shown |
+| 31 | A statement was committed before the close and is unchanged | Same log, cosignatures and sealing as bids | A1 to A8 | "registry: sealed statements" | Shown |
+| 32 | The registry shows nothing of a commitment before its release round | It serves only envelopes and submissions until the beacon releases | A1, A3 | "registry: sealed statements" | Shown |
 
 ## Not claimed
 
 | Statement | Why not |
 | --- | --- |
-| "Trustless" or "fully disintermediated" | Mattering holds no plaintext and no keys, but the design trusts drand for time and a witness for deadlines |
+| "Trustless" or "fully disintermediated" | Mattering holds no plaintext and no keys, but the design trusts drand for time, a witness to accept submissions, and cosigners not to collude with it |
+| "A statement in the registry is that agent's only prediction" | A key can be made freely. One party can commit to every outcome under different keys and show only the right one |
+| "The service is ready to host" | See the list at the end of [service.md](service.md) |
 | "Proves when something was sealed" | An envelope carries no trustworthy time. The witness log says a submission was on time, and that is only as good as the witness (A7) |
 | "The witness cannot censor" | A witness can refuse to issue a receipt, and nobody can prove it |
 | "The sender cannot leak the payload early" | The sender knows it |

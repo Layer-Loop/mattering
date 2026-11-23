@@ -33,7 +33,10 @@ In the auction, a **witness** sits between bidders and verifier. Bidders hand it
 | `commitment.ts` | Pedersen commitments on Ristretto255 | No |
 | `merkle.ts` | RFC 6962 tree hash and inclusion proofs | No |
 | `witness.ts` | Submission, receipt and checkpoint formats and checks; an in-memory witness | No |
+| `evidence.ts` | Policy terms, cosignatures and a cosigner, shared evidence checks | No |
 | `auction.ts` | Policy, bid preparation, auction verifier | No |
+| `statement.ts` | Sealed statements and their verifier | No |
+| `source.ts` | The interface for a party's own view of the beacon | No |
 | `drand-http.ts` | Optional: fetch a round's signature from a relay | Yes |
 | `testing.ts` | A local beacon for tests. Never accepted by default | No |
 
@@ -49,11 +52,23 @@ In the auction, a **witness** sits between bidders and verifier. Bidders hand it
 | Relay → opener | A claimed signature | Verified against the beacon key before use, and again inside `tlock-js` |
 | Sealer → drand | Nothing. Sealing uses constants compiled into the package | The constants are drand's published quicknet parameters |
 
+## The service
+
+`apps/witness` wraps the core's witness in an HTTP service with file storage, adds a cosigner service, and a client. The witness and each cosigner hold their own view of the beacon. See [service.md](service.md).
+
+```text
+ bidders ── signed submission + envelope ──► witness service ──► receipt
+                                                  │  at the close round
+                                                  ├── closing checkpoint ──► cosigner(s) ──► cosignature
+                                                  ▼
+ verifiers ◄── evidence: policy, log, closing, cosignatures, envelopes, release
+```
+
 ## Planned
 
 | Component | Owned and run by |
 | --- | --- |
-| Witness as a hosted service, with persistence and an API | Anyone; Mattering runs the default public instance |
-| External anchoring of checkpoints | Mattering's witness |
-| Commitment registry | Mattering |
+| A deployed public witness and registry | Mattering |
+| Cosigners | Parties independent of Mattering |
+| Anchoring checkpoints to a public ledger | Mattering's witness |
 | Range proofs, recipient encryption, durable storage | Undecided; only if review supports them |
