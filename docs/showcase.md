@@ -53,4 +53,4 @@ Each makes a real attempt against the running system.
 
 ## Not covered by automated tests
 
-`tests/showcase.test.ts` runs an auction through the showcase server and verifies it as the page does. The page itself was checked by driving it in a headless browser once, by hand; there is no browser test in the suite. Online mode has not been run by its author, who had no network access to drand.
+`tests/showcase.test.ts` runs an auction through the showcase server and verifies it as the page does. The page itself was checked by driving it in a headless browser once, by hand; there is no browser test in the suite. Online mode, against live drand, was run by hand on 2026-11-23 and behaved as described.
