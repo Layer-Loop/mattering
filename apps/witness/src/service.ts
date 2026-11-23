@@ -2,16 +2,9 @@
  * The witness and registry as a service: policies, submissions, the log,
  * closing on the beacon's clock, cosignatures, and published evidence.
  *
- * This file has no HTTP in it. State lives in a directory of plain files:
- *
- *   witness-key.json         the witness's signing key (keep private)
- *   log.jsonl                one submission per line, append-only
- *   policies/<hash>.json     registered policies
- *   envelopes/<id>.json      sealed envelopes, kept so they can be opened later
- *   closings/<hash>.json     closing checkpoint and cosignatures per policy
+ * This file has no HTTP, no file system and no timers in it, so it runs the
+ * same on a laptop and in a hosted runtime. State goes through a `ServiceStore`.
  */
-import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import {
   MatteringError,
   POLICY_FORMAT,
@@ -49,8 +42,48 @@ export type PolicyKind = "auction" | "statements";
 /** Ask one cosigner to countersign. Returns undefined if it cannot be reached or refuses. */
 export type CosignRequest = (cosigner: string, policyHash: string, policy: AnyPolicy, closing: Checkpoint) => Promise<Cosignature | undefined>;
 
+export interface StoredClosing {
+  closing: Checkpoint;
+  cosignatures: Cosignature[];
+}
+
+export interface StoredState {
+  /** The witness's signing key, if one has been saved. */
+  secretKey?: string;
+  /** The log, in order. */
+  entries: Submission[];
+  policies: AnyPolicy[];
+  closings: Record<string, StoredClosing>;
+}
+
+/** Where a witness keeps its state. Every write must be durable before it resolves. */
+export interface ServiceStore {
+  load(): Promise<StoredState>;
+  saveKey(secretKey: string): Promise<void>;
+  appendEntry(index: number, submission: Submission): Promise<void>;
+  savePolicy(hash: string, policy: AnyPolicy): Promise<void>;
+  saveEnvelope(id: string, envelope: Envelope): Promise<void>;
+  loadEnvelope(id: string): Promise<Envelope | undefined>;
+  saveClosing(hash: string, value: StoredClosing): Promise<void>;
+}
+
+/** A store that forgets everything when the process ends. For tests and demonstrations. */
+export function memoryStore(): ServiceStore {
+  const state: StoredState = { entries: [], policies: [], closings: {} };
+  const envelopes = new Map<string, Envelope>();
+  return {
+    load: async () => structuredClone(state),
+    saveKey: async (secretKey) => void (state.secretKey = secretKey),
+    appendEntry: async (index, submission) => void (state.entries[index] = submission),
+    savePolicy: async (_hash, policy) => void state.policies.push(policy),
+    saveEnvelope: async (id, envelope) => void envelopes.set(id, envelope),
+    loadEnvelope: async (id) => envelopes.get(id),
+    saveClosing: async (hash, value) => void (state.closings[hash] = structuredClone(value)),
+  };
+}
+
 export interface ServiceOptions {
-  dataDir: string;
+  store: ServiceStore;
   /** This witness's own view of the beacon. */
   source: BeaconSource;
   cosign?: CosignRequest;
@@ -90,41 +123,33 @@ function notFound(what: string): MatteringError {
 const HEX32 = /^[0-9a-f]{64}$/;
 
 export class WitnessService {
-  private readonly witness: Witness;
-  private readonly policies = new Map<string, PolicyRecord>();
   private readonly results = new Map<string, AuctionResult | StatementsResult>();
   private queue: Promise<unknown> = Promise.resolve();
 
-  constructor(private readonly options: ServiceOptions) {
-    const dir = options.dataDir;
-    for (const sub of ["", "policies", "envelopes", "closings"]) mkdirSync(join(dir, sub), { recursive: true });
+  private constructor(
+    private readonly options: ServiceOptions,
+    private readonly witness: Witness,
+    private readonly policies: Map<string, PolicyRecord>,
+  ) {}
 
-    const keyFile = join(dir, "witness-key.json");
-    let secretKey: string | undefined;
-    if (existsSync(keyFile)) secretKey = (JSON.parse(readFileSync(keyFile, "utf8")) as { secretKey: string }).secretKey;
-
-    const entries: Submission[] = existsSync(join(dir, "log.jsonl"))
-      ? readFileSync(join(dir, "log.jsonl"), "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line) as Submission)
-      : [];
+  /** Load a witness from its store, creating its signing key on first use. */
+  static async open(options: ServiceOptions): Promise<WitnessService> {
+    const stored = await options.store.load();
+    const policies = new Map<string, PolicyRecord>();
     const closings: [string, Checkpoint][] = [];
-    for (const file of readdirSync(join(dir, "policies"))) {
-      const policy = JSON.parse(readFileSync(join(dir, "policies", file), "utf8")) as AnyPolicy;
+    for (const policy of stored.policies) {
       const { hash, kind } = describe(policy);
-      const record: PolicyRecord = { hash, kind, policy, cosignatures: [] };
-      const closingFile = join(dir, "closings", `${hash}.json`);
-      if (existsSync(closingFile)) {
-        const saved = JSON.parse(readFileSync(closingFile, "utf8")) as { closing: Checkpoint; cosignatures: Cosignature[] };
+      const saved = stored.closings[hash];
+      const record: PolicyRecord = { hash, kind, policy, cosignatures: saved?.cosignatures ?? [] };
+      if (saved) {
         record.closing = saved.closing;
-        record.cosignatures = saved.cosignatures;
         closings.push([hash, saved.closing]);
       }
-      this.policies.set(hash, record);
+      policies.set(hash, record);
     }
-    this.witness = new Witness(secretKey, { entries, closings });
-    if (!secretKey) {
-      writeFileSync(keyFile, JSON.stringify({ secretKey: this.witness.keys.secretKey }) + "\n", { mode: 0o600 });
-      chmodSync(keyFile, 0o600);
-    }
+    const witness = new Witness(stored.secretKey, { entries: stored.entries, closings });
+    if (!stored.secretKey) await options.store.saveKey(witness.keys.secretKey);
+    return new WitnessService(options, witness, policies);
   }
 
   get publicKey(): string {
@@ -160,7 +185,7 @@ export class WitnessService {
       if (typed.witness !== this.publicKey) throw new MatteringError("POLICY", "the policy names a different witness");
       if (!sameBeacon(typed.beacon, this.options.source.beacon)) throw new MatteringError("POLICY", "this witness does not watch the policy's beacon");
       if (typed.closeRound <= (await deadlineRound(this.options.source)).round) throw new MatteringError("POLICY", "the policy's close round has already passed");
-      writeFileSync(join(this.options.dataDir, "policies", `${hash}.json`), JSON.stringify(typed, null, 2) + "\n");
+      await this.options.store.savePolicy(hash, typed);
       this.policies.set(hash, { hash, kind, policy: typed, cosignatures: [] });
       return { policyHash: hash };
     });
@@ -188,10 +213,10 @@ export class WitnessService {
       if (record.closing || record.policy.closeRound <= now) {
         throw new MatteringError("POLICY", "late: this policy closed at its close round");
       }
-      const receipt = this.witness.submit(submission);
-      appendFileSync(join(this.options.dataDir, "log.jsonl"), JSON.stringify(submission) + "\n");
-      writeFileSync(join(this.options.dataDir, "envelopes", `${envelopeId(envelope)}.json`), JSON.stringify(envelope) + "\n");
-      return receipt;
+      // Durable first, then acknowledged: a receipt is never given for an entry that could be lost.
+      await this.options.store.saveEnvelope(envelopeId(envelope), envelope);
+      await this.options.store.appendEntry(this.witness.size, submission);
+      return this.witness.submit(submission);
     });
   }
 
@@ -214,7 +239,7 @@ export class WitnessService {
         // made yet. submit() already refuses, so nothing gets in meanwhile.
         if (!closeRelease) continue;
         record.closing = this.witness.close(record.hash, source.beacon, closeRelease);
-        this.saveClosing(record);
+        await this.saveClosing(record);
       }
       if (record.closing && now < terms.releaseRound && latest.round >= terms.closeRound && this.options.cosign) {
         const have = new Set(record.cosignatures.map((c) => c.cosigner));
@@ -223,7 +248,7 @@ export class WitnessService {
           const cosignature = await this.options.cosign(cosigner, record.hash, record.policy, record.closing).catch(() => undefined);
           if (cosignature && verifyCosignature(cosignature, record.closing, terms)) {
             record.cosignatures.push(cosignature);
-            this.saveClosing(record);
+            await this.saveClosing(record);
           }
         }
       }
@@ -231,8 +256,8 @@ export class WitnessService {
     return now;
   }
 
-  private saveClosing(record: PolicyRecord): void {
-    writeFileSync(join(this.options.dataDir, "closings", `${record.hash}.json`), JSON.stringify({ closing: record.closing, cosignatures: record.cosignatures }, null, 2) + "\n");
+  private saveClosing(record: PolicyRecord): Promise<void> {
+    return this.options.store.saveClosing(record.hash, { closing: record.closing!, cosignatures: record.cosignatures });
   }
 
   log(from = 0): { size: number; from: number; entries: Submission[] } {
@@ -240,14 +265,27 @@ export class WitnessService {
     return { size: entries.length, from, entries: entries.slice(from) };
   }
 
+  /** How many log entries name this policy. */
+  count(hash: string): number {
+    return this.witness.entries().filter((e) => e.policyHash === hash).length;
+  }
+
   async checkpoint(): Promise<Checkpoint> {
     return this.witness.checkpoint(this.options.source.beacon, await this.options.source.latest());
   }
 
-  envelope(id: string): Envelope {
-    const file = join(this.options.dataDir, "envelopes", `${id}.json`);
-    if (!HEX32.test(id) || !existsSync(file)) throw notFound("envelope");
-    return JSON.parse(readFileSync(file, "utf8")) as Envelope;
+  async envelope(id: string): Promise<Envelope> {
+    const envelope = HEX32.test(id) ? await this.options.store.loadEnvelope(id) : undefined;
+    if (!envelope) throw notFound("envelope");
+    return envelope;
+  }
+
+  /** The policy's state without loading its envelopes. */
+  async phase(hash: string): Promise<{ state: EvidenceBundle["state"]; cosignatures: number }> {
+    const record = this.record(hash);
+    if (!record.closing) return { state: "open", cosignatures: 0 };
+    const release = await this.options.source.get(record.policy.releaseRound);
+    return { state: release ? "released" : "closed", cosignatures: record.cosignatures.length };
   }
 
   /** Everything a verifier needs for one policy, as far as it exists yet. */
@@ -258,7 +296,7 @@ export class WitnessService {
     const entries = this.witness.entries().slice(0, record.closing.size);
     const envelopes: Record<string, Envelope> = {};
     for (const entry of entries) {
-      if (entry.policyHash === hash) envelopes[entry.envelopeId] = this.envelope(entry.envelopeId);
+      if (entry.policyHash === hash) envelopes[entry.envelopeId] = await this.envelope(entry.envelopeId);
     }
     const closed = { ...base, entries, closing: record.closing, cosignatures: record.cosignatures, envelopes };
     const release = await this.options.source.get(record.policy.releaseRound);
@@ -315,4 +353,3 @@ export class WitnessService {
     return { submitter: key, commitments };
   }
 }
-

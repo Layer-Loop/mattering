@@ -22,7 +22,8 @@
     "cosigner": "tsx apps/witness/src/main.ts cosigner",
     "example:hosted": "tsx examples/hosted-registry/run.ts",
     "showcase": "tsx apps/showcase/src/server.ts",
-    "showcase:offline": "tsx apps/showcase/src/server.ts offline"
+    "showcase:offline": "tsx apps/showcase/src/server.ts offline",
+    "build:site": "tsx apps/cloudflare/build.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

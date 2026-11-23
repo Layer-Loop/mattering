@@ -31,7 +31,7 @@ import {
   type StatementsResult,
 } from "@mattering/core";
 import { TestBeacon, TestClock } from "@mattering/core/testing";
-import { WitnessClient, WitnessService, cosignerServer, httpCosign, witnessServer } from "@mattering/witness";
+import { WitnessClient, WitnessService, cosignerServer, fileStore, httpCosign, memoryStore, witnessServer } from "@mattering/witness";
 
 const servers: Server[] = [];
 after(() => servers.forEach((s) => s.close()));
@@ -62,7 +62,7 @@ async function deployment(cosignerCount = 2) {
     cosigners.push(cosigner);
   }
   const dataDir = mkdtempSync(join(tmpdir(), "mattering-witness-"));
-  const service = new WitnessService({ dataDir, source: clock.source(), cosign: httpCosign(urls) });
+  const service = await WitnessService.open({ store: fileStore(dataDir), source: clock.source(), cosign: httpCosign(urls) });
   const url = await listen(witnessServer(service));
   const client = new WitnessClient(url);
   const verifier = { acceptedBeacons: [beacon.info] };
@@ -131,7 +131,7 @@ test("a relay that serves a stale 'latest' cannot keep the deadline open", async
   const beacon = new TestBeacon();
   const clock = new TestClock(beacon, 10);
   const lagging = clock.source(3);
-  const service = new WitnessService({ dataDir: mkdtempSync(join(tmpdir(), "mattering-witness-")), source: lagging });
+  const service = await WitnessService.open({ store: memoryStore(), source: lagging });
   const policy: AuctionPolicy = { format: POLICY_FORMAT, auctionId: "lag", beacon: beacon.info, closeRound: 100, releaseRound: 110, witness: service.publicKey, cosigners: [], cosignerThreshold: 0, minBid: 100, maxBid: 10_000, rule: "highest-bid", tieBreak: "release-round-signature" };
   await service.registerPolicy(policy);
   clock.advanceTo(99);
@@ -183,7 +183,7 @@ test("state survives a restart: same key, same log, same closing checkpoint", as
   await d.service.tick();
   const before = await d.service.evidence(hash);
 
-  const restarted = new WitnessService({ dataDir: d.dataDir, source: d.clock.source() });
+  const restarted = await WitnessService.open({ store: fileStore(d.dataDir), source: d.clock.source() });
   assert.equal(restarted.publicKey, d.service.publicKey);
   assert.deepEqual(await restarted.evidence(hash), before);
   const late = await prepareBid(d.auction, 9999, generateKeyPair());

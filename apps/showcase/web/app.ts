@@ -46,11 +46,30 @@ interface State {
 }
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
+
+/**
+ * Where the room lives. On a laptop the page and the room share an origin and
+ * the base is empty. On the hosted site each visitor gets a room of their own,
+ * named by a random id kept for the browser session.
+ */
+function roomBase(): string {
+  const template = document.documentElement.dataset.roomBase;
+  if (!template) return "";
+  let id = sessionStorage.getItem("mattering-room");
+  if (!id) {
+    id = crypto.randomUUID();
+    sessionStorage.setItem("mattering-room", id);
+  }
+  return template.replace("{id}", id);
+}
+const BASE = roomBase();
+/** Hosted: do not touch the server until the visitor starts an auction. */
+const LAZY = BASE !== "";
 const escape = (text: string): string => text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const pounds = (amount: number): string => "£" + amount.toLocaleString("en-GB");
 
 async function getJson<T>(path: string, body?: unknown): Promise<{ ok: boolean; status: number; json: T }> {
-  const response = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const response = await fetch(BASE + path, body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   return { ok: response.ok, status: response.status, json: (await response.json()) as T };
 }
 
@@ -121,7 +140,10 @@ function render(): void {
       ? "The drand network, run by a group of independent organisations. If enough of them colluded, bids could be opened early."
       : "In this offline mode the clock is simulated on this machine, so whoever runs the machine could open bids early. Online, it is the public drand network.";
   $<HTMLButtonElement>("start").textContent = run ? "Start a new auction" : "Start the auction";
-  for (const id of ["clock", "bids-section", "cheat-section", "verify-section"]) $(id).hidden = !run;
+  for (const id of ["clock", "bids-section", "cheat-section", "verify-section"]) {
+    const el = $(id);
+    if (el && !el.dataset.always) el.hidden = !run;
+  }
   if (!run) return;
 
   // Clock.
@@ -151,6 +173,7 @@ function render(): void {
   const result = outcome?.runId === run.id ? outcome : undefined;
   const cards = run.agents.map((a) => ({ name: a.name, tagline: a.tagline, colour: `var(--s${a.series})`, key: a.publicKey, submitted: a.submitted }));
   if (visitor?.runId === run.id && visitor.submitted) cards.push({ name: "You", tagline: run.phase === "released" ? "You sealed this bid in your browser. It opened with the others." : `You sealed a bid in this browser. Until the bids open, only you know it is ${pounds(visitor.amount)}.`, colour: "var(--s4)", key: visitor.keys.publicKey, submitted: true });
+  const rows = $("bids").dataset.layout === "rows";
   $("bids").innerHTML = cards
     .map((card) => {
       const entry = run.entries.find((e) => e.submitter === card.key);
@@ -170,6 +193,13 @@ function render(): void {
         envelope = `<div class="envelope"><p class="state muted">${run.phase === "open" ? "Deciding…" : "No bid"}</p></div>`;
       }
       const quote = said?.text ? `<p class="said">Sealed with the bid: “${escape(said.text)}”</p>` : "";
+      if (rows) {
+        const won = result?.auction.winner?.submitter === card.key;
+        const value = bid?.amount !== undefined ? pounds(bid.amount) : entry ? escape((ciphers.get(entry.envelopeId) ?? "").slice(0, 22)) : "";
+        const chip = bid?.amount !== undefined ? (won ? "Winner" : bid.status === "valid" ? "Opened" : "Not counted") : entry ? "Sealed" : run.phase === "open" ? "Deciding…" : "No bid";
+        const cls = ["bid", bid?.amount !== undefined ? "is-opened" : entry ? "is-sealed" : "is-waiting", won ? "is-winner" : ""].join(" ");
+        return `<li class="${cls}" style="--c:${card.colour}"><span class="bid-name">${escape(card.name)}<small>${escape(card.tagline)}</small></span><span class="bid-value">${value}</span><span class="chip">${chip}</span>${quote}</li>`;
+      }
       return `<article class="card" style="--c:${card.colour}"><h3>${escape(card.name)}</h3><p class="tag">${escape(card.tagline)}</p>${envelope}${quote}</article>`;
     })
     .join("");
@@ -184,6 +214,15 @@ function render(): void {
   if (released) void resolveOutcome(run);
 }
 
+let pollTimer: ReturnType<typeof setInterval> | undefined;
+function startPolling(): void {
+  if (pollTimer === undefined) pollTimer = setInterval(() => void poll(), LAZY ? 1000 : 500);
+}
+function stopPolling(): void {
+  clearInterval(pollTimer);
+  pollTimer = undefined;
+}
+
 async function poll(): Promise<void> {
   try {
     const { json } = await getJson<State>("/demo/state");
@@ -196,6 +235,8 @@ async function poll(): Promise<void> {
     }
     state = json;
     render();
+    // Nothing changes on the server once the bids are open; stop asking.
+    if (json.run?.phase === "released" && outcome?.runId === json.run.id) stopPolling();
   } catch {
     // the server is restarting or gone; keep showing what we have
   }
@@ -209,9 +250,11 @@ $("start").addEventListener("click", () => {
     outcome = undefined;
     visitor = undefined;
     startedAt = 0;
-    await getJson("/demo/start", {});
+    const started = await getJson<{ error?: string }>("/demo/start", {});
+    if (!started.ok) $("lot-detail").textContent = started.json.error ?? "The auction could not be started.";
     startedAt = Date.now() + skew;
     await poll();
+    startPolling();
     $<HTMLButtonElement>("start").disabled = false;
   })();
 });
@@ -290,7 +333,7 @@ for (const button of document.querySelectorAll<HTMLButtonElement>("[data-cheat]"
   button.addEventListener("click", () => {
     const run = state?.run;
     const name = button.dataset.cheat!;
-    if (!run) return;
+    if (!run) return setOut(`out-${name}`, "wait", "Start an auction first.");
     button.disabled = true;
     setOut(`out-${name}`, "wait", "Trying…");
     void cheats[name]!(run)
@@ -309,5 +352,9 @@ $("verify").addEventListener("click", () => {
   })();
 });
 
-void poll();
-setInterval(() => void poll(), 500);
+// A countdown needs redrawing more often than the server needs asking.
+setInterval(() => state?.run && state.run.phase !== "released" && render(), 250);
+if (!LAZY) {
+  void poll();
+  startPolling();
+}

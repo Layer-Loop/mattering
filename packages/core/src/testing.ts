@@ -64,3 +64,27 @@ export class TestClock {
     };
   }
 }
+
+/**
+ * TEST ONLY. A test beacon whose rounds follow this machine's clock: round n is
+ * "emitted" at `epoch + n × roundMs`. Needs no timer, so it works where
+ * nothing runs between requests. Whoever runs the machine holds the beacon
+ * key and could open any seal early; this is for demonstrations offline.
+ */
+export class WallTestClock {
+  constructor(readonly testBeacon: TestBeacon, readonly epoch: number, readonly roundMs: number) {}
+  get now(): number {
+    return Math.max(1, Math.floor((Date.now() - this.epoch) / this.roundMs));
+  }
+  timeOfRound(round: number): number {
+    return this.epoch + round * this.roundMs;
+  }
+  source(): BeaconSource {
+    return {
+      beacon: this.testBeacon.info,
+      latest: async () => this.testBeacon.release(this.now),
+      get: async (round) => (round <= this.now ? this.testBeacon.release(round) : undefined),
+      scheduledRound: () => this.now,
+    };
+  }
+}

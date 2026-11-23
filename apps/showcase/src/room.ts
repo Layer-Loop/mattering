@@ -1,0 +1,278 @@
+/**
+ * One Sealed Room: a witness, a cosigner, three agents and at most one auction
+ * at a time. No server, no files and no timers in here. Whatever hosts it
+ * calls `handle` for requests and `work` whenever time has passed.
+ */
+import {
+  Cosigner,
+  MatteringError,
+  POLICY_FORMAT,
+  STATEMENT_POLICY_FORMAT,
+  Witness,
+  deadlineRound,
+  generateKeyPair,
+  policyHash,
+  prepareBid,
+  prepareStatement,
+  type AuctionPolicy,
+  type BeaconInfo,
+  type BeaconSource,
+  type Cosignature,
+  type StatementPolicy,
+} from "@mattering/core";
+import { errorReply, handleWitness, type Reply } from "@mattering/witness/routes";
+import { WitnessService, type ServiceStore } from "@mattering/witness/service";
+import { AGENTS, SLOT } from "./agents.ts";
+
+interface AgentState {
+  name: string;
+  tagline: string;
+  series: number;
+  publicKey: string;
+  secretKey: string;
+  dueAt: number;
+  submitted: boolean;
+}
+
+interface RunState {
+  id: number;
+  auction: AuctionPolicy;
+  auctionHash: string;
+  forecast: StatementPolicy;
+  forecastHash: string;
+  closeAt: number;
+  releaseAt: number;
+  agents: AgentState[];
+}
+
+/** What a room must remember besides the witness's own state. */
+export interface RoomState {
+  runs: number;
+  run?: RunState;
+  cosignerKey: string;
+  cosigned: [string, Cosignature][];
+}
+
+export interface RoomOptions {
+  mode: "live" | "simulated";
+  /** A fresh view of the beacon for each party. */
+  sourceFor: () => BeaconSource;
+  /** Milliseconds since the UNIX epoch at which `round` is due. */
+  timeOfRound: (round: number) => number;
+  store: ServiceStore;
+  loadState: () => Promise<RoomState | undefined>;
+  saveState: (state: RoomState) => Promise<void>;
+  /** Rounds from start to close, and from close to release. */
+  closeAfter: number;
+  releaseAfter: number;
+  /** Milliseconds between the agents' submissions. */
+  agentGapMs: number;
+  /** Refuse to start more than this many auctions. */
+  maxRuns?: number;
+  /** Refuse more than this many submissions under one policy. */
+  maxEntries?: number;
+  /** Refuse policy registration from outside. */
+  closed?: boolean;
+}
+
+export class Room {
+  private busy: Promise<unknown> = Promise.resolve();
+
+  private constructor(
+    private readonly options: RoomOptions,
+    private readonly service: WitnessService,
+    private readonly cosigner: Cosigner,
+    private readonly viewer: BeaconSource,
+    private state: RoomState,
+  ) {}
+
+  static async open(options: RoomOptions): Promise<Room> {
+    let state = await options.loadState();
+    if (!state) {
+      state = { runs: 0, cosignerKey: generateKeyPair().secretKey, cosigned: [] };
+      await options.saveState(state);
+    }
+    const mine = state;
+    const cosigner = new Cosigner(options.sourceFor(), mine.cosignerKey, mine.cosigned);
+    const service = await WitnessService.open({
+      store: options.store,
+      source: options.sourceFor(),
+      cosign: async (_key, hash, policy, closing) => {
+        const cosignature = await cosigner.cosign(hash, policy, closing);
+        // Remember what was signed before handing it over, so a restart
+        // cannot be used to obtain a second, different cosignature.
+        mine.cosigned = [...cosigner.signed.entries()];
+        await options.saveState(mine);
+        return cosignature;
+      },
+    });
+    return new Room(options, service, cosigner, options.sourceFor(), mine);
+  }
+
+  get beacon(): BeaconInfo {
+    return this.viewer.beacon;
+  }
+
+  private exclusive<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.busy.then(fn);
+    this.busy = run.catch(() => {});
+    return run;
+  }
+
+  /** Start a new auction. The agents' bids are scheduled, not yet made. */
+  start(): Promise<void> {
+    return this.exclusive(async () => {
+      const { options, state } = this;
+      if (options.maxRuns !== undefined && state.runs >= options.maxRuns) {
+        throw new MatteringError("POLICY", "this demonstration room has run its limit of auctions; reload the page for a fresh one");
+      }
+      const now = (await deadlineRound(this.viewer)).round;
+      const closeRound = now + options.closeAfter;
+      const releaseRound = closeRound + options.releaseAfter;
+      const id = state.runs + 1;
+      const terms = { beacon: this.beacon, closeRound, releaseRound, witness: this.service.publicKey, cosigners: [this.cosigner.publicKey], cosignerThreshold: 1 };
+      const auction: AuctionPolicy = { format: POLICY_FORMAT, auctionId: `daily-ledger-banner-${Date.now()}-${id}`, ...terms, minBid: SLOT.minBid, maxBid: SLOT.maxBid, rule: "highest-bid", tieBreak: "release-round-signature" };
+      const forecast: StatementPolicy = { format: STATEMENT_POLICY_FORMAT, topic: `What will ${auction.auctionId} sell for, and why?`, ...terms };
+      const auctionHash = (await this.service.registerPolicy(auction)).policyHash;
+      const forecastHash = (await this.service.registerPolicy(forecast)).policyHash;
+      const started = Date.now();
+      state.runs = id;
+      state.run = {
+        id,
+        auction,
+        auctionHash,
+        forecast,
+        forecastHash,
+        closeAt: options.timeOfRound(closeRound),
+        releaseAt: options.timeOfRound(releaseRound),
+        agents: AGENTS.map((agent, i) => {
+          const keys = generateKeyPair();
+          return { name: agent.name, tagline: agent.tagline, series: agent.series, publicKey: keys.publicKey, secretKey: keys.secretKey, dueAt: started + options.agentGapMs * (i + 1), submitted: false };
+        }),
+      };
+      await options.saveState(state);
+    });
+  }
+
+  /**
+   * Do whatever is due: agents whose moment has come seal and submit, and the
+   * witness closes and collects cosignatures. Returns the number of
+   * milliseconds after which it wants calling again, or undefined when idle.
+   */
+  work(): Promise<number | undefined> {
+    return this.exclusive(async () => {
+      const run = this.state.run;
+      if (!run) return undefined;
+      for (const [i, agent] of run.agents.entries()) {
+        if (agent.submitted || agent.dueAt > Date.now()) continue;
+        agent.submitted = true;
+        await this.options.saveState(this.state);
+        try {
+          // The agent decides, seals and submits. Its amount exists in this
+          // call and inside the sealed envelope, and nowhere else.
+          const keys = generateKeyPair(agent.secretKey);
+          const decision = await AGENTS[i]!.strategy(SLOT, Math.random);
+          const bid = await prepareBid(run.auction, decision.bid, keys);
+          const statement = await prepareStatement(run.forecast, decision.prediction, keys);
+          await this.service.submit(bid.submission, bid.envelope);
+          await this.service.submit(statement.submission, statement.envelope);
+        } catch (error) {
+          console.error(`${agent.name}: ${(error as Error).message}`);
+        }
+      }
+      await this.service.tick().catch(() => {});
+      const phase = await this.service.phase(run.auctionHash);
+      const done = phase.state === "released" || (phase.state === "closed" && phase.cosignatures >= 1 && run.agents.every((a) => a.submitted));
+      if (phase.state === "released") return undefined;
+      // Once closed and cosigned there is nothing to do until the release.
+      return done ? Math.max(500, run.releaseAt - Date.now()) : 500;
+    });
+  }
+
+  async view(): Promise<Record<string, unknown>> {
+    const base = { mode: this.options.mode, beacon: this.beacon, witness: this.service.publicKey, cosigner: this.cosigner.publicKey, slot: SLOT, serverTime: Date.now() };
+    const run = this.state.run;
+    if (!run) return { ...base, run: null };
+    const phase = await this.service.phase(run.auctionHash);
+    return {
+      ...base,
+      run: {
+        id: run.id,
+        auction: run.auction,
+        auctionHash: run.auctionHash,
+        forecast: run.forecast,
+        forecastHash: run.forecastHash,
+        closeAt: run.closeAt,
+        releaseAt: run.releaseAt,
+        agents: run.agents.map(({ secretKey: _secret, dueAt: _due, ...shown }) => shown),
+        phase: phase.state,
+        cosigned: phase.cosignatures >= 1,
+        entries: this.service.log().entries.filter((e) => e.policyHash === run.auctionHash).map((e) => ({ submitter: e.submitter, envelopeId: e.envelopeId })),
+      },
+    };
+  }
+
+  /**
+   * What a dishonest operator would do after release: knowing every bid, build
+   * a second log with a winning bid of its own and sign a closing checkpoint
+   * for it with the witness's real key. Returned for the page to verify.
+   */
+  private async forge(): Promise<Record<string, unknown>> {
+    const run = this.state.run;
+    if (!run) throw new MatteringError("POLICY", "no auction is running");
+    const bundle = await this.service.evidence(run.auctionHash);
+    if (bundle.state !== "released") throw new MatteringError("POLICY", "the bids have not been released yet");
+    const secretKey = (await this.options.store.load()).secretKey;
+    const forger = new Witness(secretKey);
+    for (const entry of bundle.entries!) forger.submit(entry);
+    const shill = await prepareBid(run.auction, run.auction.maxBid, generateKeyPair());
+    forger.submit(shill.submission);
+    const closing = forger.close(policyHash(run.auction), this.beacon, bundle.closing!.observed);
+    let cosignerSaid = "signed it";
+    try {
+      await this.cosigner.cosign(run.auctionHash, run.auction, closing);
+    } catch (error) {
+      cosignerSaid = (error as Error).message;
+    }
+    return {
+      shillAmount: run.auction.maxBid,
+      cosignerSaid,
+      evidence: { ...bundle, entries: forger.entries(), closing, envelopes: { ...bundle.envelopes, [shill.submission.envelopeId]: shill.envelope } },
+    };
+  }
+
+  /** `path` is "/demo/…" for the room's own routes or "/api/…" for the witness's. */
+  async handle(method: string, path: string, query: URLSearchParams, body: () => Promise<unknown>): Promise<Reply> {
+    try {
+      const ok = (value: unknown): Reply => ({ status: 200, body: value });
+      if (path.startsWith("/api/") || path === "/api") {
+        const inner = path.slice(4) || "/";
+        if (this.options.closed && method === "POST" && inner.startsWith("/policies")) {
+          return { status: 403, body: { error: "this room does not accept policies from outside" } };
+        }
+        if (method === "POST" && inner.startsWith("/submissions") && this.options.maxEntries !== undefined) {
+          const run = this.state.run;
+          if (run && Math.max(this.service.count(run.auctionHash), this.service.count(run.forecastHash)) >= this.options.maxEntries) {
+            return { status: 429, body: { error: "this demonstration auction has taken as many bids as it allows" } };
+          }
+        }
+        return await handleWitness(this.service, method, inner, query, body);
+      }
+      switch (`${method} ${path}`) {
+        case "GET /demo/state":
+          return ok(await this.view());
+        case "POST /demo/start":
+          await this.start();
+          return ok(await this.view());
+        case "GET /demo/latest":
+          return ok(await this.viewer.latest());
+        case "POST /demo/forge":
+          return ok(await this.forge());
+        default:
+          return { status: 404, body: { error: "no such route" } };
+      }
+    } catch (error) {
+      return errorReply(error);
+    }
+  }
+}

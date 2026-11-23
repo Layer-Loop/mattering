@@ -32,7 +32,7 @@ import {
 } from "@mattering/core";
 import { drandSource } from "@mattering/core/drand-http";
 import { TestBeacon, TestClock } from "@mattering/core/testing";
-import { WitnessClient, WitnessService, cosignerServer, httpCosign, witnessServer } from "@mattering/witness";
+import { WitnessClient, WitnessService, cosignerServer, fileStore, httpCosign, witnessServer } from "@mattering/witness";
 
 const offline = process.argv.includes("offline");
 const say = (line = "") => process.stdout.write(line + "\n");
@@ -57,7 +57,7 @@ async function until(round: number, what: string): Promise<void> {
 
 const cosigner = new Cosigner(sourceFor());
 const cosignerUrl = await listen(cosignerServer(cosigner));
-const service = new WitnessService({ dataDir: mkdtempSync(join(tmpdir(), "mattering-hosted-")), source: sourceFor(), cosign: httpCosign({ [cosigner.publicKey]: cosignerUrl }) });
+const service = await WitnessService.open({ store: fileStore(mkdtempSync(join(tmpdir(), "mattering-hosted-"))), source: sourceFor(), cosign: httpCosign({ [cosigner.publicKey]: cosignerUrl }) });
 const witnessUrl = await listen(witnessServer(service));
 const ticker = setInterval(() => void service.tick().catch(() => {}), 1000);
 const client = new WitnessClient(witnessUrl);

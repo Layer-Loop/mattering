@@ -63,7 +63,15 @@ It does not and cannot check what is inside the envelope.
 
 ## State
 
-Plain files under `MATTERING_DATA`:
+The service keeps its state through a small storage interface (`ServiceStore`), so the same code runs on a laptop and in a hosted runtime. Three stores exist:
+
+| Store | Where | Used by |
+| --- | --- | --- |
+| Files | A directory of plain files, below | `npm run witness` |
+| Memory | Nothing kept after the process ends | Tests and the laptop showcase |
+| Durable Object storage | Cloudflare | The hosted demonstration ([showcase.md](showcase.md)) |
+
+The file store, under `MATTERING_DATA`:
 
 | File | Contents |
 | --- | --- |
@@ -73,7 +81,7 @@ Plain files under `MATTERING_DATA`:
 | `envelopes/<id>.json` | Sealed envelopes |
 | `closings/<hash>.json` | Closing checkpoint and cosignatures per policy |
 
-A restart reloads all of it. A cosigner keeps `cosigner-key.json` and `cosigned.jsonl`; the second file is what stops it signing two different closings for one policy across restarts.
+A restart reloads all of it. A submission is written to the store before its receipt is returned. A cosigner keeps `cosigner-key.json` and `cosigned.jsonl`; the second file is what stops it signing two different closings for one policy across restarts.
 
 ## Before this could be a real service
 

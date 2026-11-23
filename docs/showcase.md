@@ -51,6 +51,27 @@ Each makes a real attempt against the running system.
 - The auctioneer and the "independent" cosigner run in the same process on the same machine. The page says so.
 - In offline mode the clock is simulated by the machine running the demo, which could therefore open bids early. The page shows a "Simulated clock" badge and says so.
 
+## On the website
+
+The same room runs on Cloudflare for mattering.ai, as a Durable Object behind the site's Worker (`apps/cloudflare`). The website is a separate repository and commits two files built from this one:
+
+```bash
+npm run build:site -- ../mattering-web
+```
+
+That writes the Worker to `src/worker.js` and the page's script to `public/assets/sealed-room.js` in the site repository. Rebuild and commit there whenever this repository changes.
+
+How the hosted version differs from the laptop one:
+
+- **One room per visitor.** Each browser session gets its own room: its own auctioneer key, cosigner key, log and auction. Visitors cannot see or affect each other's auctions.
+- **Nothing happens until the visitor starts an auction**, so loading the page costs nothing.
+- **Limits.** A room runs at most 20 auctions and takes at most 12 submissions per auction, refuses policies from outside, and deletes itself 30 minutes after it was last used.
+- **The clock is always the real drand network.** A simulated clock is available for local development only (`npm run dev:offline` in the site repository).
+
+The auctioneer and the cosigner still run in the same place, so the cosigner is not independent. The page says so.
+
 ## Not covered by automated tests
 
-`tests/showcase.test.ts` runs an auction through the showcase server and verifies it as the page does. The page itself was checked by driving it in a headless browser once, by hand; there is no browser test in the suite. Online mode, against live drand, was run by hand on 2026-11-23 and behaved as described.
+`tests/showcase.test.ts` runs an auction through the room and verifies it as the page does. The page itself was checked by driving it in a headless browser by hand; there is no browser test in the suite. On a laptop, online mode against live drand was run by hand on 2026-11-23 and behaved as described.
+
+The Cloudflare version was run by hand in Cloudflare's local runtime with the simulated clock: a full auction in the real site page, with all four cheats refused. It has not been run against live drand, and it has not been deployed.

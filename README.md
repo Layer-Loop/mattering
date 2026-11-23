@@ -117,6 +117,7 @@ The full list is in [docs/threat-model.md](docs/threat-model.md).
 | `apps/cli` | The `mattering` command |
 | `apps/witness` | The witness and registry service, a cosigner, and a client |
 | `apps/showcase` | The Sealed Room: a web page for demonstrations |
+| `apps/cloudflare` | The same room as a Cloudflare Worker, for the website |
 | `examples/agent-auction` | Three agents, one auction, and a standalone verifier |
 | `examples/hosted-registry` | The same through the hosted service, plus sealed predictions |
 | `tests` | 52 tests: sealing, tampering, replay, early opening, cheating bidders, a cheating witness, a cheating coordinator, and the service over HTTP |

@@ -51,6 +51,7 @@ export async function fetchRelease(
 export function drandSource(beacon: BeaconInfo, relays: readonly string[] = DEFAULT_RELAYS, fetchFn: typeof fetch = fetch, maxLagSeconds = 30): BeaconSource {
   const known = new Map<number, Release>();
   let best: Release | undefined;
+  let asked = 0;
   const scheduledRound = (): number => Math.max(1, Math.floor((Date.now() / 1000 - beacon.genesisTime) / beacon.period) + 1);
   const remember = (release: Release): Release => {
     known.set(release.round, release);
@@ -61,8 +62,10 @@ export function drandSource(beacon: BeaconInfo, relays: readonly string[] = DEFA
     beacon,
     scheduledRound,
     async latest() {
-      // Reuse what we have only while the schedule says nothing newer exists.
-      if (best && best.round >= scheduledRound()) return best;
+      // Reuse what we have while the schedule says nothing newer exists, and
+      // never ask the relays more than about once a second.
+      if (best && (best.round >= scheduledRound() || Date.now() - asked < 900)) return best;
+      asked = Date.now();
       const failures: string[] = [];
       for (const relay of relays) {
         try {

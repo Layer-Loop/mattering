@@ -16,6 +16,7 @@ import { Cosigner, QUICKNET, generateKeyPair, type Cosignature } from "@matterin
 import { DEFAULT_RELAYS, drandSource } from "@mattering/core/drand-http";
 import { httpCosign } from "./client.ts";
 import { cosignerServer, witnessServer } from "./http.ts";
+import { fileStore } from "./file-store.ts";
 import { WitnessService } from "./service.ts";
 
 const mode = process.argv[2] ?? "witness";
@@ -25,7 +26,7 @@ const source = drandSource(QUICKNET, relays);
 if (mode === "witness") {
   const dataDir = process.env.MATTERING_DATA ?? "./witness-data";
   const urls = Object.fromEntries((process.env.MATTERING_COSIGNERS ?? "").split(",").filter(Boolean).map((pair) => pair.split("=") as [string, string]));
-  const service = new WitnessService({ dataDir, source, cosign: httpCosign(urls) });
+  const service = await WitnessService.open({ store: fileStore(dataDir), source, cosign: httpCosign(urls) });
   const port = Number(process.env.PORT ?? 8787);
   witnessServer(service).listen(port, () => {
     console.log(`mattering witness ${service.publicKey}`);

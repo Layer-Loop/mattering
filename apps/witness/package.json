@@ -5,7 +5,11 @@
   "license": "MIT",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./service": "./src/service.ts",
+    "./routes": "./src/routes.ts"
   },
-  "dependencies": { "@mattering/core": "0.1.0" }
+  "dependencies": {
+    "@mattering/core": "0.1.0"
+  }
 }
