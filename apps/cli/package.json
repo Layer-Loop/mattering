@@ -1,0 +1,8 @@
+{
+  "name": "@mattering/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": { "mattering": "./src/main.ts" },
+  "dependencies": { "@mattering/core": "0.1.0" }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "mattering",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Verifiable sealing and timed disclosure of digital information. Experimental proof of concept; not security reviewed.",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "test:live": "MATTERING_LIVE=1 node --import tsx --test tests/live.test.ts",
+    "mattering": "tsx apps/cli/src/main.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

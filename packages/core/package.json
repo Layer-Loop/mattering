@@ -1,0 +1,18 @@
+{
+  "name": "@mattering/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./drand-http": "./src/drand-http.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "dependencies": {
+    "@noble/curves": "1.9.7",
+    "@noble/hashes": "1.8.0",
+    "canonicalize": "2.1.0",
+    "drand-client": "1.2.5",
+    "tlock-js": "0.9.0"
+  }
+}
