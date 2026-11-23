@@ -26,7 +26,7 @@ Every statement about what Mattering guarantees should trace to a row here. If a
 
 | # | Claim | Rests on | Assumes | Test (`tests/seal.test.ts` unless noted) | Status |
 | --- | --- | --- | --- | --- | --- |
-| 1 | A sealed payload cannot be read before its round | tlock encryption to the round | A1, A3, A4, A5 | "premature opening" (both tests); `tests/cli.test.ts` | Shown, against a local test beacon. Against live drand: `tests/live.test.ts`, which has not been run in the build environment (no network access to drand) |
+| 1 | A sealed payload cannot be read before its round | tlock encryption to the round | A1, A3, A4, A5 | "premature opening" (both tests); `tests/cli.test.ts` | Shown, against a local test beacon in the offline suite. Against live drand quicknet: `tests/live.test.ts`, run by hand and passed on 2026-11-23. It is not part of `npm test`, so re-run it after any change to sealing |
 | 2 | The lock is cryptographic, not a clock check in Mattering's code | tlock-js fails with a wrong round's signature even with Mattering's checks bypassed | A3 | "the lock is cryptographic" | Shown |
 | 3 | After the round, anyone with the envelope can open it; the sender is not needed | Opening takes the envelope and one public signature | A2, A6 | "opening needs nothing from the sender"; `tests/cli.test.ts` | Shown |
 | 4 | Opening does not depend on a Mattering service | The core has no network code except an optional relay fetch | A2 | `tests/cli.test.ts` (signature passed by hand) | Shown |
