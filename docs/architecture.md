@@ -16,7 +16,9 @@
  └──────────────────────────────────────────────────────────────┘
 ```
 
-The sealer and the opener share nothing but the envelope file. Neither talks to a Mattering service, because there is none in Phase 1.
+The sealer and the opener share nothing but the envelope file. Neither talks to a Mattering service, because there is none.
+
+In the auction, a **witness** sits between bidders and verifier. Bidders hand it signed submissions and get receipts. It publishes the log and a closing checkpoint. It never holds a key that opens anything.
 
 ## Code
 
@@ -27,6 +29,11 @@ The sealer and the opener share nothing but the envelope file. Neither talks to 
 | `envelope.ts` | Envelope format, strict parsing, armor, frame | No |
 | `tlock.ts` | The only caller of `tlock-js` | No |
 | `seal.ts` | `seal`, `verifyEnvelope`, `open`, `verifyOpen` | No |
+| `signing.ts` | Ed25519 over labelled canonical hashes | No |
+| `commitment.ts` | Pedersen commitments on Ristretto255 | No |
+| `merkle.ts` | RFC 6962 tree hash and inclusion proofs | No |
+| `witness.ts` | Submission, receipt and checkpoint formats and checks; an in-memory witness | No |
+| `auction.ts` | Policy, bid preparation, auction verifier | No |
 | `drand-http.ts` | Optional: fetch a round's signature from a relay | Yes |
 | `testing.ts` | A local beacon for tests. Never accepted by default | No |
 
@@ -37,15 +44,16 @@ The sealer and the opener share nothing but the envelope file. Neither talks to 
 | Boundary | What crosses it | How it is checked |
 | --- | --- | --- |
 | Envelope file → verifier | Untrusted JSON | Strict parse; beacon matched against the verifier's own list |
+| Bidder → witness | A signed submission | Signature checked; the witness cannot read the bid |
+| Witness → verifier | Log and closing checkpoint | Root recomputed; checkpoint signature and cited beacon round checked |
 | Relay → opener | A claimed signature | Verified against the beacon key before use, and again inside `tlock-js` |
 | Sealer → drand | Nothing. Sealing uses constants compiled into the package | The constants are drand's published quicknet parameters |
 
 ## Planned
 
-| Component | Phase | Owned and run by |
-| --- | --- | --- |
-| Witness log, receipts, checkpoints | 2 | Anyone; Mattering runs the default public instance |
-| Commitments, auction policy, auction verifier | 2 | Library code |
-| Three-agent auction example | 3 | Example code |
-| Commitment registry | Later | Mattering |
-| Range proofs, recipient encryption, durable storage | Later, if review supports them | Undecided |
+| Component | Owned and run by |
+| --- | --- |
+| Witness as a hosted service, with persistence and an API | Anyone; Mattering runs the default public instance |
+| External anchoring of checkpoints | Mattering's witness |
+| Commitment registry | Mattering |
+| Range proofs, recipient encryption, durable storage | Undecided; only if review supports them |

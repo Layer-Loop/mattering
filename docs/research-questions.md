@@ -16,11 +16,11 @@ The aim is to find where this breaks. Each question says what the code or design
 
 6. **Canonicalization.** Identity is SHA-256 over RFC 8785 JSON, restricted to strings, booleans and safe integers, with one accepted armor layout. Is there a residual malleability in the age file itself (for example in stanza body encoding or trailing data) that gives one ciphertext two identifiers?
 
-## About the design for the witness and the auction
+## About the witness and the auction
 
-7. **Minimum assumptions for a deadline.** The design uses a witness log with signed checkpoints that embed a recent drand round (a lower bound on time) and are anchored externally (an upper bound). What is the weakest anchoring that makes backdating by the witness detectable, and is embedding the drand round worth doing?
+7. **Minimum assumptions for a deadline.** The witness log has signed checkpoints that cite a drand round (a lower bound on time). Anchoring them externally (an upper bound) is not built, so a witness can add its own late entry while unable to read the others. What is the weakest anchoring that makes backdating by the witness detectable, and is embedding the drand round worth doing?
 
-8. **Reuse.** Which existing transparency-log format should this adopt instead of defining one: RFC 6962, the C2SP checkpoint and tiles specifications, something else?
+8. **Reuse.** The tree is RFC 6962, but the receipt and checkpoint formats are ad hoc JSON. Which existing transparency-log format should this adopt instead: RFC 6962, the C2SP checkpoint and tiles specifications, something else?
 
 9. **Linking a range proof to a time-locked ciphertext.** The design puts the opening of a Pedersen commitment inside the sealed payload, so that the link is checked after release. That makes a range proof before release nearly worthless here, because the ciphertext could hold anything. What is the simplest credible way to prove before release that a tlock ciphertext holds the committed value: verifiable encryption over BLS12-381, a different time-lock construction, a general-purpose proof system? Or is the honest answer that this auction does not need it?
 

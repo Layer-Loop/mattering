@@ -1,6 +1,6 @@
 # Threat model
 
-Covers Phase 1 as built. Phase 2 threats are in [protocol.md](protocol.md) section 6.
+Covers sealing. What a witness, a bidder and a coordinator can and cannot do in the auction is set out in [protocol.md](protocol.md) sections 6 and 7 and in [claims.md](claims.md).
 
 ## What is protected
 
@@ -47,4 +47,6 @@ Mattering has no mitigation for any of these. A use that cannot accept them shou
 3. **`tlock-js` refuses by wall clock** if a round's scheduled time is in the future. The core disables this by passing a schedule that is always in the past, so that opening depends only on the signature. This relies on how the library is written today.
 4. **The whole payload is held in memory.** There is no streaming.
 5. **The chain hash is not recomputed** from the beacon parameters. Beacons are accepted by exact match against a pinned list.
-6. **Timing.** No attempt has been made at constant-time behaviour beyond what the libraries do. Opening only handles public inputs, so this is believed not to matter, but it has not been examined.
+6. **The witness is trusted not to backdate.** Nothing anchors a closing checkpoint in time from above, so a witness can add its own submission after the close round. It still cannot read the other bids when it does so.
+7. **The witness is an in-process object.** No persistence, no network interface, no key protection.
+8. **Timing.** No attempt has been made at constant-time behaviour beyond what the libraries do. Opening only handles public inputs, so this is believed not to matter, but it has not been examined.

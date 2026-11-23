@@ -33,3 +33,37 @@ export {
   type VerificationResult,
   type VerifierPolicy,
 } from "./seal.ts";
+export { generateKeyPair, type KeyPair } from "./signing.ts";
+export { BLINDING_GENERATOR_HEX, commit, opensTo, randomBlinding } from "./commitment.ts";
+export {
+  CHECKPOINT_FORMAT,
+  RECEIPT_FORMAT,
+  SUBMISSION_FORMAT,
+  Witness,
+  isEquivocation,
+  logRoot,
+  receiptHonoured,
+  signSubmission,
+  verifyCheckpointSignature,
+  verifyReceipt,
+  verifySubmissionSignature,
+  type Checkpoint,
+  type Receipt,
+  type Submission,
+} from "./witness.ts";
+export {
+  BID_FORMAT,
+  POLICY_FORMAT,
+  policyHash,
+  prepareBid,
+  sameOutcome,
+  verifyAuction,
+  verifySealedSubmission,
+  type AuctionInputs,
+  type AuctionPolicy,
+  type AuctionResult,
+  type Bid,
+  type BidOutcome,
+  type PreparedBid,
+} from "./auction.ts";
+export { inclusionProof, leafHash, merkleRoot, rootFromInclusionProof } from "./merkle.ts";
