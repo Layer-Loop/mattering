@@ -16,12 +16,13 @@ import type { AddressInfo } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { QUICKNET, timeOfRound } from "@mattering/core";
+import { QUICKNET, generateKeyPair, scheduleClock, timeOfRound } from "@mattering/core";
 import { drandSource } from "@mattering/core/drand-http";
 import { TestBeacon, WallTestClock } from "@mattering/core/testing";
 import { memoryStore, readJson, send } from "@mattering/witness";
 import type { Decider } from "./agents.ts";
 import { DEFAULT_MODEL, claudeDecider } from "./llm.ts";
+import { LocalLogHost } from "./log-host.ts";
 import { Room, type RoomState } from "./room.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -64,12 +65,20 @@ export async function startShowcase(options: ShowcaseOptions): Promise<{ server:
   const closeAfter = options.closeAfter ?? (simulated ? 30 : 10);
   const clock = simulated ? new WallTestClock(new TestBeacon(), Date.now() - 10 * roundMs, roundMs) : undefined;
 
+  const sourceFor = () => (clock ? clock.source() : drandSource(QUICKNET));
+  // The log and a cosigner beside it, both in this process and forgotten when it stops.
+  const log = await LocalLogHost.open({
+    store: memoryStore(),
+    source: sourceFor(),
+    origin: "localhost/sealed-room-log",
+    ownCosigner: { name: "localhost/sealed-room-cosigner", secretKey: generateKeyPair().secretKey, state: {}, persist: async () => {}, clock: scheduleClock(sourceFor()) },
+  });
   let saved: RoomState | undefined;
   const room = await Room.open({
     mode: options.mode,
-    sourceFor: () => (clock ? clock.source() : drandSource(QUICKNET)),
+    sourceFor,
     timeOfRound: (round) => (clock ? clock.timeOfRound(round) : timeOfRound(QUICKNET, round) * 1000),
-    store: memoryStore(),
+    log,
     loadState: async () => saved,
     saveState: async (state) => void (saved = state),
     closeAfter,

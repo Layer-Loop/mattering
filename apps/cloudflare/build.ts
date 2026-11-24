@@ -4,7 +4,7 @@
  *   <site>/src/worker.js                   the Worker and its Durable Object
  *   <site>/public/assets/sealed-room.js    the page's script
  *
- *   npm run build:site -- ../mattering-web
+ *   npm run build:site -- ../mattering
  *
  * The site repository commits these files, so deploying it needs nothing from
  * here. Rebuild and commit there whenever this repository changes.

@@ -3,14 +3,14 @@
  * evidence (log, closing checkpoint, witness cosignatures, release) valid, and
  * which entries were on time?
  */
-import { hexToBytes } from "@noble/hashes/utils";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 import { assertBeaconInfo, assertRound, sameBeacon, timeOfRound, verifyRelease, type BeaconInfo, type Release } from "./beacon.ts";
 import { MatteringError } from "./errors.ts";
-import { verifyConsistency } from "./merkle.ts";
+import { leafHash, rootFromCompactRange, verifyConsistency } from "./merkle.ts";
 import { cosignatureTime, fromBase64, isKeyName, parseCheckpointText, parseNote, parseVkey, type NoteKey } from "./note.ts";
 import type { Check, VerifierPolicy } from "./seal.ts";
 import { isLowerHex } from "./beacon.ts";
-import { isCloseEntry, isSubmission, logRoot, verifyCheckpointSignature, type Checkpoint, type LogEntry, type Submission } from "./witness.ts";
+import { isCloseEntry, isSubmission, submissionLeaf, verifyCheckpointSignature, type Checkpoint, type LogEntry, type Submission } from "./witness.ts";
 
 /** The fields every policy has, whatever it is a policy for. */
 export interface PolicyTerms {
@@ -30,9 +30,16 @@ export interface PolicyTerms {
   cosigners: string[];
   /** How many of `cosigners` must have cosigned. 0 means the witness is trusted alone. */
   cosignerThreshold: number;
+  /**
+   * The log's size when the policy was made. Its entries all come after this
+   * point, so evidence covers the log from here to the close rather than from
+   * the log's beginning. A witness refuses a policy that names a size its log
+   * has not reached.
+   */
+  logFrom: number;
 }
 
-export const TERMS_KEYS = ["beacon", "closeRound", "cosignerThreshold", "cosigners", "origin", "releaseRound", "witness"] as const;
+export const TERMS_KEYS = ["beacon", "closeRound", "cosignerThreshold", "cosigners", "logFrom", "origin", "releaseRound", "witness"] as const;
 
 export function assertTerms(terms: PolicyTerms): void {
   assertBeaconInfo(terms.beacon, "policy.beacon");
@@ -41,6 +48,7 @@ export function assertTerms(terms: PolicyTerms): void {
   if (terms.releaseRound <= terms.closeRound) throw new MatteringError("MALFORMED", "policy: releaseRound must be after closeRound");
   if (!isLowerHex(terms.witness, 32)) throw new MatteringError("MALFORMED", "policy.witness");
   if (!isKeyName(terms.origin)) throw new MatteringError("MALFORMED", "policy.origin: want a log origin, such as example.com/log");
+  if (!Number.isSafeInteger(terms.logFrom) || terms.logFrom < 0) throw new MatteringError("MALFORMED", "policy.logFrom: want a log size");
   if (!Array.isArray(terms.cosigners)) throw new MatteringError("MALFORMED", "policy.cosigners: want verifier keys");
   const keys = terms.cosigners.map(parseVkey);
   if (new Set(keys.map((k) => `${k.name} ${k.publicKey}`)).size !== keys.length) throw new MatteringError("MALFORMED", "policy.cosigners: want distinct keys");
@@ -114,8 +122,14 @@ export function countCosignatures(terms: PolicyTerms, closing: Checkpoint, witne
 // --- evidence ----------------------------------------------------------------
 
 export interface Evidence {
-  /** The witness's log, in order, at least up to the closing checkpoint's size. */
+  /** The witness's log in order, from entry `logFrom` of the policy at least up to the closing checkpoint's size. */
   entries: readonly LogEntry[];
+  /**
+   * The log's first `logFrom` entries, as the roots of the perfect subtrees
+   * covering them (lowercase hex, largest first). Empty or absent when
+   * `logFrom` is 0.
+   */
+  prefix?: readonly string[] | undefined;
   closing: Checkpoint;
   witnessed?: WitnessedCheckpoint | undefined;
   /** The beacon's signature for the policy's release round. */
@@ -149,11 +163,18 @@ export function verifyEvidence(policyHash: string, terms: PolicyTerms, evidence:
     count.cosigners.length >= terms.cosignerThreshold,
     `${count.cosigners.length} valid cosignature(s); the policy requires ${terms.cosignerThreshold}${"problem" in count && count.problem ? ` (${count.problem})` : ""}`,
   );
-  const haveLog = Number.isSafeInteger(closing?.size) && entries.length >= closing.size;
-  add("log-matches-closing-checkpoint", haveLog && logRoot(entries.slice(0, closing.size)) === closing.root, "the supplied log is not the one the witness signed");
+  // Only the stretch from logFrom to the close is supplied; everything before
+  // it is summarised by the prefix, which the closing root pins down.
+  const from = terms.logFrom;
+  const span = Number.isSafeInteger(closing?.size) ? closing.size - from : -1;
+  const prefix = evidence.prefix ?? [];
+  const wellFormed = span > 0 && entries.length >= span && Array.isArray(prefix) && prefix.every((p) => isLowerHex(p, 32));
+  const root = wellFormed ? rootFromCompactRange(prefix.map((p) => hexToBytes(p)), from, entries.slice(0, span).map((e) => leafHash(submissionLeaf(e)))) : undefined;
+  const haveLog = root !== undefined && bytesToHex(root) === closing.root;
+  add("log-matches-closing-checkpoint", haveLog, "the supplied log is not the one the witness signed");
   // The closing is fixed by the log itself: the checkpoint must end at this
   // policy's close entry, and no earlier close entry for it may exist.
-  const last = haveLog && closing.size > 0 ? entries[closing.size - 1] : undefined;
+  const last = haveLog ? entries[span - 1] : undefined;
   add(
     "closing-is-the-close-entry",
     isCloseEntry(last) && last.policyHash === policyHash && last.observed?.round === closing.observed?.round && last.observed?.signature === closing.observed?.signature,
@@ -161,7 +182,7 @@ export function verifyEvidence(policyHash: string, terms: PolicyTerms, evidence:
   );
   add(
     "closed-only-once",
-    haveLog && !entries.slice(0, Math.max(0, closing.size - 1)).some((e) => isCloseEntry(e) && e.policyHash === policyHash),
+    haveLog && !entries.slice(0, span - 1).some((e) => isCloseEntry(e) && e.policyHash === policyHash),
     "the log closed this policy earlier; entries after that first close do not count",
   );
   add("release-valid", release?.round === terms.releaseRound && verifyRelease(terms.beacon, release), "not the beacon's signature for the release round");
@@ -169,10 +190,10 @@ export function verifyEvidence(policyHash: string, terms: PolicyTerms, evidence:
   const onTime: EvidenceVerdict["onTime"] = [];
   if (ok) {
     const seen = new Set<string>();
-    for (let index = 0; index < closing.size - 1; index++) {
-      const submission = entries[index]!;
+    for (let i = 0; i < span - 1; i++) {
+      const submission = entries[i]!;
       if (!isSubmission(submission) || submission.policyHash !== policyHash) continue;
-      onTime.push({ index, submission, counts: !seen.has(submission.submitter) });
+      onTime.push({ index: from + i, submission, counts: !seen.has(submission.submitter) });
       seen.add(submission.submitter);
     }
   }

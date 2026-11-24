@@ -74,7 +74,7 @@ async function deployment(cosignerCount = 2) {
   const url = await listen(witnessServer(service));
   const client = new WitnessClient(url);
   const verifier = { acceptedBeacons: [beacon.info] };
-  const terms = { beacon: beacon.info, closeRound: 100, releaseRound: 110, witness: service.publicKey, origin: service.origin, cosigners: cosigners.map((c) => c.vkey), cosignerThreshold: cosignerCount };
+  const terms = { beacon: beacon.info, closeRound: 100, releaseRound: 110, witness: service.publicKey, origin: service.origin, logFrom: service.size, cosigners: cosigners.map((c) => c.vkey), cosignerThreshold: cosignerCount };
   const auction: AuctionPolicy = { format: POLICY_FORMAT, auctionId: "lot-1", ...terms, minBid: 100, maxBid: 10_000, rule: "highest-bid", tieBreak: "release-round-signature" };
   return { beacon, clock, cosigners, urls, dataDir, service, url, client, verifier, terms, auction };
 }
@@ -140,7 +140,7 @@ test("a relay that serves a stale 'latest' cannot keep the deadline open", async
   const clock = new TestClock(beacon, 10);
   const lagging = clock.source(3);
   const service = await WitnessService.open({ store: memoryStore(), source: lagging });
-  const policy: AuctionPolicy = { format: POLICY_FORMAT, auctionId: "lag", beacon: beacon.info, closeRound: 100, releaseRound: 110, witness: service.publicKey, origin: service.origin, cosigners: [], cosignerThreshold: 0, minBid: 100, maxBid: 10_000, rule: "highest-bid", tieBreak: "release-round-signature" };
+  const policy: AuctionPolicy = { format: POLICY_FORMAT, auctionId: "lag", beacon: beacon.info, closeRound: 100, releaseRound: 110, witness: service.publicKey, origin: service.origin, logFrom: service.size, cosigners: [], cosignerThreshold: 0, minBid: 100, maxBid: 10_000, rule: "highest-bid", tieBreak: "release-round-signature" };
   await service.registerPolicy(policy);
   clock.advanceTo(99);
   const inTime = await prepareBid(policy, 3000, generateKeyPair());
@@ -149,7 +149,7 @@ test("a relay that serves a stale 'latest' cannot keep the deadline open", async
   assert.equal((await lagging.latest()).round, 97, "the relay still says round 97");
   const late = await prepareBid(policy, 9999, generateKeyPair());
   await rejects(service.submit(late.submission, late.envelope), "POLICY");
-  assert.deepEqual(service.log().entries.map((e) => e.format), ["mattering.submission/1", "mattering.close/1"]);
+  assert.deepEqual((await service.log()).entries.map((e) => e.format), ["mattering.submission/1", "mattering.close/1"]);
 
   // A cosigner dates what it signs by its own clock, not by a relay. Asked
   // after the release, it may sign, but the date shows it was too late.
@@ -284,7 +284,7 @@ test("cosigners speak C2SP tlog-witness: every refusal the protocol defines", as
     const response = await fetch(url + "/add-checkpoint", { method: "POST", body });
     return { status: response.status, type: response.headers.get("content-type"), body: await response.text() };
   };
-  const policy: AuctionPolicy = { format: POLICY_FORMAT, auctionId: "p", beacon: beacon.info, closeRound: 100, releaseRound: 110, witness: log.publicKey, origin: log.origin, cosigners: [], cosignerThreshold: 0, minBid: 1, maxBid: 10, rule: "highest-bid", tieBreak: "release-round-signature" };
+  const policy: AuctionPolicy = { format: POLICY_FORMAT, auctionId: "p", beacon: beacon.info, closeRound: 100, releaseRound: 110, witness: log.publicKey, origin: log.origin, logFrom: 0, cosigners: [], cosignerThreshold: 0, minBid: 1, maxBid: 10, rule: "highest-bid", tieBreak: "release-round-signature" };
   for (let i = 0; i < 3; i++) log.submit((await prepareBid(policy, 5, generateKeyPair())).submission);
 
   assert.equal((await post("old 0\n\n" + new Witness(undefined, undefined, "log.example/other").logCheckpoint())).status, 404, "unknown log");

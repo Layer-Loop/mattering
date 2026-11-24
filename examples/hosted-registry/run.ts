@@ -73,7 +73,7 @@ say(`Log       ${service.vkey}`);
 say(`Cosigner  ${cosigner.vkey} at ${cosignerUrl}`);
 say(`Beacon    ${offline ? "simulated (offline)" : "drand quicknet"}; close at round ${closeRound}, release at round ${releaseRound}`);
 
-const terms = { beacon, closeRound, releaseRound, witness: service.publicKey, origin: service.origin, cosigners: [cosigner.vkey], cosignerThreshold: 1 };
+const terms = { beacon, closeRound, releaseRound, witness: service.publicKey, origin: service.origin, logFrom: (await client.info()).size, cosigners: [cosigner.vkey], cosignerThreshold: 1 };
 const auction: AuctionPolicy = { format: POLICY_FORMAT, auctionId: "compute-lot-1", ...terms, minBid: 100, maxBid: 10_000, rule: "highest-bid", tieBreak: "release-round-signature" };
 const forecast: StatementPolicy = { format: STATEMENT_POLICY_FORMAT, topic: "What will the winning bid for compute-lot-1 be?", ...terms };
 const auctionHash = (await client.registerPolicy(auction)).policyHash;

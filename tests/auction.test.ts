@@ -48,7 +48,7 @@ const CLOSE = 500;
 const RELEASE = 510;
 
 function makePolicy(witness: Witness, auctionId = "gpu-hours-lot-1"): AuctionPolicy {
-  return { format: POLICY_FORMAT, auctionId, beacon: beacon.info, closeRound: CLOSE, releaseRound: RELEASE, witness: witness.publicKey, origin: witness.origin, cosigners: [], cosignerThreshold: 0, minBid: 100, maxBid: 10_000, rule: "highest-bid", tieBreak: "release-round-signature" };
+  return { format: POLICY_FORMAT, auctionId, beacon: beacon.info, closeRound: CLOSE, releaseRound: RELEASE, witness: witness.publicKey, origin: witness.origin, logFrom: 0, cosigners: [], cosignerThreshold: 0, minBid: 100, maxBid: 10_000, rule: "highest-bid", tieBreak: "release-round-signature" };
 }
 
 interface World {

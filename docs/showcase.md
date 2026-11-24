@@ -37,7 +37,7 @@ Each makes a real attempt against the running system.
 | --- | --- | --- |
 | Peek at a bid early | Takes a sealed bid and tries to open it with the newest key that exists | The key for that envelope has not been created yet |
 | Slip in a late bid | Seals the maximum bid and submits it after the close | The auctioneer refuses it; bidding closed at the agreed time |
-| Rewrite the list as the auctioneer | After the bids are readable, the server slips a winning bid in before the close, signs the new list with the auctioneer's real key, and asks the cosigner to vouch for it | The cosigner refuses: the new list is a fork of the one it countersigned before the bids could be read. The browser rejects the list, because the countersigned one does not extend it |
+| Rewrite the list as the auctioneer | After the bids are readable, the server slips a winning bid in before the close and signs a new closing list with the auctioneer's real key | The browser rejects it: the cosigners countersigned the original list before the bids could be read, and the new list does not extend it. The rewrite is never shown to a cosigner, because the log's key must never sign two versions of the log: the public witnesses would treat that as proof the log is dishonest, and they would be right. The refusal a cosigner gives to a rewritten log is covered by the tests instead |
 | Announce a different winner | Declares that the lowest bidder won | The browser recomputes the result from the evidence and shows the difference |
 
 ## What is real and what is staged
@@ -48,7 +48,7 @@ Each makes a real attempt against the running system.
 
 - The companies and the lot are invented.
 - Each agent is given a private ceiling, drawn at random for each auction, and decides what to bid. A language model decides if one is configured (next section); otherwise a short script does. The page says which, agent by agent.
-- The auctioneer and the "independent" cosigner run in the same process on the same machine. The page says so.
+- Until public witnesses cosign the log, the "independent" cosigner is run by the same operator as the auctioneer. The page says so.
 - In offline mode the clock is simulated by the machine running the demo, which could therefore open bids early. The page shows a "Simulated clock" badge and says so.
 
 ## The agents and the language model
@@ -75,23 +75,33 @@ The request to the model is covered by a test against a stand-in for the API (`t
 The same room runs on Cloudflare for mattering.ai, as a Durable Object behind the site's Worker (`apps/cloudflare`). The website is a separate repository and commits two files built from this one:
 
 ```bash
-npm run build:site -- ../mattering-web
+npm run build:site -- ../mattering
 ```
 
 That writes the Worker to `src/worker.js` and the page's script to `public/assets/sealed-room.js` in the site repository. Rebuild and commit there whenever this repository changes.
 
 How the hosted version differs from the laptop one:
 
-- **One room per visitor.** Each browser session gets its own room: its own auctioneer key, cosigner key, log and auction. Visitors cannot see or affect each other's auctions.
+- **One room per visitor, one log for everyone.** Each browser session gets its own room, with its own agents and auction, and visitors cannot affect each other's auctions. Every room writes into the same long-lived log, held by one Durable Object named `log`, which is never deleted. Each auction's evidence covers only its own stretch of that log ([protocol.md](protocol.md), section 6).
+- **The log is public and read-only** at `/log/`: its origin and verifier key at `/log/`, entries at `/log/log?from=<n>`, any auction's evidence at `/log/policies/<hash>/evidence`. The site's `wrangler.jsonc` must send `/log` and `/log/*` to the Worker (`run_worker_first`) for this to be reachable.
 - **Nothing happens until the visitor starts an auction**, so loading the page costs nothing.
-- **Limits.** A room runs at most 20 auctions and takes at most 12 submissions per auction, refuses policies from outside, and deletes itself 30 minutes after it was last used.
+- **Limits.** A room runs at most 20 auctions, takes at most 12 submissions per auction and only for its own auction, refuses policies from outside, and deletes itself 30 minutes after it was last used.
 - **The model has a daily allowance.** If the Worker has an `ANTHROPIC_API_KEY` secret, at most `MODEL_AUCTIONS_PER_DAY` auctions a day (default 300), across all visitors, use the model. After that, and if the counter cannot be reached, the scripts decide. This caps spending whatever the traffic. A spend limit on the API key itself is still worth setting.
 - **The clock is always the real drand network.** A simulated clock is available for local development only (`npm run dev:offline` in the site repository).
 
-The auctioneer and the cosigner still run in the same place, so the cosigner is not independent. The page says so.
+The log is configured by the Worker's settings:
+
+| Setting | Meaning | Default |
+| --- | --- | --- |
+| `MATTERING_ORIGIN` | The log's origin, such as `mattering.ai/log`. Public witnesses know the log by it: set it before the first auction and never change it | one derived from the key, under `mattering.invalid` |
+| `MATTERING_LOG_KEY` | A secret: the log's Ed25519 secret key, 64 hex characters. Kept as a secret so that it can be backed up and outlives the log's storage | made by the log on first use and kept in its storage |
+| `MATTERING_WITNESSES` | Public witnesses: comma-separated `vkey=url` pairs, the URL being the witness's add-checkpoint prefix | none |
+| `MATTERING_OWN_COSIGNER` | `1` runs a cosigner beside the log, `0` does not | on only when no public witnesses are set |
+
+Every new auction names all of the log's cosigners and requires a majority of them. Until public witnesses are set, the only cosigner is the one beside the log, which is not independent, and the page says so.
 
 ## Not covered by automated tests
 
-`tests/showcase.test.ts` runs an auction through the room and verifies it as the page does. The page itself was checked by driving it in a headless browser by hand; there is no browser test in the suite. On a laptop, online mode against live drand was run by hand on 2026-11-23 and behaved as described. It was run again on 2026-11-24 after cosigners moved to the C2SP witness protocol: a visitor's bid, all four cheats refused or exposed, and every check passing in the browser. That run found the "Simulated clock" badge showing in live mode, a styling bug, now fixed. The Cloudflare version has not been run since that change.
+`tests/showcase.test.ts` runs an auction through the room and verifies it as the page does; `tests/shared-log.test.ts` covers the shared log: auctions interleaved on it, restarts, released auctions leaving memory, and cosigners asked once per checkpoint. The page itself was checked by driving it in a headless browser by hand; there is no browser test in the suite. On a laptop, online mode against live drand was run by hand on 2026-11-23 and behaved as described. It was run again on 2026-11-24 after cosigners moved to the C2SP witness protocol: a visitor's bid, all four cheats refused or exposed, and every check passing in the browser. That run found the "Simulated clock" badge showing in live mode, a styling bug, now fixed. The Cloudflare version has not been run since that change.
 
-The Cloudflare version was run by hand in Cloudflare's local runtime with the simulated clock: a full auction in the real site page, with all four cheats refused. It was deployed to mattering.ai on 2026-11-23 and run there by hand against live drand, and worked. Nothing checks the deployed version automatically.
+The Cloudflare version was run by hand in Cloudflare's local runtime with the simulated clock: a full auction in the real site page, with all four cheats refused. It was deployed to mattering.ai on 2026-11-23 and run there by hand against live drand, and worked. On 2026-11-24, after rooms moved to one shared log, it was run again in the local runtime with the simulated clock: two rooms' auctions interleaved on the log, both verified from `/log/` (the second with a prefix standing for the first's entries), a visitor's bid in the real site page, all four cheats refused or exposed, every check passing in the browser, and both auctions retired from memory after release. That version has not been deployed or run against live drand. Nothing checks the deployed version automatically.
