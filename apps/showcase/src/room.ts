@@ -1,31 +1,26 @@
 /**
- * One Sealed Room: a witness, a cosigner, three agents and at most one auction
- * at a time. No server, no files and no timers in here. Whatever hosts it
+ * One Sealed Room: three agents and at most one auction at a time, run on the
+ * shared log. No server, no files and no timers in here. Whatever hosts it
  * calls `handle` for requests and `work` whenever time has passed.
  */
 import {
-  Cosigner,
   MatteringError,
   POLICY_FORMAT,
   STATEMENT_POLICY_FORMAT,
-  Witness,
   deadlineRound,
   generateKeyPair,
-  isCloseEntry,
-  isSubmission,
-  policyHash,
   prepareBid,
   prepareStatement,
-  scheduleClock,
   type AuctionPolicy,
   type BeaconInfo,
   type BeaconSource,
-  type CosignedState,
+  type Envelope,
   type StatementPolicy,
+  type Submission,
 } from "@mattering/core";
-import { errorReply, handleWitness, type Reply } from "@mattering/witness/routes";
-import { WitnessService, type ServiceStore } from "@mattering/witness/service";
+import { errorReply, type Reply } from "@mattering/witness/routes";
 import { AGENTS, SLOT, acceptDecision, drawCeiling, type Decider, type Decision } from "./agents.ts";
+import type { LogHost } from "./log-host.ts";
 
 interface AgentState {
   name: string;
@@ -50,17 +45,13 @@ interface RunState {
   agents: AgentState[];
 }
 
-/** What a room must remember besides the witness's own state. */
+/** What a room remembers. The log keeps everything else. */
 export interface RoomState {
+  /** 2 since rooms share one log. Rooms saved before that start afresh. */
+  version: 2;
   runs: number;
   run?: RunState;
-  cosignerKey: string;
-  /** The cosigner's latest cosigned checkpoint, by log origin. */
-  cosigned: Record<string, CosignedState>;
 }
-
-/** What the room's cosigner calls itself. Not a real address: it is not independent. */
-const COSIGNER_NAME = "cosigner.sealed-room.invalid";
 
 export interface RoomOptions {
   mode: "live" | "simulated";
@@ -68,7 +59,8 @@ export interface RoomOptions {
   sourceFor: () => BeaconSource;
   /** Milliseconds since the UNIX epoch at which `round` is due. */
   timeOfRound: (round: number) => number;
-  store: ServiceStore;
+  /** The shared log. */
+  log: LogHost;
   loadState: () => Promise<RoomState | undefined>;
   saveState: (state: RoomState) => Promise<void>;
   /** Rounds from start to close, and from close to release. */
@@ -97,44 +89,19 @@ export class Room {
 
   private constructor(
     private readonly options: RoomOptions,
-    private readonly service: WitnessService,
-    private readonly cosigner: Cosigner,
+    private readonly log: LogHost,
     private readonly viewer: BeaconSource,
     private state: RoomState,
   ) {}
 
   static async open(options: RoomOptions): Promise<Room> {
     let state = await options.loadState();
-    if (!state) {
-      state = { runs: 0, cosignerKey: generateKeyPair().secretKey, cosigned: {} };
+    // A room saved before rooms shared a log had its own witness; its auction cannot carry over.
+    if (state?.version !== 2) {
+      state = { version: 2, runs: state?.runs ?? 0 };
       await options.saveState(state);
     }
-    // Rooms saved before cosigners spoke the C2SP protocol kept a list here.
-    if (Array.isArray(state.cosigned)) state.cosigned = {};
-    const mine = state;
-    const cosigner = new Cosigner({
-      name: COSIGNER_NAME,
-      logs: [],
-      // Its own view of the beacon's schedule: real time against drand, simulated time offline.
-      clock: scheduleClock(options.sourceFor()),
-      secretKey: mine.cosignerKey,
-      state: mine.cosigned,
-      // Remember what was cosigned before handing it over, so a restart cannot be used to get a fork cosigned.
-      persist: async (origin, latest) => {
-        mine.cosigned = { ...mine.cosigned, [origin]: latest };
-        await options.saveState(mine);
-      },
-    });
-    const service = await WitnessService.open({
-      store: options.store,
-      source: options.sourceFor(),
-      cosign: async (_vkey, body) => {
-        const reply = await cosigner.addCheckpoint(body);
-        return { status: reply.status, body: reply.body };
-      },
-    });
-    cosigner.addLog(service.vkey);
-    return new Room(options, service, cosigner, options.sourceFor(), mine);
+    return new Room(options, options.log, options.sourceFor(), state);
   }
 
   get beacon(): BeaconInfo {
@@ -158,11 +125,12 @@ export class Room {
       const closeRound = now + options.closeAfter;
       const releaseRound = closeRound + options.releaseAfter;
       const id = state.runs + 1;
-      const terms = { beacon: this.beacon, closeRound, releaseRound, witness: this.service.publicKey, origin: this.service.origin, cosigners: [this.cosigner.vkey], cosignerThreshold: 1 };
+      const log = await this.log.terms();
+      const terms = { beacon: this.beacon, closeRound, releaseRound, witness: log.witness, origin: log.origin, logFrom: log.size, cosigners: log.cosigners, cosignerThreshold: log.cosignerThreshold };
       const auction: AuctionPolicy = { format: POLICY_FORMAT, auctionId: `daily-ledger-banner-${Date.now()}-${id}`, ...terms, minBid: SLOT.minBid, maxBid: SLOT.maxBid, rule: "highest-bid", tieBreak: "release-round-signature" };
       const forecast: StatementPolicy = { format: STATEMENT_POLICY_FORMAT, topic: `What will ${auction.auctionId} sell for, and why?`, ...terms };
-      const auctionHash = (await this.service.registerPolicy(auction)).policyHash;
-      const forecastHash = (await this.service.registerPolicy(forecast)).policyHash;
+      const auctionHash = await this.log.registerPolicy(auction);
+      const forecastHash = await this.log.registerPolicy(forecast);
       const started = Date.now();
       state.runs = id;
       state.run = {
@@ -203,14 +171,14 @@ export class Room {
           const decision = this.decided!.decisions[i]!;
           const bid = await prepareBid(run.auction, decision.bid, keys);
           const statement = await prepareStatement(run.forecast, decision.prediction, keys);
-          await this.service.submit(bid.submission, bid.envelope);
-          await this.service.submit(statement.submission, statement.envelope);
+          await this.log.submit(bid.submission, bid.envelope);
+          await this.log.submit(statement.submission, statement.envelope);
         } catch (error) {
           console.error(`${agent.name}: ${(error as Error).message}`);
         }
       }
-      await this.service.tick().catch(() => {});
-      const phase = await this.service.phase(run.auctionHash);
+      await this.log.tick().catch(() => {});
+      const phase = await this.log.phase(run.auctionHash);
       const done = phase.state === "released" || (phase.state === "closed" && phase.cosignatures >= 1 && run.agents.every((a) => a.submitted));
       if (phase.state === "released") return undefined;
       // Once closed and cosigned there is nothing to do until the release.
@@ -256,10 +224,11 @@ export class Room {
   }
 
   async view(): Promise<Record<string, unknown>> {
-    const base = { mode: this.options.mode, beacon: this.beacon, witness: this.service.publicKey, cosigner: this.cosigner.publicKey, slot: SLOT, serverTime: Date.now() };
+    const log = await this.log.terms();
+    const base = { mode: this.options.mode, beacon: this.beacon, slot: SLOT, serverTime: Date.now(), ...(log.ownCosigner ? { ownCosigner: log.ownCosigner } : {}) };
     const run = this.state.run;
     if (!run) return { ...base, run: null };
-    const phase = await this.service.phase(run.auctionHash);
+    const phase = await this.log.phase(run.auctionHash);
     return {
       ...base,
       run: {
@@ -273,42 +242,22 @@ export class Room {
         agents: run.agents.map(({ secretKey: _secret, dueAt: _due, ...shown }) => shown),
         phase: phase.state,
         cosigned: phase.cosignatures >= 1,
-        entries: this.service.log().entries.filter(isSubmission).filter((e) => e.policyHash === run.auctionHash).map((e) => ({ submitter: e.submitter, envelopeId: e.envelopeId })),
+        entries: (await this.log.submissions(run.auctionHash)).map((e) => ({ submitter: e.submitter, envelopeId: e.envelopeId })),
       },
     };
   }
 
   /**
    * What a dishonest operator would do after release: knowing every bid,
-   * rewrite the log with a winning bid of its own slipped in before the close,
-   * sign it with the witness's real key, and ask the cosigner to vouch for it.
-   * Returned for the page to verify.
+   * rewrite the log with a winning bid of its own slipped in before the close
+   * and sign it with the witness's real key. Returned for the page to verify.
    */
   private async forge(): Promise<Record<string, unknown>> {
     const run = this.state.run;
     if (!run) throw new MatteringError("POLICY", "no auction is running");
-    const bundle = await this.service.evidence(run.auctionHash);
-    if (bundle.state !== "released") throw new MatteringError("POLICY", "the bids have not been released yet");
-    const secretKey = (await this.options.store.load()).secretKey;
-    const forger = new Witness(secretKey, undefined, this.service.origin);
-    // The same log up to the close, plus a bid of its own just before it.
-    for (const entry of bundle.entries!.slice(0, -1)) {
-      if (isCloseEntry(entry)) forger.close(entry.policyHash, this.beacon, entry.observed);
-      else forger.submit(entry);
-    }
+    if ((await this.log.phase(run.auctionHash)).state !== "released") throw new MatteringError("POLICY", "the bids have not been released yet");
     const shill = await prepareBid(run.auction, run.auction.maxBid, generateKeyPair());
-    forger.submit(shill.submission);
-    const closing = forger.close(policyHash(run.auction), this.beacon, bundle.closing!.observed);
-    // Ask the cosigner, exactly as the honest witness does.
-    const old = this.cosigner.state.get(this.service.origin)?.size ?? 0;
-    const proof = old <= forger.size ? forger.consistency(old) : [];
-    const reply = await this.cosigner.addCheckpoint(`old ${old}\n` + proof.map((p) => p + "\n").join("") + "\n" + forger.logCheckpoint());
-    const cosignerSaid = reply.status === 200 ? "signed it" : `refused: ${reply.reason}`;
-    return {
-      shillAmount: run.auction.maxBid,
-      cosignerSaid,
-      evidence: { ...bundle, entries: forger.entries(), closing, envelopes: { ...bundle.envelopes, [shill.submission.envelopeId]: shill.envelope } },
-    };
+    return { ...(await this.log.forge(run.auctionHash, shill)) };
   }
 
   /** `path` is "/demo/…" for the room's own routes or "/api/…" for the witness's. */
@@ -320,13 +269,19 @@ export class Room {
         if (this.options.closed && method === "POST" && inner.startsWith("/policies")) {
           return { status: 403, body: { error: "this room does not accept policies from outside" } };
         }
-        if (method === "POST" && inner.startsWith("/submissions") && this.options.maxEntries !== undefined) {
+        if (method === "POST" && inner.startsWith("/submissions")) {
+          // Through a room, only that room's auction can be joined, and only so far.
+          const value = (await body()) as { submission?: Submission; envelope?: Envelope } | null;
           const run = this.state.run;
-          if (run && Math.max(this.service.count(run.auctionHash), this.service.count(run.forecastHash)) >= this.options.maxEntries) {
+          if (this.options.closed && (!run || (value?.submission?.policyHash !== run.auctionHash && value?.submission?.policyHash !== run.forecastHash))) {
+            return { status: 403, body: { error: "this room only takes submissions for its own auction" } };
+          }
+          if (run && this.options.maxEntries !== undefined && Math.max(await this.log.count(run.auctionHash), await this.log.count(run.forecastHash)) >= this.options.maxEntries) {
             return { status: 429, body: { error: "this demonstration auction has taken as many bids as it allows" } };
           }
+          return await this.log.api(method, inner, query, async () => value);
         }
-        return await handleWitness(this.service, method, inner, query, body);
+        return await this.log.api(method, inner, query, body);
       }
       switch (`${method} ${path}`) {
         case "GET /demo/state":

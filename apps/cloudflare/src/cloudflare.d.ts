@@ -3,9 +3,13 @@
 declare module "cloudflare:workers" {
   export interface DurableObjectStorage {
     get<T>(key: string): Promise<T | undefined>;
+    get<T>(keys: string[]): Promise<Map<string, T>>;
     put(key: string, value: unknown): Promise<void>;
-    list<T>(options: { prefix: string }): Promise<Map<string, T>>;
+    put(entries: Record<string, unknown>): Promise<void>;
+    delete(key: string): Promise<boolean>;
+    list<T>(options: { prefix?: string; start?: string; end?: string; limit?: number }): Promise<Map<string, T>>;
     deleteAll(): Promise<void>;
+    getAlarm(): Promise<number | null>;
     setAlarm(time: number): Promise<void>;
     deleteAlarm(): Promise<void>;
   }

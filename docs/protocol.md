@@ -117,6 +117,10 @@ All signatures are Ed25519 over `H(label, canonical(object without its signature
 
 The first close entry for a policy fixes which entries count: those before it. Because it is in the log, the cosignatures that date the log (below) also date the closing.
 
+**One log, many policies.** A log is meant to run for a long time and carry many policies, so that public witnesses can be configured with it once. Each policy names `logFrom`: the log's size when the policy was made. The witness refuses a policy whose `logFrom` is beyond the end of its log, so all of a policy's entries come after it. The evidence for a policy carries only the entries from `logFrom` up to its closing checkpoint, plus the **prefix**: the roots of the perfect subtrees that cover the first `logFrom` entries, largest first, one per set bit of `logFrom`. The verifier rebuilds the closing root from the prefix and the entries, so the evidence stays the size of one auction however long the log has run.
+
+Leaving out the entries before `logFrom` loses nothing. No submission under the policy can be there, because the policy did not exist yet, and the rule that the first close entry decides only needs the entries from `logFrom` on: a close entry before `logFrom` cannot be the end of any closing checkpoint a verifier accepts, and every close entry after it is in the evidence. The service also refuses a `logFrom` more than 10,000 entries behind its log, which bounds the evidence; that is the service's choice, not part of the protocol.
+
 **Receipt**, returned to the submitter (label `mattering/receipt/v1`):
 
 ```text
@@ -181,7 +185,7 @@ Not built: anchoring checkpoints to a public ledger, which would replace trust i
 **Policy**, immutable, identified by `policyHash = H("mattering/auction-policy/v1", canonical(policy))`:
 
 ```text
-{ format: "mattering.auction-policy/2", auctionId, beacon, closeRound, releaseRound, witness, origin,
+{ format: "mattering.auction-policy/3", auctionId, beacon, closeRound, releaseRound, witness, origin, logFrom,
   cosigners, cosignerThreshold, minBid, maxBid, rule: "highest-bid", tieBreak: "release-round-signature" }
 ```
 
@@ -195,9 +199,9 @@ The envelope's `context` is `{ kind: "mattering.bid/1", policyHash, bidder }`. T
 
 **While sealed**, anyone can check that a submission is signed, names this policy, and names an envelope that is well-formed, locked to the release round on the policy's beacon, and carries the expected context. Nothing about the amount can be checked.
 
-**After release**, the verifier takes the policy, the log, the closing checkpoint, the envelopes and the release round's signature, and:
+**After release**, the verifier takes the policy, the log from `logFrom` and its prefix, the closing checkpoint, the envelopes and the release round's signature, and:
 
-1. Checks the evidence: policy well-formed, beacon accepted by the verifier, closing checkpoint signed by the policy's witness and citing the close round, enough valid cosignatures, log root equal to the checkpoint's, the checkpoint ending with the policy's first close entry, release signature valid.
+1. Checks the evidence: policy well-formed, beacon accepted by the verifier, closing checkpoint signed by the policy's witness and citing the close round, enough valid cosignatures, the root rebuilt from the prefix and the entries equal to the checkpoint's, the checkpoint ending with the policy's first close entry, release signature valid.
 2. Takes the submissions before the close entry that name this policy, in order. Only a submitter's first entry counts.
 3. For each, opens the envelope and requires: the payload is a canonical bid; `policyHash` and `bidder` inside the bid equal the policy's hash and the submission's `submitter`; `C` opens to `amount` and `blinding`; `minBid ≤ amount ≤ maxBid`.
 4. A bid failing any check is **invalid**, with the reason, and attributable to its submitter's key. A bid whose envelope was not supplied is **unresolved**, and the auction then has no result.
@@ -216,7 +220,7 @@ A **statement** is text committed before a deadline and opened for everyone at a
 **Statement policy**, identified by `H("mattering/statement-policy/v1", canonical(policy))`:
 
 ```text
-{ format: "mattering.statement-policy/2", topic, beacon, closeRound, releaseRound, witness, origin, cosigners, cosignerThreshold }
+{ format: "mattering.statement-policy/3", topic, beacon, closeRound, releaseRound, witness, origin, logFrom, cosigners, cosignerThreshold }
 ```
 
 **Statement**, the sealed payload, at most 16,384 bytes as canonical JSON:

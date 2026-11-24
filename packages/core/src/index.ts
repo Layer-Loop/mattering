@@ -38,6 +38,8 @@ export { BLINDING_GENERATOR_HEX, commit, opensTo, randomBlinding } from "./commi
 export {
   CHECKPOINT_FORMAT,
   CLOSE_FORMAT,
+  closeEntry,
+  entryLeafHash,
   RECEIPT_FORMAT,
   SUBMISSION_FORMAT,
   Witness,
@@ -56,6 +58,7 @@ export {
   type LogEntry,
   type Receipt,
   type Submission,
+  type WitnessState,
 } from "./witness.ts";
 export {
   BID_FORMAT,
@@ -72,7 +75,7 @@ export {
   type BidOutcome,
   type PreparedBid,
 } from "./auction.ts";
-export { consistencyProof, inclusionProof, leafHash, merkleRoot, rootFromInclusionProof, verifyConsistency } from "./merkle.ts";
+export { MerkleTree, consistencyProof, inclusionProof, leafHash, merkleRoot, rootFromCompactRange, rootFromInclusionProof, verifyConsistency } from "./merkle.ts";
 export {
   COSIGNATURE_ED25519,
   SIGNATURE_ED25519,

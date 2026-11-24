@@ -51,7 +51,7 @@ export async function handleWitness(service: WitnessService, method: string, pat
       case "GET log": {
         const from = Number(query.get("from") ?? 0);
         if (!Number.isSafeInteger(from) || from < 0) throw new MatteringError("MALFORMED", "from: want a non-negative integer");
-        return ok(service.log(from));
+        return ok(await service.log(from));
       }
       case "GET checkpoint":
         return ok(await service.checkpoint());

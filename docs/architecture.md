@@ -31,7 +31,7 @@ In the auction, a **witness** sits between bidders and verifier. Bidders hand it
 | `seal.ts` | `seal`, `verifyEnvelope`, `open`, `verifyOpen` | No |
 | `signing.ts` | Ed25519 over labelled canonical hashes | No |
 | `commitment.ts` | Pedersen commitments on Ristretto255 | No |
-| `merkle.ts` | RFC 6962 tree hash and inclusion proofs | No |
+| `merkle.ts` | RFC 6962 tree hash, inclusion and consistency proofs, an incremental tree, and roots rebuilt from a compact prefix | No |
 | `witness.ts` | Submission, receipt and checkpoint formats and checks; an in-memory witness | No |
 | `evidence.ts` | Policy terms, counting witness cosignatures, shared evidence checks | No |
 | `note.ts` | C2SP signed notes, checkpoints and Ed25519 cosignatures, as public witnesses use them | No |
@@ -50,13 +50,15 @@ In the auction, a **witness** sits between bidders and verifier. Bidders hand it
 | --- | --- | --- |
 | Envelope file → verifier | Untrusted JSON | Strict parse; beacon matched against the verifier's own list |
 | Bidder → witness | A signed submission | Signature checked; the witness cannot read the bid |
-| Witness → verifier | Log and closing checkpoint | Root recomputed; checkpoint signature and cited beacon round checked |
+| Witness → verifier | The policy's stretch of the log, the prefix before it, and the closing checkpoint | Root rebuilt from the prefix and the entries; checkpoint signature and cited beacon round checked |
 | Relay → opener | A claimed signature | Verified against the beacon key before use, and again inside `tlock-js` |
 | Sealer → drand | Nothing. Sealing uses constants compiled into the package | The constants are drand's published quicknet parameters |
 
 ## The service
 
-`apps/witness` wraps the core's witness in an HTTP service with file storage, adds a cosigner service, and a client. Cosigners are reached with the C2SP tlog-witness protocol, so a public witness can take the place of the one here. Each cosigner keeps its own clock. See [service.md](service.md).
+`apps/witness` wraps the core's witness in an HTTP service with file storage, adds a cosigner service, and a client. One service runs one long-lived log shared by many policies, holding only leaf hashes and live policies in memory. Cosigners are reached with the C2SP tlog-witness protocol, so a public witness can take the place of the one here. Each cosigner keeps its own clock. See [service.md](service.md).
+
+The showcase (`apps/showcase`) runs its rooms on one such log through a small log host (`log-host.ts`): in the same process on a laptop, and on Cloudflare in one Durable Object that every room reaches. See [showcase.md](showcase.md).
 
 ```text
  bidders ── signed submission + envelope ──► witness service ──► receipt
@@ -71,7 +73,7 @@ In the auction, a **witness** sits between bidders and verifier. Bidders hand it
 
 | Component | Owned and run by |
 | --- | --- |
-| A deployed public witness and registry | Mattering |
+| A deployed public witness and registry | Mattering. The demonstration's shared log is the first step; it is not yet registered with any public witness |
 | Cosigners | Parties independent of Mattering |
 | Anchoring checkpoints to a public ledger | Mattering's witness |
 | Range proofs, recipient encryption, durable storage | Undecided; only if review supports them |

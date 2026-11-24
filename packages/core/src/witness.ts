@@ -12,7 +12,7 @@ import { isLowerHex, verifyRelease, type BeaconInfo, type Release } from "./beac
 import { canonicalBytes } from "./canonical.ts";
 import { isCommitment } from "./commitment.ts";
 import { MatteringError } from "./errors.ts";
-import { consistencyProof, inclusionProof, leafHash, merkleRoot, rootFromInclusionProof } from "./merkle.ts";
+import { MerkleTree, leafHash, merkleRoot, rootFromInclusionProof } from "./merkle.ts";
 import { SIGNATURE_ED25519, checkpointText, formatVkey, isKeyName, signNote, toBase64 } from "./note.ts";
 import { generateKeyPair, signCanonical, verifyCanonical, type KeyPair } from "./signing.ts";
 
@@ -96,6 +96,11 @@ export function submissionLeaf(entry: LogEntry): Uint8Array {
   return canonicalBytes(entry);
 }
 
+/** An entry's RFC 6962 leaf hash, lowercase hex: what a store keeps in place of the entry. */
+export function entryLeafHash(entry: LogEntry): string {
+  return bytesToHex(leafHash(submissionLeaf(entry)));
+}
+
 /** Root over a list of entries, in log order. */
 export function logRoot(entries: readonly LogEntry[]): string {
   return bytesToHex(merkleRoot(entries.map((e) => leafHash(submissionLeaf(e)))));
@@ -173,10 +178,28 @@ export function defaultOrigin(publicKey: string): string {
   return `mattering.invalid/log/${publicKey.slice(0, 16)}`;
 }
 
+/** The entry a witness appends when it closes a policy. */
+export function closeEntry(policyHash: string, closeRoundRelease: Release): CloseEntry {
+  return { format: CLOSE_FORMAT, policyHash, observed: closeRoundRelease };
+}
+
+/** What a witness resumes from: either the entries themselves, or only their leaf hashes. */
+export interface WitnessState {
+  entries?: readonly LogEntry[];
+  /** Leaf hashes in log order, lowercase hex. A witness resumed from these keeps no entries in memory. */
+  leafHashes?: readonly string[];
+  closings: Iterable<[string, Checkpoint]>;
+}
+
 /**
- * An in-memory witness. It appends valid submissions, hands out receipts, and
- * closes a policy when shown the beacon signature for that policy's close
- * round. It does not look inside envelopes and cannot: they are sealed.
+ * A witness. It appends valid submissions, hands out receipts, and closes a
+ * policy when shown the beacon signature for that policy's close round. It
+ * does not look inside envelopes and cannot: they are sealed.
+ *
+ * It keeps the log as a Merkle tree, so roots and proofs stay cheap as the log
+ * grows. Made from entries (or from nothing) it also keeps the entries; made
+ * from leaf hashes it keeps only those, and whoever stores the entries serves
+ * them.
  */
 export class Witness {
   readonly keys: KeyPair;
@@ -186,26 +209,46 @@ export class Witness {
    * and pick one after the bids open.
    */
   readonly origin: string;
-  private readonly log: LogEntry[] = [];
+  private readonly tree = new MerkleTree();
+  /** The entries, when this witness holds them. */
+  private readonly log: LogEntry[] | undefined;
   private readonly closed = new Map<string, Checkpoint>();
 
   /** Pass previously persisted state to resume a log. */
-  constructor(secretKey?: string, state?: { entries: readonly LogEntry[]; closings: Iterable<[string, Checkpoint]> }, origin?: string) {
+  constructor(secretKey?: string, state?: WitnessState, origin?: string) {
     this.keys = generateKeyPair(secretKey);
     this.origin = origin ?? defaultOrigin(this.keys.publicKey);
     if (!isKeyName(this.origin)) throw new MatteringError("MALFORMED", "origin: want a key name, such as example.com/log");
-    if (state) {
-      this.log.push(...state.entries.map((e) => ({ ...e })));
-      for (const [hash, checkpoint] of state.closings) this.closed.set(hash, checkpoint);
+    if (state?.leafHashes && state.entries) throw new MatteringError("MALFORMED", "witness state: entries or leaf hashes, not both");
+    if (state?.leafHashes) {
+      for (const hash of state.leafHashes) this.tree.append(hexToBytes(hash));
+    } else {
+      this.log = [];
+      for (const entry of state?.entries ?? []) this.append({ ...entry });
     }
+    for (const [hash, checkpoint] of state?.closings ?? []) this.closed.set(hash, checkpoint);
+  }
+
+  private append(entry: LogEntry): void {
+    this.log?.push(entry);
+    this.tree.append(leafHash(submissionLeaf(entry)));
   }
 
   get size(): number {
-    return this.log.length;
+    return this.tree.size;
   }
 
   closingOf(policyHash: string): Checkpoint | undefined {
     return this.closed.get(policyHash);
+  }
+
+  /**
+   * Stop remembering a closed policy, once whoever runs this witness keeps the
+   * closing elsewhere and refuses the policy's submissions itself. Without
+   * this a long-running witness would hold every closing it ever made.
+   */
+  forget(policyHash: string): void {
+    this.closed.delete(policyHash);
   }
 
   get publicKey(): string {
@@ -217,37 +260,55 @@ export class Witness {
     return formatVkey({ name: this.origin, type: SIGNATURE_ED25519, publicKey: this.publicKey });
   }
 
+  /** The log's root at `size` (default: now), lowercase hex. */
+  root(size = this.size): string {
+    if (!Number.isSafeInteger(size) || size < 0 || size > this.size) throw new MatteringError("MALFORMED", "size out of range");
+    return bytesToHex(this.tree.root(size));
+  }
+
+  /** The leaf hash of entry `index`, lowercase hex. */
+  leafHash(index: number): string {
+    return bytesToHex(this.tree.leaf(index));
+  }
+
+  /** The first `size` entries summarised: what evidence carries in place of them. */
+  prefix(size: number): string[] {
+    if (!Number.isSafeInteger(size) || size < 0 || size > this.size) throw new MatteringError("MALFORMED", "size out of range");
+    return this.tree.compactRange(size).map(bytesToHex);
+  }
+
   /** A C2SP checkpoint of the log at `size` (default: now), signed by this witness. */
-  logCheckpoint(size = this.log.length): string {
-    if (!Number.isSafeInteger(size) || size < 0 || size > this.log.length) throw new MatteringError("MALFORMED", "size out of range");
-    const text = checkpointText(this.origin, size, logRoot(this.log.slice(0, size)));
+  logCheckpoint(size = this.size): string {
+    const text = checkpointText(this.origin, size, this.root(size));
     return text + "\n" + signNote(text, this.origin, this.keys.secretKey);
   }
 
   /** RFC 6962 consistency proof between two sizes of this log, as base64 lines. */
-  consistency(oldSize: number, newSize = this.log.length): string[] {
-    if (!Number.isSafeInteger(newSize) || newSize > this.log.length) throw new MatteringError("MALFORMED", "size out of range");
-    return consistencyProof(this.log.slice(0, newSize).map((e) => leafHash(submissionLeaf(e))), oldSize).map(toBase64);
+  consistency(oldSize: number, newSize = this.size): string[] {
+    if (!Number.isSafeInteger(newSize) || newSize > this.size || !Number.isSafeInteger(oldSize) || oldSize < 0 || oldSize > newSize) {
+      throw new MatteringError("MALFORMED", "size out of range");
+    }
+    return this.tree.consistencyProof(oldSize, newSize).map(toBase64);
   }
 
-  /** The whole log, in order. Public. */
+  /** The whole log, in order. Public. Only for a witness that holds its entries. */
   entries(): LogEntry[] {
+    if (!this.log) throw new MatteringError("MALFORMED", "this witness keeps leaf hashes only; read entries from its store");
     return this.log.map((e) => ({ ...e }));
   }
 
   submit(submission: Submission): Receipt {
     if (!verifySubmissionSignature(submission)) throw new MatteringError("MALFORMED", "submission is malformed or its signature is invalid");
     if (this.closed.has(submission.policyHash)) throw new MatteringError("POLICY", "this policy is closed; the submission is late");
-    this.log.push({ ...submission });
-    const hashes = this.log.map((e) => leafHash(submissionLeaf(e)));
-    const index = this.log.length - 1;
+    this.append({ ...submission });
+    const index = this.size - 1;
     const unsigned: Omit<Receipt, "signature"> = {
       format: RECEIPT_FORMAT,
       witness: this.publicKey,
       index,
-      size: this.log.length,
-      root: bytesToHex(merkleRoot(hashes)),
-      proof: inclusionProof(hashes, index).map(bytesToHex),
+      size: this.size,
+      root: this.root(),
+      proof: this.tree.inclusionProof(index).map(bytesToHex),
     };
     return { ...unsigned, signature: signCanonical(RECEIPT_LABEL, unsigned, this.keys.secretKey) };
   }
@@ -255,7 +316,7 @@ export class Witness {
   /** Sign the current log state, citing a beacon round the witness has seen. */
   checkpoint(beacon: BeaconInfo, observed: Release, closes?: string): Checkpoint {
     if (!verifyRelease(beacon, observed)) throw new MatteringError("RELEASE_INVALID", "the witness will not cite an invalid beacon signature");
-    const base = { format: CHECKPOINT_FORMAT, witness: this.publicKey, size: this.log.length, root: logRoot(this.log), observed } as const;
+    const base = { format: CHECKPOINT_FORMAT, witness: this.publicKey, size: this.size, root: this.root(), observed } as const;
     const unsigned = closes === undefined ? base : { ...base, closes };
     return { ...unsigned, signature: signCanonical(CHECKPOINT_LABEL, unsigned, this.keys.secretKey) };
   }
@@ -270,7 +331,7 @@ export class Witness {
     const existing = this.closed.get(policyHash);
     if (existing) return existing;
     if (!verifyRelease(beacon, closeRoundRelease)) throw new MatteringError("RELEASE_INVALID", "the witness will not cite an invalid beacon signature");
-    this.log.push({ format: CLOSE_FORMAT, policyHash, observed: closeRoundRelease });
+    this.append(closeEntry(policyHash, closeRoundRelease));
     const checkpoint = this.checkpoint(beacon, closeRoundRelease, policyHash);
     this.closed.set(policyHash, checkpoint);
     return checkpoint;

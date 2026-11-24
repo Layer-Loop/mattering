@@ -56,6 +56,7 @@ const policy: AuctionPolicy = {
   releaseRound: 110,
   witness: witness.publicKey,
   origin: witness.origin,
+  logFrom: witness.size,
   cosigners: [],
   cosignerThreshold: 0,
   minBid: 100,

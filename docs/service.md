@@ -2,7 +2,7 @@
 
 A small HTTP service that keeps the witness log, enforces deadlines on the beacon's clock, collects cosignatures from transparency-log witnesses, stores envelopes, and publishes everything a verifier needs. The registry is the same service read as a public record.
 
-**Status: experimental and unreviewed.** It is tested on localhost against a simulated beacon. Its first run against live drand found a deadline bug, since fixed. Its only deployment is the demonstration at mattering.ai, where each visitor gets a throwaway instance; it has not been run as a shared, long-lived service.
+**Status: experimental and unreviewed.** It is tested on localhost against a simulated beacon. Its first run against live drand found a deadline bug, since fixed. It is built to run one log for a long time, shared by many policies, and the demonstration at mattering.ai is set up to do so (see [showcase.md](showcase.md)). It has not yet run that way for long, and no public witness cosigns it.
 
 ## Running it
 
@@ -43,15 +43,15 @@ Everything is JSON. Everything served is public, so there is no authentication; 
 | Request | Does |
 | --- | --- |
 | `GET /` | The witness's public key, the log's origin and verifier key, its beacon, and the log size |
-| `POST /policies` | Register a policy (an auction or a statement policy). Returns its hash |
-| `GET /policies` | List registered policies |
-| `GET /policies/<hash>/evidence` | Everything a verifier needs for that policy, as far as it exists: policy, log, closing checkpoint, the witnessed checkpoint with its cosignatures, envelopes, and the release signature once emitted |
+| `POST /policies` | Register a policy (an auction or a statement policy). Returns its hash. The policy's `logFrom` must be the log's size from `GET /`, or at most 10,000 entries behind it |
+| `GET /policies` | List live policies: open, or closed and not yet released |
+| `GET /policies/<hash>/evidence` | Everything a verifier needs for that policy, as far as it exists: policy, the log from its `logFrom` to its close with the prefix that stands for the entries before, closing checkpoint, the witnessed checkpoint with its cosignatures, envelopes, and the release signature once emitted |
 | `GET /policies/<hash>/result` | The outcome as the service computes it. A convenience; recompute it from the evidence |
 | `POST /submissions` | Body `{ submission, envelope }`. Returns a receipt, or refuses |
-| `GET /log?from=<n>` | Log entries from index `n`: submissions and close entries |
+| `GET /log?from=<n>` | Up to 1,000 log entries from index `n`: submissions and close entries |
 | `GET /checkpoint` | A signed checkpoint of the log as it is now |
 | `GET /envelopes/<id>` | One stored envelope |
-| `GET /submitters/<key>` | The registry view: every commitment by that key and, once released, what it opened to |
+| `GET /submitters/<key>` | The registry view: every commitment by that key and, once released, what it opened to. It reads the whole log, so it slows as the log grows |
 
 Errors come back as `{ error, code }` with status 400 (malformed), 404 (not found), 409 (refused by policy, including late submissions) or 503 (the beacon cannot be reached).
 
@@ -59,7 +59,7 @@ A cosigner speaks plain text, as [C2SP tlog-witness](https://c2sp.org/tlog-witne
 
 ## What the service checks before giving a receipt
 
-- The policy is registered, names this witness, and uses this witness's beacon.
+- The policy is registered, names this witness and its log, and uses this witness's beacon.
 - The submission is well-formed and signed.
 - The envelope is the one the submission names, is locked to the policy's release round on the policy's beacon, and carries the expected context.
 - The policy's close round has not been emitted as far as the service has seen, and is not yet due by the service's own clock and the beacon's schedule.
@@ -68,7 +68,9 @@ It does not and cannot check what is inside the envelope.
 
 ## State
 
-The service keeps its state through a small storage interface (`ServiceStore`), so the same code runs on a laptop and in a hosted runtime. Three stores exist:
+The service keeps its state through a small storage interface (`ServiceStore`), so the same code runs on a laptop and in a hosted runtime. So that one log can run for years, the service holds little in memory: the log's leaf hashes (32 bytes an entry, in a Merkle tree that keeps its subtree roots, so roots and proofs cost a few dozen hashes at any size) and the policies still live. Entries are read back from the store when evidence or the log is asked for, and a policy is retired from memory once it is released; its evidence is still served, from the store. Cosigners are asked once per checkpoint, however many policies are waiting for it.
+
+Three stores exist:
 
 | Store | Where | Used by |
 | --- | --- | --- |
@@ -81,8 +83,9 @@ The file store, under `MATTERING_DATA`:
 | File | Contents |
 | --- | --- |
 | `witness-key.json` | The signing key. Created on first run, readable only by its owner |
-| `log.jsonl` | One entry per line (a submission or a close entry), append-only |
+| `log.jsonl` | One entry per line (a submission or a close entry), append-only. Read once at start, for the leaf hashes and where each line begins |
 | `policies/<hash>.json` | Registered policies |
+| `retired/<hash>` | Marks a released policy, which is not loaded at start |
 | `envelopes/<id>.json` | Sealed envelopes |
 | `closings/<hash>.json` | Closing checkpoint and witnessed checkpoint per policy |
 
@@ -95,7 +98,7 @@ None of this is done:
 - **Key protection.** The signing key is a file on disk. Whoever reads it can forge receipts and checkpoints.
 - **Abuse limits.** Anyone can register policies and submit entries without limit. Requests are capped at 256 KB and nothing else.
 - **Durability.** One directory on one machine, with no backup or replication. Losing the envelopes makes their bids unresolvable.
-- **Scale.** The log is held in memory and the Merkle root is recomputed in full on every submission.
+- **Scale.** Measured on this machine, 100,000 entries held as objects took about 58 MB, which is why the service keeps only their hashes, about 3 MB. Nothing has been load-tested. A start reads every leaf hash, and the registry view reads the whole log.
 - **Transport.** Plain HTTP. Put it behind TLS.
 - **Operations.** No monitoring, no key rotation, no plan for what a compromised key means for past receipts.
 - **Independent cosigners.** The design needs cosigners run by other parties. The formats now allow witnesses on the public witness network to be those parties, but no log has been registered with that network, and no cosigner run by anyone else exists yet.

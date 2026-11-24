@@ -37,12 +37,12 @@ Three rules shaped it:
 
 **A witness and registry service**
 
-- An **HTTP service** that keeps the log, enforces deadlines, stores envelopes and publishes the evidence for anyone to check.
+- An **HTTP service** that keeps the log, enforces deadlines, stores envelopes and publishes the evidence for anyone to check. One log runs for a long time and carries many auctions; each auction's evidence covers only its own stretch of it.
 - **Cosigners**: independent parties who countersign the log, dated, before any bid can be read, so the witness cannot rewrite it or move the close afterwards. They speak the same protocol as the public transparency-log witness network (C2SP tlog-witness), though no public witness has been used yet.
 - **Sealed statements**: commit to a prediction or decision before a deadline; it opens for everyone at a set time.
 - A **registry view**: everything one key has committed to, and what each commitment opened to.
 
-The service runs the demo at mattering.ai, where each visitor gets a throwaway instance. It is still a proof of concept. Not yet built: range proofs, recipient encryption, durable storage. [docs/claims.md](docs/claims.md) lists every claim with its status.
+The service runs the demo at mattering.ai, where each visitor gets a room of their own and every room writes into one shared log. It is still a proof of concept. Not yet built: range proofs, recipient encryption, durable storage. [docs/claims.md](docs/claims.md) lists every claim with its status.
 
 ## See it
 
@@ -133,7 +133,7 @@ The full list is in [docs/threat-model.md](docs/threat-model.md).
 | `apps/cloudflare` | The same room as a Cloudflare Worker, for the website |
 | `examples/agent-auction` | Three agents, one auction, and a standalone verifier |
 | `examples/hosted-registry` | The same through the hosted service, plus sealed predictions |
-| `tests` | 65 tests: sealing, tampering, replay, early opening, cheating bidders, a cheating witness, a cheating coordinator, the witness protocol and its formats, and the service over HTTP |
+| `tests` | 71 tests: sealing, tampering, replay, early opening, cheating bidders, a cheating witness, a cheating coordinator, the witness protocol and its formats, the service over HTTP, and one log shared by many auctions |
 | `docs/protocol.md` | The envelope, submission, log, auction and statement formats |
 | `docs/service.md` | Running the witness service, its interface, and what it lacks |
 | `docs/showcase.md` | The demonstration page: what is real and what is staged |

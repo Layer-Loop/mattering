@@ -49,6 +49,7 @@ Mattering has no mitigation for any of these. A use that cannot accept them shou
 5. **The chain hash is not recomputed** from the beacon parameters. Beacons are accepted by exact match against a pinned list.
 6. **Cosigners are trusted, not proven, to sign before release.** The time on a cosignature is the cosigner's own statement. A policy with no cosigners trusts the witness completely.
 7. **A cosigner's clock is part of the trust.** One whose clock runs slow, or an attacker who controls that clock, can make a late cosignature look early.
-8. **The service is not hardened.** Its key is a file, it has no abuse limits, and its only deployment is a demonstration with throwaway instances. See [service.md](service.md).
+8. **The service is not hardened.** Its key is a file or a deployment secret, it has no abuse limits beyond the demonstration's, and its only deployment is the demonstration, whose log has not yet run for long. See [service.md](service.md).
 9. **Timing.** No attempt has been made at constant-time behaviour beyond what the libraries do. Opening only handles public inputs, so this is believed not to matter, but it has not been examined.
 10. **No public witness has been used.** The formats are those of the public witness network, but no Mattering log is registered with it, ML-DSA-44 cosignatures are not supported, and the only cosigners that have run are this repository's own.
+11. **Evidence leaves out the log before a policy.** A policy's evidence carries the entries from its `logFrom` on and only hashes for those before. The argument that nothing relevant can be in the part left out is in [protocol.md](protocol.md) section 6; it is unreviewed.

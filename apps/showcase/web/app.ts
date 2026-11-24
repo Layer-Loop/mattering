@@ -39,6 +39,8 @@ interface RunState {
 }
 interface State {
   mode: "live" | "simulated";
+  /** The cosigner run beside the log, if the auction names it: not independent. */
+  ownCosigner?: string;
   beacon: BeaconInfo;
   slot: { title: string; detail: string; minBid: number; maxBid: number };
   serverTime: number;
@@ -141,6 +143,15 @@ function render(): void {
     state.mode === "live"
       ? "The drand network, run by a group of independent organisations. If enough of them colluded, bids could be opened early."
       : "In this offline mode the clock is simulated on this machine, so whoever runs the machine could open bids early. Online, it is the public drand network.";
+  // Pages that say who cosigns in their own words have no such element.
+  const trustCosigners = document.getElementById("trust-cosigners");
+  if (run && trustCosigners) {
+    const names = run.auction.cosigners.map((vkey) => vkey.slice(0, vkey.indexOf("+")));
+    trustCosigners.textContent =
+      state.ownCosigner && run.auction.cosigners.includes(state.ownCosigner)
+        ? "to be independent of the auctioneer. In this demonstration the cosigner runs on the same machine as the auctioneer, so it is not."
+        : `to be independent of the auctioneer and of each other. This auction is cosigned by ${names.join(", ")}.`;
+  }
   $<HTMLButtonElement>("start").textContent = run ? "Start a new auction" : "Start the auction";
   for (const id of ["clock", "bids-section", "cheat-section", "verify-section"]) {
     const el = $(id);
@@ -320,10 +331,10 @@ const cheats: Record<string, (run: RunState) => Promise<void>> = {
   },
   async rewrite(run) {
     if (run.phase !== "released") return setOut("out-rewrite", "wait", "This cheat only makes sense once the bids can be read. Try again after they open.");
-    const { json } = await getJson<{ shillAmount: number; cosignerSaid: string; evidence: AuctionInputs }>("/demo/forge", {});
+    const { json } = await getJson<{ shillAmount: number; evidence: AuctionInputs }>("/demo/forge", {});
     const result = await verifyAuction(json.evidence, verifier());
     if (result.ok) setOut("out-rewrite", "alarm", "The rewritten list was accepted. This should not be possible.");
-    else setOut("out-rewrite", "refused", `Rejected. The auctioneer added a bid of ${pounds(json.shillAmount)} and signed a new list with its real key. This browser refused it: the cosigner countersigned the original list before any bid could be read${json.cosignerSaid.startsWith("refused") ? ", and refused to countersign a list that rewrites it" : ", and any countersignature given now is dated after the bids opened"}.`);
+    else setOut("out-rewrite", "refused", `Rejected. The auctioneer added a bid of ${pounds(json.shillAmount)} and signed a new list with its real key. This browser refused it: the cosigners countersigned the original list before any bid could be read, and the new list does not extend it. A countersignature given now would be dated after the bids opened.`);
   },
   async winner(run) {
     const result = outcome?.runId === run.id ? outcome : undefined;

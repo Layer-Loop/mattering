@@ -14,7 +14,7 @@ import type { KeyPair } from "./signing.ts";
 import { assertTerms, verifyEvidence, type PolicyTerms, type WitnessedCheckpoint } from "./evidence.ts";
 import { signSubmission, verifySubmissionSignature, type Checkpoint, type LogEntry, type Submission } from "./witness.ts";
 
-export const POLICY_FORMAT = "mattering.auction-policy/2";
+export const POLICY_FORMAT = "mattering.auction-policy/3";
 export const BID_FORMAT = "mattering.bid/1";
 const POLICY_LABEL = "mattering/auction-policy/v1";
 const TIE_BREAK_LABEL = "mattering/tie-break/v1";
@@ -30,7 +30,7 @@ export interface AuctionPolicy extends PolicyTerms {
 
 export function assertPolicy(policy: AuctionPolicy): void {
   const keys = Object.keys(policy).sort().join(",");
-  if (keys !== "auctionId,beacon,closeRound,cosignerThreshold,cosigners,format,maxBid,minBid,origin,releaseRound,rule,tieBreak,witness") throw new MatteringError("MALFORMED", `policy: unexpected fields (${keys})`);
+  if (keys !== "auctionId,beacon,closeRound,cosignerThreshold,cosigners,format,logFrom,maxBid,minBid,origin,releaseRound,rule,tieBreak,witness") throw new MatteringError("MALFORMED", `policy: unexpected fields (${keys})`);
   if (policy.format !== POLICY_FORMAT) throw new MatteringError("MALFORMED", "policy.format");
   if (typeof policy.auctionId !== "string" || policy.auctionId === "") throw new MatteringError("MALFORMED", "policy.auctionId");
   assertTerms(policy);
@@ -117,8 +117,10 @@ export interface BidOutcome {
 
 export interface AuctionInputs {
   policy: AuctionPolicy;
-  /** The witness's log, in order, at least up to the closing checkpoint's size. */
+  /** The witness's log in order, from the policy's `logFrom` at least up to the closing checkpoint's size. */
   entries: readonly LogEntry[];
+  /** The log before `logFrom`, as its compact range. Absent when `logFrom` is 0. */
+  prefix?: readonly string[] | undefined;
   closing: Checkpoint;
   /** Witness cosignatures on the log at or after the closing checkpoint, if the policy requires any. */
   witnessed?: WitnessedCheckpoint | undefined;
