@@ -11,13 +11,13 @@ Mattering uses existing cryptography. The time lock is [drand](https://drand.lov
 
 ## How it was built
 
-Mattering was conceived and directed by Johannes Smith, and implemented in Typescript and NPM with the support of Claude Code.   
+Mattering was conceived and directed by Johannes Smith, and implemented in TypeScript with the support of Claude Code.
 
 Three rules shaped it:
 
-1. **No new cryptography.** Established libraries only. Where the project had to compose them itself, or is marked for review ([docs/research-questions.md](docs/research-questions.md)).
+1. **No new cryptography.** Established libraries only. Where the project had to compose them itself, the composition is marked for review ([docs/research-questions.md](docs/research-questions.md)).
 2. **Every claim has a test, or is marked as not made.** [docs/claims.md](docs/claims.md) lists each (and what it rests on).
-3. **Limits are clearly stated**, including on the demon page.
+3. **Limits are clearly stated**, including on the demo page.
 
 ## Current features
 
