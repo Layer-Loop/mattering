@@ -68,7 +68,7 @@ What the model can and cannot do:
 - **If it is slow, fails or declines**, the script decides for that agent, and the page says "Bid chosen by a script".
 - **Its decisions are held in memory only** until they are sealed, and are not stored.
 
-The request to the model is covered by a test against a stand-in for the API (`tests/showcase.test.ts`). It was run by hand against the real API on 2026-11-24 with `claude-opus-5-5` and worked. Nothing checks the real API automatically, and the current default model has not been run against it yet.
+The request to the model is covered by a test against a stand-in for the API (`tests/showcase.test.ts`). It was run by hand against the real API on 2026-11-24, with `claude-opus-5-5` and then with the current default, and worked. Nothing checks the real API automatically.
 
 ## On the website
 

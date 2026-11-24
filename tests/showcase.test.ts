@@ -37,7 +37,7 @@ test("showcase: agents bid, a visitor joins, cheats fail, and the page's own ver
     const run = started.run!;
     const verifier = { acceptedBeacons: [started.beacon] };
     const visitor = generateKeyPair();
-    const mine = await prepareBid(run.auction, 990_000, visitor);
+    const mine = await prepareBid(run.auction, run.auction.maxBid, visitor);
     assert.equal((await get("/api/submissions", mine)).status, 200);
     await until((s) => s.run!.agents.every((a) => a.submitted));
     assert.equal((await get("/demo/forge", {})).status, 409, "no rewriting before release");
@@ -136,10 +136,10 @@ test("showcase: without a model the scripts decide", async () => {
 });
 
 test("a model's answer is accepted only if it is a whole amount in range with a rationale", () => {
-  const ok = { bid: 250_000, prediction: "We think this wins." };
+  const ok = { bid: 600_000, prediction: "We think this wins." };
   assert.deepEqual(acceptDecision(SLOT, ok), ok);
   assert.equal(acceptDecision(SLOT, { ...ok, bid: SLOT.maxBid })?.bid, SLOT.maxBid);
-  for (const bad of [null, "250000", [], { bid: 250_000 }, { ...ok, bid: "250000" }, { ...ok, bid: 250_000.5 }, { ...ok, bid: SLOT.minBid - 1 }, { ...ok, bid: SLOT.maxBid + 1 }, { ...ok, bid: -1 }, { ...ok, bid: Number.NaN }, { ...ok, prediction: "   " }, { ...ok, prediction: 7 }]) {
+  for (const bad of [null, "600000", [], { bid: 600_000 }, { ...ok, bid: "600000" }, { ...ok, bid: 600_000.5 }, { ...ok, bid: SLOT.minBid - 1 }, { ...ok, bid: SLOT.maxBid + 1 }, { ...ok, bid: -1 }, { ...ok, bid: Number.NaN }, { ...ok, prediction: "   " }, { ...ok, prediction: 7 }]) {
     assert.equal(acceptDecision(SLOT, bad), undefined, JSON.stringify(bad));
   }
   const long = acceptDecision(SLOT, { ...ok, prediction: "x".repeat(5000) })!;
@@ -160,7 +160,7 @@ test("the Claude decider sends one well-formed request and reads the answer; fai
         response.writeHead(401, { "content-type": "application/json" });
         return response.end(JSON.stringify({ type: "error", error: { type: "authentication_error", message: "invalid x-api-key" } }));
       }
-      const text = mode === "prose" ? "I would bid about four hundred thousand." : JSON.stringify({ bid: 412_000, rationale: "We bid what the forecast supports." });
+      const text = mode === "prose" ? "I would bid about four hundred thousand." : JSON.stringify({ bid: 512_000, rationale: "We bid what the forecast supports." });
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({ id: "msg_test", type: "message", role: "assistant", model: "claude-haiku-5-5", content: mode === "refusal" ? [] : [{ type: "text", text }], stop_reason: mode === "refusal" ? "refusal" : "end_turn", stop_sequence: null, usage: { input_tokens: 10, output_tokens: 10 } }));
     });
@@ -169,7 +169,7 @@ test("the Claude decider sends one well-formed request and reads the answer; fai
   try {
     const decide = claudeDecider({ apiKey: "test-key", baseURL: `http://127.0.0.1:${(api.address() as AddressInfo).port}`, timeoutMs: 3000 });
     const agent = AGENTS[1]!;
-    assert.deepEqual(await decide(agent, SLOT, 500_000), { bid: 412_000, prediction: "We bid what the forecast supports." });
+    assert.deepEqual(await decide(agent, SLOT, 650_000), { bid: 512_000, prediction: "We bid what the forecast supports." });
     assert.equal(requests.length, 1);
     const sent = requests[0]!;
     assert.match(sent.path, /\/v1\/messages/);
@@ -181,7 +181,7 @@ test("the Claude decider sends one well-formed request and reads the answer; fai
     assert.equal(sent.body.thinking, undefined, "thinking is left to the model's default");
     assert.equal(sent.body.temperature, undefined);
     const prompt = JSON.stringify([sent.body.system, sent.body.messages]);
-    assert.ok(prompt.includes("Company B") && prompt.includes("£500,000") && prompt.includes("£100,000") && prompt.includes("£1,000,000"));
+    assert.ok(prompt.includes("Company B") && prompt.includes("£650,000") && prompt.includes("£400,000") && prompt.includes("£800,000"));
     const quiet = console.error;
     console.error = () => {};
     try {

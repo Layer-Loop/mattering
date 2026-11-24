@@ -17,8 +17,8 @@ export interface Slot {
 export const SLOT: Slot = {
   title: "Exclusive advertising package, one quarter",
   detail: "Exclusive category sponsorship across a national media network for three months.",
-  minBid: 100_000,
-  maxBid: 1_000_000,
+  minBid: 400_000,
+  maxBid: 800_000,
 };
 
 export interface Decision {
@@ -78,9 +78,9 @@ export const AGENTS: Agent[] = [
     tagline: "A market leader planning a major launch this quarter.",
     persona: "a market-leading consumer brand with a major product launch this quarter. Winning this package matters a great deal to the launch, and the budget is generous.",
     series: 1,
-    ceiling: [620_000, 900_000],
+    ceiling: [640_000, 780_000],
     script: (_slot, ceiling, random) => {
-      const bid = round(ceiling * (0.84 + random() * 0.08));
+      const bid = round(ceiling * (0.86 + random() * 0.08));
       return { bid, prediction: `We are bidding ${pounds(bid)} and expect to win. This quarter matters more to us than to anyone else in the room.` };
     },
   },
@@ -89,7 +89,7 @@ export const AGENTS: Agent[] = [
     tagline: "A returns-led advertiser that bids what the numbers support.",
     persona: "a disciplined, returns-led advertiser. It bids what its forecast return supports and would sooner lose than overpay.",
     series: 2,
-    ceiling: [450_000, 720_000],
+    ceiling: [560_000, 700_000],
     script: (_slot, ceiling, random) => {
       const bid = round(ceiling * (0.88 + random() * 0.07));
       return { bid, prediction: `Our forecast return supports ${pounds(bid)} and no more. A bidder buying for brand reasons will probably go higher.` };
@@ -98,12 +98,12 @@ export const AGENTS: Agent[] = [
   {
     name: "Company C",
     tagline: "A challenger with a smaller budget, hoping for a bargain.",
-    persona: "a challenger brand with a much smaller budget than its rivals. It can only win if the others bid cautiously, and it knows that.",
+    persona: "a challenger brand with a smaller budget than its rivals. It can only win if the others bid cautiously, and it knows that.",
     series: 3,
-    ceiling: [160_000, 320_000],
+    ceiling: [470_000, 580_000],
     script: (slot, ceiling, random) => {
-      const bid = Math.max(slot.minBid, round(ceiling * (0.78 + random() * 0.12)));
-      return { bid, prediction: `A long shot at ${pounds(bid)}. We expect the winning bid to be more than twice ours.` };
+      const bid = Math.max(slot.minBid, round(ceiling * (0.88 + random() * 0.08)));
+      return { bid, prediction: `A long shot at ${pounds(bid)}. We expect at least one rival to bid well above us.` };
     },
   },
 ];
