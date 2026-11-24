@@ -162,7 +162,7 @@ test("the Claude decider sends one well-formed request and reads the answer; fai
       }
       const text = mode === "prose" ? "I would bid about four hundred thousand." : JSON.stringify({ bid: 412_000, rationale: "We bid what the forecast supports." });
       response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ id: "msg_test", type: "message", role: "assistant", model: "claude-opus-5-5", content: mode === "refusal" ? [] : [{ type: "text", text }], stop_reason: mode === "refusal" ? "refusal" : "end_turn", stop_sequence: null, usage: { input_tokens: 10, output_tokens: 10 } }));
+      response.end(JSON.stringify({ id: "msg_test", type: "message", role: "assistant", model: "claude-haiku-5-5", content: mode === "refusal" ? [] : [{ type: "text", text }], stop_reason: mode === "refusal" ? "refusal" : "end_turn", stop_sequence: null, usage: { input_tokens: 10, output_tokens: 10 } }));
     });
   });
   await new Promise<void>((resolve) => api.listen(0, "127.0.0.1", resolve));
@@ -174,7 +174,8 @@ test("the Claude decider sends one well-formed request and reads the answer; fai
     const sent = requests[0]!;
     assert.match(sent.path, /\/v1\/messages/);
     assert.equal(sent.key, "test-key");
-    assert.equal(sent.body.model, "claude-opus-5-5");
+    assert.equal(sent.body.model, "claude-haiku-5-5");
+    assert.equal(sent.body.fallbacks, undefined, "no server-side fallback is offered for this model");
     assert.equal((sent.body.output_config as { effort: string; format: { type: string } }).effort, "low");
     assert.equal((sent.body.output_config as { format: { type: string } }).format.type, "json_schema");
     assert.equal(sent.body.thinking, undefined, "thinking is left to the model's default");

@@ -59,7 +59,7 @@ Each agent acts for one company: a description, and a ceiling on what it will pa
 ANTHROPIC_API_KEY=... npm run showcase
 ```
 
-`MATTERING_MODEL` chooses the model; the default is `claude-opus-5-5`. Three requests are made per auction, one per agent, at low effort.
+`MATTERING_MODEL` chooses the model; the default is `claude-haiku-5-5`, the smallest and cheapest current Claude model, which is enough for choosing a bid. Three requests are made per auction, one per agent, at low effort.
 
 What the model can and cannot do:
 
@@ -68,7 +68,7 @@ What the model can and cannot do:
 - **If it is slow, fails or declines**, the script decides for that agent, and the page says "Bid chosen by a script".
 - **Its decisions are held in memory only** until they are sealed, and are not stored.
 
-The request to the model is covered by a test against a stand-in for the API (`tests/showcase.test.ts`). The author had no API key or network access to the real API, so whether the real API accepts the request as written is shown only by running it with a key.
+The request to the model is covered by a test against a stand-in for the API (`tests/showcase.test.ts`). It was run by hand against the real API on 2026-11-24 with `claude-opus-5-5` and worked. Nothing checks the real API automatically, and the current default model has not been run against it yet.
 
 ## On the website
 

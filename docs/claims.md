@@ -82,7 +82,7 @@ Tests are in `tests/service.test.ts`, over HTTP on localhost with a simulated be
 | 34 | A visitor's bid amount never reaches the server | The bid is sealed in the browser before it is sent | Same | Shown by hand |
 | 35 | Each cheat button makes a real attempt | The buttons call the library and the service; see [showcase.md](showcase.md) | `tests/showcase.test.ts` covers the late bid and the rewritten log | Shown |
 
-| 36 | A language model can choose what a demo agent bids, and nothing more | Its answer is accepted only as an in-range whole amount and a sentence; otherwise a script decides | `tests/showcase.test.ts` (four tests) | Shown with a stand-in model. The request to the real Claude API is tested against a stand-in server only; **not yet run against the real API** |
+| 36 | A language model can choose what a demo agent bids, and nothing more | Its answer is accepted only as an in-range whole amount and a sentence; otherwise a script decides | `tests/showcase.test.ts` (four tests) | Shown with a stand-in model, and the request is tested against a stand-in server. Run by hand against the real Claude API on 2026-11-24 with `claude-opus-5-5`, and worked. The default has since changed to `claude-haiku-5-5`, which has **not yet been run against the real API** |
 
 ## Not claimed
 

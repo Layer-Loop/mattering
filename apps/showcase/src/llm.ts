@@ -8,7 +8,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Decider } from "./agents.ts";
 
-export const DEFAULT_MODEL = "claude-opus-5-5";
+export const DEFAULT_MODEL = "claude-haiku-5-5";
 /** Models for which the API can retry a declined request on another model. */
 const WITH_FALLBACK = /^claude-(opus-5|sonnet-5-5|fable-5)/;
 
