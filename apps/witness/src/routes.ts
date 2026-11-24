@@ -3,12 +3,15 @@
  * status and JSON out. No server here, so it mounts in Node or anywhere else.
  * Everything served is public; submissions authenticate themselves by signature.
  */
-import { MatteringError, type Checkpoint, type Cosigner, type Envelope, type PolicyTerms, type Submission } from "@mattering/core";
+import { MatteringError, type Cosigner, type Envelope, type Submission } from "@mattering/core";
 import type { WitnessService } from "./service.ts";
 
 export interface Reply {
   status: number;
+  /** JSON, unless `text` is set. */
   body: unknown;
+  /** A plain-text body instead, with its content type. The witness protocol is text. */
+  text?: { body: string; contentType: string };
 }
 
 /** Largest request body accepted, in bytes. */
@@ -64,15 +67,16 @@ export async function handleWitness(service: WitnessService, method: string, pat
   }
 }
 
-export async function handleCosigner(cosigner: Cosigner, method: string, path: string, body: () => Promise<unknown>, onSigned?: () => void): Promise<Reply> {
+/**
+ * A cosigner: `POST /add-checkpoint` as in C2SP tlog-witness, plain text in
+ * and out, and `GET /` to say who it is.
+ */
+export async function handleCosigner(cosigner: Cosigner, method: string, path: string, text: () => Promise<string>): Promise<Reply> {
   try {
-    if (method === "GET" && path === "/") return { status: 200, body: { service: "mattering-cosigner", notice: "Experimental. Not security reviewed.", cosigner: cosigner.publicKey } };
-    if (method === "POST" && path === "/cosign") {
-      const value = (await body()) as { policyHash?: string; policy?: PolicyTerms; closing?: Checkpoint } | null;
-      if (!value?.policyHash || !value.policy || !value.closing) throw new MatteringError("MALFORMED", "want { policyHash, policy, closing }");
-      const cosignature = await cosigner.cosign(value.policyHash, value.policy, value.closing);
-      onSigned?.();
-      return { status: 200, body: cosignature };
+    if (method === "GET" && path === "/") return { status: 200, body: { service: "mattering-cosigner", notice: "Experimental. Not security reviewed.", vkey: cosigner.vkey } };
+    if (method === "POST" && path === "/add-checkpoint") {
+      const reply = await cosigner.addCheckpoint(await text());
+      return { status: reply.status, body: undefined, text: { body: reply.body, contentType: reply.contentType } };
     }
     return NO_ROUTE;
   } catch (error) {

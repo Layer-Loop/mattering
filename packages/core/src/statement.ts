@@ -14,7 +14,7 @@ import { open, seal, verifyEnvelope, type Check, type VerifierPolicy } from "./s
 import type { KeyPair } from "./signing.ts";
 import { signSubmission, verifySubmissionSignature, type Submission } from "./witness.ts";
 
-export const STATEMENT_POLICY_FORMAT = "mattering.statement-policy/1";
+export const STATEMENT_POLICY_FORMAT = "mattering.statement-policy/2";
 export const STATEMENT_FORMAT = "mattering.statement/1";
 const STATEMENT_POLICY_LABEL = "mattering/statement-policy/v1";
 /** Longest statement, in UTF-8 bytes. */
@@ -28,7 +28,7 @@ export interface StatementPolicy extends PolicyTerms {
 
 export function assertStatementPolicy(policy: StatementPolicy): void {
   const keys = Object.keys(policy).sort().join(",");
-  if (keys !== "beacon,closeRound,cosignerThreshold,cosigners,format,releaseRound,topic,witness") throw new MatteringError("MALFORMED", `policy: unexpected fields (${keys})`);
+  if (keys !== "beacon,closeRound,cosignerThreshold,cosigners,format,origin,releaseRound,topic,witness") throw new MatteringError("MALFORMED", `policy: unexpected fields (${keys})`);
   if (policy.format !== STATEMENT_POLICY_FORMAT) throw new MatteringError("MALFORMED", "policy.format");
   if (typeof policy.topic !== "string" || policy.topic === "") throw new MatteringError("MALFORMED", "policy.topic");
   assertTerms(policy);

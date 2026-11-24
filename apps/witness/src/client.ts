@@ -1,5 +1,5 @@
 /** A small client for the witness service's HTTP interface. */
-import { MatteringError, type Checkpoint, type Cosignature, type Envelope, type MatteringErrorCode, type Receipt, type Submission } from "@mattering/core";
+import { MatteringError, type Checkpoint, type Envelope, type LogEntry, type MatteringErrorCode, type Receipt, type Submission } from "@mattering/core";
 import type { AnyPolicy, CosignRequest, EvidenceBundle } from "./service.ts";
 
 export class WitnessClient {
@@ -17,17 +17,21 @@ export class WitnessClient {
   submit = (submission: Submission, envelope: Envelope) => this.call<Receipt>("/submissions", { submission, envelope });
   evidence = (policyHash: string) => this.call<EvidenceBundle>(`/policies/${policyHash}/evidence`);
   result = (policyHash: string) => this.call<{ state: string; kind: string; result?: unknown }>(`/policies/${policyHash}/result`);
-  log = (from = 0) => this.call<{ size: number; entries: Submission[] }>(`/log?from=${from}`);
+  log = (from = 0) => this.call<{ size: number; entries: LogEntry[] }>(`/log?from=${from}`);
   checkpoint = () => this.call<Checkpoint>("/checkpoint");
   submitter = (key: string) => this.call<{ submitter: string; commitments: Record<string, unknown>[] }>(`/submitters/${key}`);
 }
 
-/** Reach cosigners over HTTP, given where each one lives. */
+/**
+ * Reach cosigners over HTTP, given each one's verifier key and submission
+ * prefix: `<prefix>/add-checkpoint` as in C2SP tlog-witness. Works the same for
+ * a Mattering cosigner and for a public witness.
+ */
 export function httpCosign(urls: Record<string, string>, fetchFn: typeof fetch = fetch): CosignRequest {
-  return async (cosigner, policyHash, policy, closing) => {
+  return async (cosigner, body) => {
     const url = urls[cosigner];
     if (!url) return undefined;
-    const response = await fetchFn(url.replace(/\/+$/, "") + "/cosign", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ policyHash, policy, closing }), signal: AbortSignal.timeout(10_000) });
-    return response.ok ? ((await response.json()) as Cosignature) : undefined;
+    const response = await fetchFn(url.replace(/\/+$/, "") + "/add-checkpoint", { method: "POST", body, signal: AbortSignal.timeout(10_000) });
+    return { status: response.status, body: await response.text() };
   };
 }

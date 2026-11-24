@@ -1,16 +1,16 @@
 /**
  * The part of verification every witnessed policy shares: is the published
- * evidence (log, closing checkpoint, cosignatures, release) valid, and which
- * entries were on time?
+ * evidence (log, closing checkpoint, witness cosignatures, release) valid, and
+ * which entries were on time?
  */
-import { bytesToHex } from "@noble/hashes/utils";
-import { assertBeaconInfo, assertRound, isLowerHex, sameBeacon, verifyRelease, type BeaconInfo, type Release } from "./beacon.ts";
-import { hashCanonical } from "./canonical.ts";
+import { hexToBytes } from "@noble/hashes/utils";
+import { assertBeaconInfo, assertRound, sameBeacon, timeOfRound, verifyRelease, type BeaconInfo, type Release } from "./beacon.ts";
 import { MatteringError } from "./errors.ts";
+import { verifyConsistency } from "./merkle.ts";
+import { cosignatureTime, fromBase64, isKeyName, parseCheckpointText, parseNote, parseVkey, type NoteKey } from "./note.ts";
 import type { Check, VerifierPolicy } from "./seal.ts";
-import { signCanonical, verifyCanonical, generateKeyPair, type KeyPair } from "./signing.ts";
-import { deadlineRound, type BeaconSource } from "./source.ts";
-import { logRoot, verifyCheckpointSignature, type Checkpoint, type Submission } from "./witness.ts";
+import { isLowerHex } from "./beacon.ts";
+import { isCloseEntry, isSubmission, logRoot, verifyCheckpointSignature, type Checkpoint, type LogEntry, type Submission } from "./witness.ts";
 
 /** The fields every policy has, whatever it is a policy for. */
 export interface PolicyTerms {
@@ -21,13 +21,18 @@ export interface PolicyTerms {
   releaseRound: number;
   /** The witness's Ed25519 public key. */
   witness: string;
-  /** Independent parties who must countersign the closing checkpoint before release. */
+  /** The witness's log, by its C2SP origin line. */
+  origin: string;
+  /**
+   * Independent witnesses, as C2SP verifier keys, who must cosign the log at
+   * or after the closing checkpoint, timestamped before the release round.
+   */
   cosigners: string[];
-  /** How many of `cosigners` must have signed. 0 means the witness is trusted alone. */
+  /** How many of `cosigners` must have cosigned. 0 means the witness is trusted alone. */
   cosignerThreshold: number;
 }
 
-export const TERMS_KEYS = ["beacon", "closeRound", "cosignerThreshold", "cosigners", "releaseRound", "witness"] as const;
+export const TERMS_KEYS = ["beacon", "closeRound", "cosignerThreshold", "cosigners", "origin", "releaseRound", "witness"] as const;
 
 export function assertTerms(terms: PolicyTerms): void {
   assertBeaconInfo(terms.beacon, "policy.beacon");
@@ -35,100 +40,84 @@ export function assertTerms(terms: PolicyTerms): void {
   assertRound(terms.releaseRound, "policy.releaseRound");
   if (terms.releaseRound <= terms.closeRound) throw new MatteringError("MALFORMED", "policy: releaseRound must be after closeRound");
   if (!isLowerHex(terms.witness, 32)) throw new MatteringError("MALFORMED", "policy.witness");
-  if (!Array.isArray(terms.cosigners) || !terms.cosigners.every((c) => isLowerHex(c, 32)) || new Set(terms.cosigners).size !== terms.cosigners.length) {
-    throw new MatteringError("MALFORMED", "policy.cosigners: want distinct public keys");
-  }
-  if (terms.cosigners.includes(terms.witness)) throw new MatteringError("MALFORMED", "policy.cosigners: the witness cannot cosign for itself");
-  if (!Number.isSafeInteger(terms.cosignerThreshold) || terms.cosignerThreshold < 0 || terms.cosignerThreshold > terms.cosigners.length) {
+  if (!isKeyName(terms.origin)) throw new MatteringError("MALFORMED", "policy.origin: want a log origin, such as example.com/log");
+  if (!Array.isArray(terms.cosigners)) throw new MatteringError("MALFORMED", "policy.cosigners: want verifier keys");
+  const keys = terms.cosigners.map(parseVkey);
+  if (new Set(keys.map((k) => `${k.name} ${k.publicKey}`)).size !== keys.length) throw new MatteringError("MALFORMED", "policy.cosigners: want distinct keys");
+  if (keys.some((k) => k.publicKey === terms.witness)) throw new MatteringError("MALFORMED", "policy.cosigners: the witness cannot cosign for itself");
+  if (!Number.isSafeInteger(terms.cosignerThreshold) || terms.cosignerThreshold < 0 || terms.cosignerThreshold > keys.length) {
     throw new MatteringError("MALFORMED", "policy.cosignerThreshold");
   }
+  // A witness that shows one version of its log to some cosigners and another
+  // to the rest could otherwise collect a full set of cosignatures for each.
+  if (keys.length > 0 && terms.cosignerThreshold * 2 <= keys.length) {
+    throw new MatteringError("MALFORMED", "policy.cosignerThreshold: must be more than half of the cosigners");
+  }
 }
 
-// --- cosignatures ------------------------------------------------------------
-
-export const COSIGNATURE_FORMAT = "mattering.cosignature/1";
-const COSIGNATURE_LABEL = "mattering/cosignature/v1";
-const CHECKPOINT_ID_LABEL = "mattering/checkpoint-id/v1";
-
-export function checkpointId(checkpoint: Checkpoint): string {
-  return bytesToHex(hashCanonical(CHECKPOINT_ID_LABEL, checkpoint));
-}
+// --- witness cosignatures ----------------------------------------------------
 
 /**
- * A cosigner's statement: "I was shown this closing checkpoint, and the latest
- * beacon round I had seen at that moment was `observed`."
+ * Evidence that independent witnesses saw the log, at or after the closing
+ * checkpoint, before the bids could be read.
  */
-export interface Cosignature {
-  format: typeof COSIGNATURE_FORMAT;
-  cosigner: string;
+export interface WitnessedCheckpoint {
+  /** A C2SP checkpoint of the policy's log with its witnesses' cosignature lines. */
   checkpoint: string;
-  observed: Release;
-  signature: string;
+  /** RFC 6962 consistency proof from the closing checkpoint to `checkpoint`, as base64 lines. */
+  proof: string[];
 }
 
-export function verifyCosignature(cosignature: Cosignature, closing: Checkpoint, terms: PolicyTerms): boolean {
-  if (cosignature?.format !== COSIGNATURE_FORMAT || !terms.cosigners.includes(cosignature.cosigner)) return false;
-  if (cosignature.checkpoint !== checkpointId(closing)) return false;
-  const { signature, ...unsigned } = cosignature;
-  if (!verifyCanonical(COSIGNATURE_LABEL, unsigned, signature, cosignature.cosigner)) return false;
-  const round = cosignature.observed?.round;
-  return round >= terms.closeRound && round < terms.releaseRound && verifyRelease(terms.beacon, cosignature.observed);
+export interface CosignatureCount {
+  /** Distinct policy cosigners whose cosignature is valid and early enough. */
+  cosigners: string[];
+  /** Why none counted, when none did. */
+  problem?: string;
 }
 
 /**
- * A cosigner. It countersigns a closing checkpoint only if, by its own view of
- * the beacon, the release round has not happened yet, and it never signs two
- * different closing checkpoints for one policy. It does not judge the log's
- * contents and cannot read any bid.
+ * Which of the policy's cosigners vouch for the closing checkpoint: each must
+ * have cosigned this log's checkpoint, consistent with the closing one, with a
+ * timestamp before the release round was due. A witness that wants to rewrite
+ * its log after reading the bids cannot get such a cosignature, because an
+ * honest cosigner never signs a fork and dates what it signs.
  */
-export class Cosigner {
-  readonly keys: KeyPair;
-  /** policyHash -> the cosignature given. Persist this; forgetting it allows equivocation. */
-  readonly signed: Map<string, Cosignature>;
-
-  constructor(private readonly source: BeaconSource, secretKey?: string, signed?: Iterable<[string, Cosignature]>) {
-    this.keys = generateKeyPair(secretKey);
-    this.signed = new Map(signed);
+export function countCosignatures(terms: PolicyTerms, closing: Checkpoint, witnessed: WitnessedCheckpoint | undefined): CosignatureCount {
+  if (!witnessed) return { cosigners: [], problem: "no witnessed checkpoint supplied" };
+  let note;
+  let body;
+  try {
+    note = parseNote(witnessed.checkpoint);
+    body = parseCheckpointText(note.text);
+  } catch {
+    return { cosigners: [], problem: "the witnessed checkpoint is malformed" };
   }
-
-  get publicKey(): string {
-    return this.keys.publicKey;
+  if (body.origin !== terms.origin) return { cosigners: [], problem: "the witnessed checkpoint is for a different log" };
+  const proof = Array.isArray(witnessed.proof) ? witnessed.proof.map((p) => (typeof p === "string" ? fromBase64(p) : undefined)) : [];
+  if (!Array.isArray(witnessed.proof) || proof.some((p) => p?.length !== 32) || !isLowerHex(closing?.root, 32)) return { cosigners: [], problem: "the consistency proof is malformed" };
+  if (!verifyConsistency(closing.size, body.size, hexToBytes(closing.root), hexToBytes(body.root), proof as Uint8Array[])) {
+    return { cosigners: [], problem: "the witnessed log is not an extension of the closing checkpoint" };
   }
-
-  async cosign(policyHash: string, terms: PolicyTerms, closing: Checkpoint): Promise<Cosignature> {
-    assertTerms(terms);
-    if (!sameBeacon(terms.beacon, this.source.beacon)) throw new MatteringError("POLICY", "cosigner does not watch this policy's beacon");
-    if (!terms.cosigners.includes(this.publicKey)) throw new MatteringError("POLICY", "this cosigner is not named by the policy");
-    if (!verifyCheckpointSignature(closing, terms.witness) || closing.closes !== policyHash) {
-      throw new MatteringError("MALFORMED", "not a closing checkpoint for this policy signed by its witness");
-    }
-    if (closing.observed.round !== terms.closeRound || !verifyRelease(terms.beacon, closing.observed)) {
-      throw new MatteringError("MALFORMED", "closing checkpoint does not cite the close round");
-    }
-    const previous = this.signed.get(policyHash);
-    if (previous) {
-      if (previous.checkpoint === checkpointId(closing)) return previous;
-      throw new MatteringError("POLICY", "already cosigned a different closing checkpoint for this policy");
-    }
-    // Late is judged by the later of what this cosigner has seen and what its
-    // clock says, so a lagging relay cannot make it sign after the release.
-    const { latest: observed, round } = await deadlineRound(this.source);
-    if (round >= terms.releaseRound) throw new MatteringError("POLICY", "too late: the release round has been emitted");
-    if (observed.round < terms.closeRound) throw new MatteringError("POLICY", "too early: this cosigner has not seen the close round");
-    const unsigned: Omit<Cosignature, "signature"> = { format: COSIGNATURE_FORMAT, cosigner: this.publicKey, checkpoint: checkpointId(closing), observed };
-    const cosignature = { ...unsigned, signature: signCanonical(COSIGNATURE_LABEL, unsigned, this.keys.secretKey) };
-    this.signed.set(policyHash, cosignature);
-    return cosignature;
+  const deadline = timeOfRound(terms.beacon, terms.releaseRound);
+  const cosigners: string[] = [];
+  let late = false;
+  for (const vkey of terms.cosigners) {
+    const key: NoteKey = parseVkey(vkey);
+    const time = cosignatureTime(note, key);
+    if (time === undefined) continue;
+    if (time < deadline) cosigners.push(vkey);
+    else late = true;
   }
+  return cosigners.length > 0 ? { cosigners } : { cosigners, problem: late ? "cosigned only after the release round" : "no valid cosignature from the policy's cosigners" };
 }
 
 // --- evidence ----------------------------------------------------------------
 
 export interface Evidence {
   /** The witness's log, in order, at least up to the closing checkpoint's size. */
-  entries: readonly Submission[];
+  entries: readonly LogEntry[];
   closing: Checkpoint;
-  cosignatures?: readonly Cosignature[];
+  witnessed?: WitnessedCheckpoint | undefined;
   /** The beacon's signature for the policy's release round. */
   release: Release;
 }
@@ -154,22 +143,35 @@ export function verifyEvidence(policyHash: string, terms: PolicyTerms, evidence:
     closing?.observed?.round === terms.closeRound && verifyRelease(terms.beacon, closing.observed),
     "the closing checkpoint must cite the beacon's signature for the close round",
   );
-  const cosigners = new Set((evidence.cosignatures ?? []).filter((c) => verifyCosignature(c, closing, terms)).map((c) => c.cosigner));
+  const count = terms.cosignerThreshold === 0 ? { cosigners: [] } : countCosignatures(terms, closing, evidence.witnessed);
   add(
     "closing-checkpoint-cosigned-before-release",
-    cosigners.size >= terms.cosignerThreshold,
-    `${cosigners.size} valid cosignature(s); the policy requires ${terms.cosignerThreshold}`,
+    count.cosigners.length >= terms.cosignerThreshold,
+    `${count.cosigners.length} valid cosignature(s); the policy requires ${terms.cosignerThreshold}${"problem" in count && count.problem ? ` (${count.problem})` : ""}`,
   );
   const haveLog = Number.isSafeInteger(closing?.size) && entries.length >= closing.size;
   add("log-matches-closing-checkpoint", haveLog && logRoot(entries.slice(0, closing.size)) === closing.root, "the supplied log is not the one the witness signed");
+  // The closing is fixed by the log itself: the checkpoint must end at this
+  // policy's close entry, and no earlier close entry for it may exist.
+  const last = haveLog && closing.size > 0 ? entries[closing.size - 1] : undefined;
+  add(
+    "closing-is-the-close-entry",
+    isCloseEntry(last) && last.policyHash === policyHash && last.observed?.round === closing.observed?.round && last.observed?.signature === closing.observed?.signature,
+    "the closing checkpoint must end with this policy's close entry",
+  );
+  add(
+    "closed-only-once",
+    haveLog && !entries.slice(0, Math.max(0, closing.size - 1)).some((e) => isCloseEntry(e) && e.policyHash === policyHash),
+    "the log closed this policy earlier; entries after that first close do not count",
+  );
   add("release-valid", release?.round === terms.releaseRound && verifyRelease(terms.beacon, release), "not the beacon's signature for the release round");
   const ok = checks.every((c) => c.ok);
   const onTime: EvidenceVerdict["onTime"] = [];
   if (ok) {
     const seen = new Set<string>();
-    for (let index = 0; index < closing.size; index++) {
+    for (let index = 0; index < closing.size - 1; index++) {
       const submission = entries[index]!;
-      if (submission.policyHash !== policyHash) continue;
+      if (!isSubmission(submission) || submission.policyHash !== policyHash) continue;
       onTime.push({ index, submission, counts: !seen.has(submission.submitter) });
       seen.add(submission.submitter);
     }

@@ -37,10 +37,14 @@ export { generateKeyPair, type KeyPair } from "./signing.ts";
 export { BLINDING_GENERATOR_HEX, commit, opensTo, randomBlinding } from "./commitment.ts";
 export {
   CHECKPOINT_FORMAT,
+  CLOSE_FORMAT,
   RECEIPT_FORMAT,
   SUBMISSION_FORMAT,
   Witness,
+  defaultOrigin,
+  isCloseEntry,
   isEquivocation,
+  isSubmission,
   logRoot,
   receiptHonoured,
   signSubmission,
@@ -48,6 +52,8 @@ export {
   verifyReceipt,
   verifySubmissionSignature,
   type Checkpoint,
+  type CloseEntry,
+  type LogEntry,
   type Receipt,
   type Submission,
 } from "./witness.ts";
@@ -66,18 +72,39 @@ export {
   type BidOutcome,
   type PreparedBid,
 } from "./auction.ts";
-export { inclusionProof, leafHash, merkleRoot, rootFromInclusionProof } from "./merkle.ts";
-export { deadlineRound, type BeaconSource } from "./source.ts";
+export { consistencyProof, inclusionProof, leafHash, merkleRoot, rootFromInclusionProof, verifyConsistency } from "./merkle.ts";
 export {
-  COSIGNATURE_FORMAT,
-  Cosigner,
-  checkpointId,
-  verifyCosignature,
+  COSIGNATURE_ED25519,
+  SIGNATURE_ED25519,
+  checkpointText,
+  cosign,
+  cosignatureTime,
+  cosignerKeyId,
+  formatVkey,
+  fromBase64,
+  isKeyName,
+  noteKeyId,
+  parseCheckpointText,
+  parseNote,
+  parseVkey,
+  signNote,
+  toBase64,
+  verifyNoteSignature,
+  type CheckpointBody,
+  type NoteKey,
+  type NoteSignature,
+  type SignedNote,
+} from "./note.ts";
+export { deadlineRound, scheduleClock, systemClock, type BeaconSource } from "./source.ts";
+export {
+  countCosignatures,
   verifyEvidence,
-  type Cosignature,
+  type CosignatureCount,
   type Evidence,
   type PolicyTerms,
+  type WitnessedCheckpoint,
 } from "./evidence.ts";
+export { Cosigner, type AddCheckpointReply, type CosignedState, type CosignerOptions } from "./cosigner.ts";
 export {
   STATEMENT_FORMAT,
   STATEMENT_POLICY_FORMAT,

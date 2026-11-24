@@ -37,7 +37,7 @@ Each makes a real attempt against the running system.
 | --- | --- | --- |
 | Peek at a bid early | Takes a sealed bid and tries to open it with the newest key that exists | The key for that envelope has not been created yet |
 | Slip in a late bid | Seals the maximum bid and submits it after the close | The auctioneer refuses it; bidding closed at the agreed time |
-| Rewrite the list as the auctioneer | After the bids are readable, the server adds a winning bid and signs a new list with the auctioneer's real key | The browser rejects it: the cosigner signed the original list first and will not sign another |
+| Rewrite the list as the auctioneer | After the bids are readable, the server slips a winning bid in before the close, signs the new list with the auctioneer's real key, and asks the cosigner to vouch for it | The cosigner refuses: the new list is a fork of the one it countersigned before the bids could be read. The browser rejects the list, because the countersigned one does not extend it |
 | Announce a different winner | Declares that the lowest bidder won | The browser recomputes the result from the evidence and shows the difference |
 
 ## What is real and what is staged

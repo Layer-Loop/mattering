@@ -11,13 +11,16 @@ import {
   Witness,
   deadlineRound,
   generateKeyPair,
+  isCloseEntry,
+  isSubmission,
   policyHash,
   prepareBid,
   prepareStatement,
+  scheduleClock,
   type AuctionPolicy,
   type BeaconInfo,
   type BeaconSource,
-  type Cosignature,
+  type CosignedState,
   type StatementPolicy,
 } from "@mattering/core";
 import { errorReply, handleWitness, type Reply } from "@mattering/witness/routes";
@@ -52,8 +55,12 @@ export interface RoomState {
   runs: number;
   run?: RunState;
   cosignerKey: string;
-  cosigned: [string, Cosignature][];
+  /** The cosigner's latest cosigned checkpoint, by log origin. */
+  cosigned: Record<string, CosignedState>;
 }
+
+/** What the room's cosigner calls itself. Not a real address: it is not independent. */
+const COSIGNER_NAME = "cosigner.sealed-room.invalid";
 
 export interface RoomOptions {
   mode: "live" | "simulated";
@@ -99,23 +106,34 @@ export class Room {
   static async open(options: RoomOptions): Promise<Room> {
     let state = await options.loadState();
     if (!state) {
-      state = { runs: 0, cosignerKey: generateKeyPair().secretKey, cosigned: [] };
+      state = { runs: 0, cosignerKey: generateKeyPair().secretKey, cosigned: {} };
       await options.saveState(state);
     }
+    // Rooms saved before cosigners spoke the C2SP protocol kept a list here.
+    if (Array.isArray(state.cosigned)) state.cosigned = {};
     const mine = state;
-    const cosigner = new Cosigner(options.sourceFor(), mine.cosignerKey, mine.cosigned);
+    const cosigner = new Cosigner({
+      name: COSIGNER_NAME,
+      logs: [],
+      // Its own view of the beacon's schedule: real time against drand, simulated time offline.
+      clock: scheduleClock(options.sourceFor()),
+      secretKey: mine.cosignerKey,
+      state: mine.cosigned,
+      // Remember what was cosigned before handing it over, so a restart cannot be used to get a fork cosigned.
+      persist: async (origin, latest) => {
+        mine.cosigned = { ...mine.cosigned, [origin]: latest };
+        await options.saveState(mine);
+      },
+    });
     const service = await WitnessService.open({
       store: options.store,
       source: options.sourceFor(),
-      cosign: async (_key, hash, policy, closing) => {
-        const cosignature = await cosigner.cosign(hash, policy, closing);
-        // Remember what was signed before handing it over, so a restart
-        // cannot be used to obtain a second, different cosignature.
-        mine.cosigned = [...cosigner.signed.entries()];
-        await options.saveState(mine);
-        return cosignature;
+      cosign: async (_vkey, body) => {
+        const reply = await cosigner.addCheckpoint(body);
+        return { status: reply.status, body: reply.body };
       },
     });
+    cosigner.addLog(service.vkey);
     return new Room(options, service, cosigner, options.sourceFor(), mine);
   }
 
@@ -140,7 +158,7 @@ export class Room {
       const closeRound = now + options.closeAfter;
       const releaseRound = closeRound + options.releaseAfter;
       const id = state.runs + 1;
-      const terms = { beacon: this.beacon, closeRound, releaseRound, witness: this.service.publicKey, cosigners: [this.cosigner.publicKey], cosignerThreshold: 1 };
+      const terms = { beacon: this.beacon, closeRound, releaseRound, witness: this.service.publicKey, origin: this.service.origin, cosigners: [this.cosigner.vkey], cosignerThreshold: 1 };
       const auction: AuctionPolicy = { format: POLICY_FORMAT, auctionId: `daily-ledger-banner-${Date.now()}-${id}`, ...terms, minBid: SLOT.minBid, maxBid: SLOT.maxBid, rule: "highest-bid", tieBreak: "release-round-signature" };
       const forecast: StatementPolicy = { format: STATEMENT_POLICY_FORMAT, topic: `What will ${auction.auctionId} sell for, and why?`, ...terms };
       const auctionHash = (await this.service.registerPolicy(auction)).policyHash;
@@ -255,15 +273,16 @@ export class Room {
         agents: run.agents.map(({ secretKey: _secret, dueAt: _due, ...shown }) => shown),
         phase: phase.state,
         cosigned: phase.cosignatures >= 1,
-        entries: this.service.log().entries.filter((e) => e.policyHash === run.auctionHash).map((e) => ({ submitter: e.submitter, envelopeId: e.envelopeId })),
+        entries: this.service.log().entries.filter(isSubmission).filter((e) => e.policyHash === run.auctionHash).map((e) => ({ submitter: e.submitter, envelopeId: e.envelopeId })),
       },
     };
   }
 
   /**
-   * What a dishonest operator would do after release: knowing every bid, build
-   * a second log with a winning bid of its own and sign a closing checkpoint
-   * for it with the witness's real key. Returned for the page to verify.
+   * What a dishonest operator would do after release: knowing every bid,
+   * rewrite the log with a winning bid of its own slipped in before the close,
+   * sign it with the witness's real key, and ask the cosigner to vouch for it.
+   * Returned for the page to verify.
    */
   private async forge(): Promise<Record<string, unknown>> {
     const run = this.state.run;
@@ -271,17 +290,20 @@ export class Room {
     const bundle = await this.service.evidence(run.auctionHash);
     if (bundle.state !== "released") throw new MatteringError("POLICY", "the bids have not been released yet");
     const secretKey = (await this.options.store.load()).secretKey;
-    const forger = new Witness(secretKey);
-    for (const entry of bundle.entries!) forger.submit(entry);
+    const forger = new Witness(secretKey, undefined, this.service.origin);
+    // The same log up to the close, plus a bid of its own just before it.
+    for (const entry of bundle.entries!.slice(0, -1)) {
+      if (isCloseEntry(entry)) forger.close(entry.policyHash, this.beacon, entry.observed);
+      else forger.submit(entry);
+    }
     const shill = await prepareBid(run.auction, run.auction.maxBid, generateKeyPair());
     forger.submit(shill.submission);
     const closing = forger.close(policyHash(run.auction), this.beacon, bundle.closing!.observed);
-    let cosignerSaid = "signed it";
-    try {
-      await this.cosigner.cosign(run.auctionHash, run.auction, closing);
-    } catch (error) {
-      cosignerSaid = (error as Error).message;
-    }
+    // Ask the cosigner, exactly as the honest witness does.
+    const old = this.cosigner.state.get(this.service.origin)?.size ?? 0;
+    const proof = old <= forger.size ? forger.consistency(old) : [];
+    const reply = await this.cosigner.addCheckpoint(`old ${old}\n` + proof.map((p) => p + "\n").join("") + "\n" + forger.logCheckpoint());
+    const cosignerSaid = reply.status === 200 ? "signed it" : `refused: ${reply.reason}`;
     return {
       shillAmount: run.auction.maxBid,
       cosignerSaid,

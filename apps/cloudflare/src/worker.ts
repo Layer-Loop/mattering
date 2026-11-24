@@ -8,7 +8,7 @@
  * the cosigner is not independent.
  */
 import { DurableObject, type DurableObjectState } from "cloudflare:workers";
-import { QUICKNET, timeOfRound, type Envelope, type Submission } from "@mattering/core";
+import { QUICKNET, timeOfRound, type Envelope, type LogEntry } from "@mattering/core";
 import { drandSource } from "@mattering/core/drand-http";
 import { TestBeacon, WallTestClock } from "@mattering/core/testing";
 import { MAX_BODY, parseBody } from "@mattering/witness/routes";
@@ -44,7 +44,7 @@ function durableStore(storage: DurableObjectState["storage"]): ServiceStore {
       const state: StoredState = { entries: [], policies: [], closings: {} };
       const secretKey = await storage.get<string>("witness-key");
       if (secretKey) state.secretKey = secretKey;
-      state.entries = [...(await storage.list<Submission>({ prefix: "entry:" })).values()];
+      state.entries = [...(await storage.list<LogEntry>({ prefix: "entry:" })).values()];
       state.policies = [...(await storage.list<AnyPolicy>({ prefix: "policy:" })).values()];
       for (const [key, value] of await storage.list<StoredClosing>({ prefix: "closing:" })) state.closings[key.slice(8)] = value;
       return state;

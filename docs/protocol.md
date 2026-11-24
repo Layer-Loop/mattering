@@ -12,7 +12,7 @@ This note is meant to be enough to write a second implementation, and enough for
 | **Beacon** (drand quicknet) | Emits one BLS signature per round | Not emitting early (secrecy) and emitting at all (opening) |
 | **Verifier / opener** | Checks and opens envelopes | Nothing. Anyone can be one |
 | **Witness** | Records submissions in a log and closes policies | Not refusing submissions. With cosigners, nothing else |
-| **Cosigner** | Countersigns a closing checkpoint before the release round | Not colluding with the witness. A policy says how many must sign |
+| **Cosigner** | A transparency-log witness, such as one on the public witness network: cosigns the log, dated, and never cosigns a fork of it | Not colluding with the witness, and dating honestly. A policy says how many must cosign |
 
 There is no party that holds plaintext or keys on anyone's behalf.
 
@@ -107,7 +107,15 @@ All signatures are Ed25519 over `H(label, canonical(object without its signature
 
 `submitter` is an Ed25519 public key. What that key stands for is outside Mattering. `commitment` is present for auction bids and absent otherwise.
 
-**Log.** A Merkle tree as in RFC 6962 section 2.1 (Certificate Transparency), over SHA-256. A leaf is the canonical JSON of a submission. Entries are in arrival order. The implementation is checked against the Certificate Transparency reference vectors.
+**Log.** A Merkle tree as in RFC 6962 section 2.1 (Certificate Transparency), over SHA-256. A leaf is the canonical JSON of an entry: a submission, or a close entry (below). Entries are in arrival order. The implementation is checked against the Certificate Transparency reference vectors. The log has an **origin**, its name in the C2SP formats public witnesses use, such as `example.com/log`; policies name it.
+
+**Close entry**, written into the log by the witness when it closes a policy:
+
+```text
+{ format: "mattering.close/1", policyHash, observed: { round, signature } }
+```
+
+The first close entry for a policy fixes which entries count: those before it. Because it is in the log, the cosignatures that date the log (below) also date the closing.
 
 **Receipt**, returned to the submitter (label `mattering/receipt/v1`):
 
@@ -125,7 +133,7 @@ It states that the submission is entry `index` of a tree with `size` entries and
 
 `observed` is a beacon round signature the witness had seen, which proves the checkpoint was made after that round. `closes`, when present, is a policy hash and marks the closing checkpoint for that policy.
 
-**Deadline.** A policy names a **close round** and a later **release round**. Once the witness has seen the close round's signature it issues the closing checkpoint for the policy, with `observed` set to that signature, and refuses further submissions under the policy. A submission is on time if its index is below the closing checkpoint's `size`. The verifier requires `observed.round` to equal the close round, so a witness cannot close early.
+**Deadline.** A policy names a **close round** and a later **release round**. Once the witness has seen the close round's signature it appends the policy's close entry and issues the closing checkpoint for the policy, ending with that entry and with `observed` set to that signature, and refuses further submissions under the policy. A submission is on time if it comes before the close entry. The verifier requires `observed.round` to equal the close round, so a witness cannot close early; requires the closing checkpoint to end with this policy's close entry; and requires no earlier close entry for the policy in the log.
 
 The witness treats a policy as closed from whichever comes first: it has seen the close round, or the close round is due by the witness's own clock and the beacon's published schedule. The second rule is needed because relays can serve a "latest" round that is behind the real beacon; a witness relying on the relay alone accepted a late submission when first run against live drand. A bidder's own clock and any timestamp a bidder supplies play no part. A verifier cannot check when an entry arrived: that the witness applied this rule is part of trusting the witness.
 
@@ -138,30 +146,42 @@ What this gives, and what it does not:
 | The log given to a verifier is the one the witness signed | Yes. The verifier recomputes the root |
 | The witness cannot show two different logs | Detectable when two checkpoints of the same size are compared |
 | The witness cannot refuse a submission | **No.** Refusal leaves no evidence |
-| The witness cannot rewrite the log after the release round, when it can read every entry | Yes, if the policy requires cosigners and fewer than the threshold collude with it. With no cosigners: **no** |
-| The witness cannot add a submission between the close round and the cosignatures | **No.** It cannot read the other entries at that point, so the entry is blind, but it is late |
+| The witness cannot rewrite the log after the release round, when it can read every entry | Yes, if the policy requires cosigners, fewer than the threshold collude with it, and their clocks are honest. With no cosigners: **no** |
+| The witness cannot move the closing after the release round | Yes, under the same conditions. The first close entry decides, and it was cosigned before the release |
+| The witness cannot add a submission between the close round and its close entry | **No.** It cannot read the other entries at that point, so the entry is blind, but it is late |
 | The witness cannot reorder entries before signing | **No.** Order does not affect the outcome (section 7) |
 
-**Cosignatures** (label `mattering/cosignature/v1`). A policy names a list of cosigner keys and a threshold.
+**Cosignatures.** These use the formats of the public witness network, unchanged, so that a public witness can serve as a cosigner without knowing anything about Mattering:
+
+- [C2SP signed-note](https://c2sp.org/signed-note): text signed by named Ed25519 keys, with keys published as `<name>+<key id>+<key>`.
+- [C2SP tlog-checkpoint](https://c2sp.org/tlog-checkpoint): the log's origin, size and root as a signed note. The witness signs it with its own key under the origin's name.
+- [C2SP tlog-witness](https://c2sp.org/tlog-witness): a log submits a checkpoint with an RFC 6962 consistency proof from the last checkpoint that cosigner signed, to `POST <prefix>/add-checkpoint`. The cosigner refuses anything that is not consistent with what it has already cosigned.
+- [C2SP tlog-cosignature](https://c2sp.org/tlog-cosignature): an Ed25519 cosignature (type 0x04) over `cosignature/v1`, a `time` line and the checkpoint. It says that, as of that time, this was the largest tree the cosigner had seen for the log and that it is consistent with everything earlier.
+
+The implementation matches the Go reference implementation's published signed-note vectors byte for byte. ML-DSA-44 cosignatures (type 0x06), which the specification recommends for new witnesses, are not supported yet; they are ignored like any unknown key's.
+
+A policy names the log's `origin`, a list of cosigners as verifier keys, and a threshold, which must be more than half of the cosigners. The evidence for a policy carries a **witnessed checkpoint**:
 
 ```text
-{ format: "mattering.cosignature/1", cosigner, checkpoint, observed: { round, signature }, signature }
+{ checkpoint: <C2SP checkpoint with cosignature lines>, proof: [ base64 hash, ... ] }
 ```
 
-`checkpoint` is `H("mattering/checkpoint-id/v1", canonical(closing checkpoint))`. `observed` is the latest beacon round the cosigner had seen when it signed. A cosigner signs only if the checkpoint is a valid closing checkpoint for the policy, the cosigner's own view of the beacon is at or past the close round and before the release round, and it has not signed a different closing checkpoint for that policy. A verifier counts a cosignature only if `observed.round` is in that range, and requires the threshold number from distinct named cosigners.
+`proof` is the RFC 6962 consistency proof from the closing checkpoint to `checkpoint`. A verifier counts a cosigner if the checkpoint is for the policy's origin, the log it describes extends the closing checkpoint, and the cosigner's cosignature is valid and dated before the release round's scheduled time. It requires the threshold from distinct named cosigners.
 
-Why this matters: after the release round the witness can read every bid. Without cosigners it could then build a different log with a winning entry of its own and sign a closing checkpoint for it. With cosigners, the checkpoint was fixed before anything could be read, and a second one will not be countersigned.
+Why this matters: after the release round the witness can read every bid. Without cosigners it could then build a different log with a winning entry of its own and sign a closing checkpoint for it. With cosigners, the log up to and including the close entry was cosigned before anything could be read. A rewritten log is a fork, which an honest cosigner never cosigns. A log extended after the release, with a later bid and a second close entry, can be cosigned, but the cosignature is dated after the release, and the first close entry still decides.
 
-What `observed` proves is only a lower bound on the cosigner's time. That the cosigner signed before the release round rests on the cosigner's honesty, not on cryptography.
+The threshold must be a majority because a witness could otherwise show one version of its log to some cosigners and another to the rest, and collect a full set of cosignatures for each.
 
-Not built: consistency proofs between checkpoints (a verifier is given the whole log instead), and anchoring checkpoints to a public ledger, which would replace trust in cosigners with trust in that ledger.
+That a cosignature was made before the release rests on the cosigner's clock and honesty, not on cryptography. The time is the cosigner's own statement.
+
+Not built: anchoring checkpoints to a public ledger, which would replace trust in cosigners with trust in that ledger.
 
 ## 7. Sealed bids
 
 **Policy**, immutable, identified by `policyHash = H("mattering/auction-policy/v1", canonical(policy))`:
 
 ```text
-{ format: "mattering.auction-policy/1", auctionId, beacon, closeRound, releaseRound, witness,
+{ format: "mattering.auction-policy/2", auctionId, beacon, closeRound, releaseRound, witness, origin,
   cosigners, cosignerThreshold, minBid, maxBid, rule: "highest-bid", tieBreak: "release-round-signature" }
 ```
 
@@ -177,8 +197,8 @@ The envelope's `context` is `{ kind: "mattering.bid/1", policyHash, bidder }`. T
 
 **After release**, the verifier takes the policy, the log, the closing checkpoint, the envelopes and the release round's signature, and:
 
-1. Checks the evidence: policy well-formed, beacon accepted by the verifier, closing checkpoint signed by the policy's witness and citing the close round, enough valid cosignatures, log root equal to the checkpoint's, release signature valid.
-2. Takes the entries below the closing size that name this policy, in order. Only a submitter's first entry counts.
+1. Checks the evidence: policy well-formed, beacon accepted by the verifier, closing checkpoint signed by the policy's witness and citing the close round, enough valid cosignatures, log root equal to the checkpoint's, the checkpoint ending with the policy's first close entry, release signature valid.
+2. Takes the submissions before the close entry that name this policy, in order. Only a submitter's first entry counts.
 3. For each, opens the envelope and requires: the payload is a canonical bid; `policyHash` and `bidder` inside the bid equal the policy's hash and the submission's `submitter`; `C` opens to `amount` and `blinding`; `minBid ≤ amount ≤ maxBid`.
 4. A bid failing any check is **invalid**, with the reason, and attributable to its submitter's key. A bid whose envelope was not supplied is **unresolved**, and the auction then has no result.
 5. The winner is the highest valid amount. Among equal amounts, the lowest `H("mattering/tie-break/v1", releaseSignature ‖ envelopeId)` wins.
@@ -196,7 +216,7 @@ A **statement** is text committed before a deadline and opened for everyone at a
 **Statement policy**, identified by `H("mattering/statement-policy/v1", canonical(policy))`:
 
 ```text
-{ format: "mattering.statement-policy/1", topic, beacon, closeRound, releaseRound, witness, cosigners, cosignerThreshold }
+{ format: "mattering.statement-policy/2", topic, beacon, closeRound, releaseRound, witness, origin, cosigners, cosignerThreshold }
 ```
 
 **Statement**, the sealed payload, at most 16,384 bytes as canonical JSON:
