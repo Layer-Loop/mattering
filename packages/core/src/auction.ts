@@ -11,10 +11,10 @@ import { envelopeId, type Context, type Envelope } from "./envelope.ts";
 import { MatteringError } from "./errors.ts";
 import { open, seal, verifyEnvelope, type Check, type VerifierPolicy } from "./seal.ts";
 import type { KeyPair } from "./signing.ts";
-import { assertTerms, verifyEvidence, type Cosignature, type PolicyTerms } from "./evidence.ts";
-import { signSubmission, verifySubmissionSignature, type Checkpoint, type Submission } from "./witness.ts";
+import { assertTerms, verifyEvidence, type PolicyTerms, type WitnessedCheckpoint } from "./evidence.ts";
+import { signSubmission, verifySubmissionSignature, type Checkpoint, type LogEntry, type Submission } from "./witness.ts";
 
-export const POLICY_FORMAT = "mattering.auction-policy/1";
+export const POLICY_FORMAT = "mattering.auction-policy/2";
 export const BID_FORMAT = "mattering.bid/1";
 const POLICY_LABEL = "mattering/auction-policy/v1";
 const TIE_BREAK_LABEL = "mattering/tie-break/v1";
@@ -30,7 +30,7 @@ export interface AuctionPolicy extends PolicyTerms {
 
 export function assertPolicy(policy: AuctionPolicy): void {
   const keys = Object.keys(policy).sort().join(",");
-  if (keys !== "auctionId,beacon,closeRound,cosignerThreshold,cosigners,format,maxBid,minBid,releaseRound,rule,tieBreak,witness") throw new MatteringError("MALFORMED", `policy: unexpected fields (${keys})`);
+  if (keys !== "auctionId,beacon,closeRound,cosignerThreshold,cosigners,format,maxBid,minBid,origin,releaseRound,rule,tieBreak,witness") throw new MatteringError("MALFORMED", `policy: unexpected fields (${keys})`);
   if (policy.format !== POLICY_FORMAT) throw new MatteringError("MALFORMED", "policy.format");
   if (typeof policy.auctionId !== "string" || policy.auctionId === "") throw new MatteringError("MALFORMED", "policy.auctionId");
   assertTerms(policy);
@@ -118,10 +118,10 @@ export interface BidOutcome {
 export interface AuctionInputs {
   policy: AuctionPolicy;
   /** The witness's log, in order, at least up to the closing checkpoint's size. */
-  entries: readonly Submission[];
+  entries: readonly LogEntry[];
   closing: Checkpoint;
-  /** Cosignatures on the closing checkpoint, if the policy requires any. */
-  cosignatures?: readonly Cosignature[];
+  /** Witness cosignatures on the log at or after the closing checkpoint, if the policy requires any. */
+  witnessed?: WitnessedCheckpoint | undefined;
   /** Envelopes by envelope id. Missing ones leave their bids unresolved. */
   envelopes: ReadonlyMap<string, Envelope> | Record<string, Envelope>;
   /** The beacon's signature for the policy's release round. */

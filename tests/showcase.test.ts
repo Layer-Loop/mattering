@@ -57,7 +57,7 @@ test("showcase: agents bid, a visitor joins, cheats fail, and the page's own ver
 
     const forged = (await get<{ cosignerSaid: string; evidence: AuctionInputs }>("/demo/forge", {})).json;
     assert.equal(forged.evidence.entries.length, evidence.entries.length + 1);
-    assert.match(forged.cosignerSaid, /already cosigned|too late/);
+    assert.match(forged.cosignerSaid, /refused: not consistent with the checkpoint already cosigned/);
     const rejected = await verifyAuction(forged.evidence, verifier);
     assert.equal(rejected.ok, false);
     assert.equal(rejected.checks.find((c) => c.name === "closing-checkpoint-cosigned-before-release")?.ok, false);

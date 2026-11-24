@@ -9,7 +9,7 @@
  */
 import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Envelope, Submission } from "@mattering/core";
+import type { Envelope, LogEntry } from "@mattering/core";
 import type { AnyPolicy, ServiceStore, StoredClosing, StoredState } from "./service.ts";
 
 export function fileStore(dir: string): ServiceStore {
@@ -21,7 +21,7 @@ export function fileStore(dir: string): ServiceStore {
       const state: StoredState = { entries: [], policies: [], closings: {} };
       if (existsSync(keyFile)) state.secretKey = readJson<{ secretKey: string }>(keyFile).secretKey;
       if (existsSync(join(dir, "log.jsonl"))) {
-        state.entries = readFileSync(join(dir, "log.jsonl"), "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line) as Submission);
+        state.entries = readFileSync(join(dir, "log.jsonl"), "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line) as LogEntry);
       }
       for (const file of readdirSync(join(dir, "policies"))) state.policies.push(readJson<AnyPolicy>(join(dir, "policies", file)));
       for (const file of readdirSync(join(dir, "closings"))) state.closings[file.replace(/\.json$/, "")] = readJson<StoredClosing>(join(dir, "closings", file));

@@ -22,6 +22,8 @@ The aim is to find where this breaks. Each question says what the code or design
 
 8. **Reuse.** The tree is RFC 6962, but the receipt, checkpoint and cosignature formats are ad hoc JSON. Which existing transparency-log format should this adopt instead: RFC 6962, the C2SP checkpoint and tiles specifications, something else?
 
+   *Partly acted on:* checkpoints and cosignatures now use C2SP signed-note, tlog-checkpoint, tlog-cosignature and tlog-witness, so public witnesses can cosign. Receipts and the closing checkpoint are still Mattering JSON. To pin the cutoff, the closing is now an entry in the log (`mattering.close/1`): the first one for a policy decides. Is that the right way to tie an application-level deadline to a transparency log whose witnesses only attest to time and consistency?
+
 9. **Linking a range proof to a time-locked ciphertext.** The design puts the opening of a Pedersen commitment inside the sealed payload, so that the link is checked after release. That makes a range proof before release nearly worthless here, because the ciphertext could hold anything. What is the simplest credible way to prove before release that a tlock ciphertext holds the committed value: verifiable encryption over BLS12-381, a different time-lock construction, a general-purpose proof system? Or is the honest answer that this auction does not need it?
 
 10. **Fairness without an honest coordinator.** Of secrecy, binding, correct adjudication, timely inclusion, censorship resistance and guaranteed opening, which can this design reach, and which need a public ledger?

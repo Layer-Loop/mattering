@@ -112,6 +112,8 @@ const CHECK_TEXT: Record<string, string> = {
   "closed-at-the-close-round": "Bidding closed at the agreed time, not before",
   "closing-checkpoint-cosigned-before-release": "An independent party countersigned the list before any bid could be read",
   "log-matches-closing-checkpoint": "The list we were given is the list that was signed",
+  "closing-is-the-close-entry": "The list ends where the auctioneer recorded the close",
+  "closed-only-once": "The auction was closed once, not moved later",
   "release-valid": "The key that opens the bids is the genuine one for the agreed time",
   "every-on-time-bid-judged": "Every bid that arrived in time was opened and checked",
 };
@@ -321,7 +323,7 @@ const cheats: Record<string, (run: RunState) => Promise<void>> = {
     const { json } = await getJson<{ shillAmount: number; cosignerSaid: string; evidence: AuctionInputs }>("/demo/forge", {});
     const result = await verifyAuction(json.evidence, verifier());
     if (result.ok) setOut("out-rewrite", "alarm", "The rewritten list was accepted. This should not be possible.");
-    else setOut("out-rewrite", "refused", `Rejected. The auctioneer added a bid of ${pounds(json.shillAmount)} and signed a new list with its real key. This browser refused it: the independent cosigner had already signed the original list before any bid could be read, and will not sign a second one.`);
+    else setOut("out-rewrite", "refused", `Rejected. The auctioneer added a bid of ${pounds(json.shillAmount)} and signed a new list with its real key. This browser refused it: the cosigner countersigned the original list before any bid could be read${json.cosignerSaid.startsWith("refused") ? ", and refused to countersign a list that rewrites it" : ", and any countersignature given now is dated after the bids opened"}.`);
   },
   async winner(run) {
     const result = outcome?.runId === run.id ? outcome : undefined;

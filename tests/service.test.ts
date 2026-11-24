@@ -15,10 +15,13 @@ import {
   POLICY_FORMAT,
   STATEMENT_POLICY_FORMAT,
   Witness,
+  countCosignatures,
   generateKeyPair,
+  parseNote,
   policyHash,
   prepareBid,
   prepareStatement,
+  scheduleClock,
   statementPolicyHash,
   verifyAuction,
   verifyReceipt,
@@ -29,6 +32,7 @@ import {
   type StatementInputs,
   type StatementPolicy,
   type StatementsResult,
+  type Submission,
 } from "@mattering/core";
 import { TestBeacon, TestClock } from "@mattering/core/testing";
 import { WitnessClient, WitnessService, cosignerServer, fileStore, httpCosign, memoryStore, witnessServer } from "@mattering/witness";
@@ -50,23 +54,27 @@ async function rejects(promise: Promise<unknown>, code: string, status?: number)
   });
 }
 
-/** A witness service with `n` independent cosigner services, all on one simulated clock. */
+/**
+ * A witness service with `n` independent cosigner services, each speaking the
+ * C2SP tlog-witness protocol over HTTP with its own clock, all on one simulated beacon.
+ */
 async function deployment(cosignerCount = 2) {
   const beacon = new TestBeacon();
   const clock = new TestClock(beacon, 10);
-  const cosigners = [];
+  const cosigners: Cosigner[] = [];
   const urls: Record<string, string> = {};
   for (let i = 0; i < cosignerCount; i++) {
-    const cosigner = new Cosigner(clock.source());
-    urls[cosigner.publicKey] = await listen(cosignerServer(cosigner));
+    const cosigner = new Cosigner({ name: `cosigner-${i}.example`, logs: [], clock: scheduleClock(clock.source()) });
+    urls[cosigner.vkey] = await listen(cosignerServer(cosigner));
     cosigners.push(cosigner);
   }
   const dataDir = mkdtempSync(join(tmpdir(), "mattering-witness-"));
-  const service = await WitnessService.open({ store: fileStore(dataDir), source: clock.source(), cosign: httpCosign(urls) });
+  const service = await WitnessService.open({ store: fileStore(dataDir), source: clock.source(), origin: "witness.example/log", cosign: httpCosign(urls) });
+  for (const cosigner of cosigners) cosigner.addLog(service.vkey);
   const url = await listen(witnessServer(service));
   const client = new WitnessClient(url);
   const verifier = { acceptedBeacons: [beacon.info] };
-  const terms = { beacon: beacon.info, closeRound: 100, releaseRound: 110, witness: service.publicKey, cosigners: cosigners.map((c) => c.publicKey), cosignerThreshold: cosignerCount };
+  const terms = { beacon: beacon.info, closeRound: 100, releaseRound: 110, witness: service.publicKey, origin: service.origin, cosigners: cosigners.map((c) => c.vkey), cosignerThreshold: cosignerCount };
   const auction: AuctionPolicy = { format: POLICY_FORMAT, auctionId: "lot-1", ...terms, minBid: 100, maxBid: 10_000, rule: "highest-bid", tieBreak: "release-round-signature" };
   return { beacon, clock, cosigners, urls, dataDir, service, url, client, verifier, terms, auction };
 }
@@ -92,7 +100,7 @@ test("an auction run entirely through the hosted witness, verified from its publ
   await d.service.tick();
   const closed = await d.client.evidence(hash);
   assert.equal(closed.state, "closed");
-  assert.equal(closed.cosignatures?.length, 2);
+  assert.equal(countCosignatures(d.auction, closed.closing!, closed.witnessed).cosigners.length, 2);
   assert.equal(closed.release, undefined);
   const late = await prepareBid(d.auction, 9999, generateKeyPair());
   await rejects(d.client.submit(late.submission, late.envelope), "POLICY", 409);
@@ -121,7 +129,7 @@ test("the deadline holds even when nobody called tick", async () => {
   d.clock.advanceTo(100);
   const late = await prepareBid(d.auction, 5000, generateKeyPair());
   await rejects(d.client.submit(late.submission, late.envelope), "POLICY", 409);
-  assert.equal((await d.client.log()).size, 0);
+  assert.deepEqual((await d.client.log()).entries.map((e) => e.format), ["mattering.close/1"], "closed, with no bid in the log");
   await rejects(d.client.registerPolicy({ ...d.auction, auctionId: "too-late", closeRound: 90 }), "POLICY");
 });
 
@@ -132,7 +140,7 @@ test("a relay that serves a stale 'latest' cannot keep the deadline open", async
   const clock = new TestClock(beacon, 10);
   const lagging = clock.source(3);
   const service = await WitnessService.open({ store: memoryStore(), source: lagging });
-  const policy: AuctionPolicy = { format: POLICY_FORMAT, auctionId: "lag", beacon: beacon.info, closeRound: 100, releaseRound: 110, witness: service.publicKey, cosigners: [], cosignerThreshold: 0, minBid: 100, maxBid: 10_000, rule: "highest-bid", tieBreak: "release-round-signature" };
+  const policy: AuctionPolicy = { format: POLICY_FORMAT, auctionId: "lag", beacon: beacon.info, closeRound: 100, releaseRound: 110, witness: service.publicKey, origin: service.origin, cosigners: [], cosignerThreshold: 0, minBid: 100, maxBid: 10_000, rule: "highest-bid", tieBreak: "release-round-signature" };
   await service.registerPolicy(policy);
   clock.advanceTo(99);
   const inTime = await prepareBid(policy, 3000, generateKeyPair());
@@ -141,16 +149,20 @@ test("a relay that serves a stale 'latest' cannot keep the deadline open", async
   assert.equal((await lagging.latest()).round, 97, "the relay still says round 97");
   const late = await prepareBid(policy, 9999, generateKeyPair());
   await rejects(service.submit(late.submission, late.envelope), "POLICY");
-  assert.equal(service.log().size, 1);
+  assert.deepEqual(service.log().entries.map((e) => e.format), ["mattering.submission/1", "mattering.close/1"]);
 
-  // A cosigner with a lagging relay must not sign after the release either.
-  const cosigner = new Cosigner(clock.source(20));
-  const terms: AuctionPolicy = { ...policy, auctionId: "lag-2", cosigners: [cosigner.publicKey], cosignerThreshold: 1 };
+  // A cosigner dates what it signs by its own clock, not by a relay. Asked
+  // after the release, it may sign, but the date shows it was too late.
   const witness = new Witness();
-  const closing = witness.close(policyHash({ ...terms, witness: witness.publicKey }), beacon.info, beacon.release(100));
+  const cosigner = new Cosigner({ name: "lagging.example", logs: [witness.vkey], clock: scheduleClock(clock.source(20)) });
+  const terms: AuctionPolicy = { ...policy, auctionId: "lag-2", witness: witness.publicKey, origin: witness.origin, cosigners: [cosigner.vkey], cosignerThreshold: 1 };
+  const closing = witness.close(policyHash(terms), beacon.info, beacon.release(100));
   clock.advanceTo(110);
   assert.equal((await clock.source(20).latest()).round, 90);
-  await rejects(cosigner.cosign(policyHash({ ...terms, witness: witness.publicKey }), { ...terms, witness: witness.publicKey }, closing), "POLICY");
+  const reply = await cosigner.addCheckpoint("old 0\n\n" + witness.logCheckpoint());
+  assert.equal(reply.status, 200);
+  const count = countCosignatures(terms, closing, { checkpoint: witness.logCheckpoint() + reply.body, proof: [] });
+  assert.deepEqual(count, { cosigners: [], problem: "cosigned only after the release round" });
 });
 
 test("the witness refuses what it can tell is wrong while bids are sealed", async () => {
@@ -192,7 +204,7 @@ test("state survives a restart: same key, same log, same closing checkpoint", as
   const result = await verifyAuction((await restarted.evidence(hash)) as unknown as AuctionInputs, d.verifier);
   assert.equal(result.winner?.amount, 2000);
   assert.equal(statSync(join(d.dataDir, "witness-key.json")).mode & 0o077, 0, "key file is not readable by others");
-  assert.equal(readFileSync(join(d.dataDir, "log.jsonl"), "utf8").trim().split("\n").length, 2);
+  assert.equal(readFileSync(join(d.dataDir, "log.jsonl"), "utf8").trim().split("\n").length, 3, "two bids and the close entry");
 });
 
 test("a witness that rewrites the log after seeing the bids cannot get it accepted", async () => {
@@ -208,69 +220,123 @@ test("a witness that rewrites the log after seeing the bids cannot get it accept
   const honest = (await d.client.evidence(hash)) as unknown as AuctionInputs & { envelopes: Record<string, unknown> };
   assert.equal((await verifyAuction(honest, d.verifier)).winner?.amount, 4200);
 
-  // The witness operator now knows every bid. Using its own signing key it builds a
-  // second log with a winning bid of its own, and a closing checkpoint that claims
-  // the same close round.
+  // The witness operator now knows every bid. Using its own signing key it rewrites
+  // the log with a winning bid of its own slipped in before the close.
   const secretKey = (JSON.parse(readFileSync(join(d.dataDir, "witness-key.json"), "utf8")) as { secretKey: string }).secretKey;
-  const forger = new Witness(secretKey);
-  for (const entry of honest.entries) forger.submit(entry);
+  const forger = new Witness(secretKey, undefined, d.service.origin);
+  for (const entry of honest.entries.slice(0, -1)) forger.submit(entry as Submission);
   const shill = await prepareBid(d.auction, 4201, generateKeyPair());
   forger.submit(shill.submission);
   const forgedClosing = forger.close(hash, d.beacon.info, d.beacon.release(100));
   const forged = { ...honest, entries: forger.entries(), closing: forgedClosing, envelopes: { ...honest.envelopes, [shill.submission.envelopeId]: shill.envelope } };
 
-  // With the genuine cosignatures: they are for a different checkpoint.
+  // With the genuine cosignatures: the cosigned log is not an extension of the forged closing.
   const r1 = await verifyAuction(forged as AuctionInputs, d.verifier);
   assert.equal(r1.ok, false);
-  assert.equal(r1.checks.find((c) => c.name === "closing-checkpoint-cosigned-before-release")?.ok, false);
-  // Asking the cosigners to sign the forgery: refused, twice over (already signed another; too late).
-  for (const cosigner of d.cosigners) {
-    await rejects(cosigner.cosign(hash, d.auction, forgedClosing), "POLICY");
+  assert.match(r1.checks.find((c) => c.name === "closing-checkpoint-cosigned-before-release")?.detail ?? "", /not an extension/);
+  // Asking the cosigners to cosign the rewritten log: refused, it is a fork of what they cosigned.
+  for (const [vkey, url] of Object.entries(d.urls)) {
+    const old = d.cosigners.find((c) => c.vkey === vkey)!.state.get(d.service.origin)!.size;
+    const body = `old ${old}\n` + forger.consistency(old).map((p) => p + "\n").join("") + "\n" + forger.logCheckpoint();
+    const response = await fetch(url + "/add-checkpoint", { method: "POST", body });
+    assert.equal(response.status, 422);
   }
-  const response = await fetch(Object.values(d.urls)[0]! + "/cosign", { method: "POST", body: JSON.stringify({ policyHash: hash, policy: d.auction, closing: forgedClosing }) });
-  assert.equal(response.status, 409);
+
+  // Or it appends its bid after the close and closes again. That log does extend
+  // what was cosigned, so a cosigner signs it, but dated after the release, and
+  // the first close entry still decides which bids count.
+  const extender = new Witness(secretKey, { entries: honest.entries, closings: [] }, d.service.origin);
+  extender.submit(shill.submission);
+  const movedClosing = extender.close(hash, d.beacon.info, d.beacon.release(100));
+  const lines = [];
+  for (const cosigner of d.cosigners) {
+    const old = cosigner.state.get(d.service.origin)!.size;
+    const reply = await cosigner.addCheckpoint(`old ${old}\n` + extender.consistency(old).map((p) => p + "\n").join("") + "\n" + extender.logCheckpoint());
+    assert.equal(reply.status, 200);
+    lines.push(reply.body);
+  }
+  const moved = { ...forged, entries: extender.entries(), closing: movedClosing, witnessed: { checkpoint: extender.logCheckpoint() + lines.join(""), proof: [] } };
+  const r3 = await verifyAuction(moved as AuctionInputs, d.verifier);
+  assert.equal(r3.ok, false);
+  assert.equal(r3.checks.find((c) => c.name === "closed-only-once")?.ok, false);
+  assert.match(r3.checks.find((c) => c.name === "closing-checkpoint-cosigned-before-release")?.detail ?? "", /after the release/);
 
   // The same forgery under a policy with no cosigners would be accepted. That is
   // exactly the trust a threshold of 0 places in the witness.
   const trusting: AuctionPolicy = { ...d.auction, cosigners: [], cosignerThreshold: 0 };
-  const lone = new Witness(secretKey);
+  const lone = new Witness(secretKey, undefined, d.service.origin);
   const b1 = await prepareBid(trusting, 4200, generateKeyPair());
   lone.submit(b1.submission);
   const b2 = await prepareBid(trusting, 4201, generateKeyPair());
   lone.submit(b2.submission);
-  const r2 = await verifyAuction({ policy: trusting, entries: lone.entries(), closing: lone.close(policyHash(trusting), d.beacon.info, d.beacon.release(100)), envelopes: { [b1.submission.envelopeId]: b1.envelope, [b2.submission.envelopeId]: b2.envelope }, release: d.beacon.release(110) }, d.verifier);
+  const loneClosing = lone.close(policyHash(trusting), d.beacon.info, d.beacon.release(100));
+  const r2 = await verifyAuction({ policy: trusting, entries: lone.entries(), closing: loneClosing, envelopes: { [b1.submission.envelopeId]: b1.envelope, [b2.submission.envelopeId]: b2.envelope }, release: d.beacon.release(110) }, d.verifier);
   assert.equal(r2.winner?.amount, 4201);
 });
 
-test("cosigners: too few, too early, too late, wrong checkpoint, not named", async () => {
+test("cosigners speak C2SP tlog-witness: every refusal the protocol defines", async () => {
+  const beacon = new TestBeacon();
+  const clock = new TestClock(beacon, 10);
+  const log = new Witness(undefined, undefined, "log.example/one");
+  const cosigner = new Cosigner({ name: "cosigner.example", logs: [log.vkey], clock: scheduleClock(clock.source()) });
+  const url = await listen(cosignerServer(cosigner));
+  const post = async (body: string) => {
+    const response = await fetch(url + "/add-checkpoint", { method: "POST", body });
+    return { status: response.status, type: response.headers.get("content-type"), body: await response.text() };
+  };
+  const policy: AuctionPolicy = { format: POLICY_FORMAT, auctionId: "p", beacon: beacon.info, closeRound: 100, releaseRound: 110, witness: log.publicKey, origin: log.origin, cosigners: [], cosignerThreshold: 0, minBid: 1, maxBid: 10, rule: "highest-bid", tieBreak: "release-round-signature" };
+  for (let i = 0; i < 3; i++) log.submit((await prepareBid(policy, 5, generateKeyPair())).submission);
+
+  assert.equal((await post("old 0\n\n" + new Witness(undefined, undefined, "log.example/other").logCheckpoint())).status, 404, "unknown log");
+  assert.equal((await post("old 0\n\n" + new Witness(undefined, undefined, "log.example/one").logCheckpoint())).status, 403, "not the log's key");
+  assert.equal((await post("old 9\n\n" + log.logCheckpoint())).status, 400, "old size beyond the checkpoint");
+  assert.equal((await post("old x\n\n" + log.logCheckpoint())).status, 400, "malformed");
+  assert.equal((await post("old 0\n" + log.consistency(1).map((p) => p + "\n").join("") + "\n" + log.logCheckpoint())).status, 422, "old size 0 takes no proof");
+
+  const first = await post("old 0\n\n" + log.logCheckpoint(2));
+  assert.equal(first.status, 200);
+  const note = parseNote(log.logCheckpoint(2) + first.body);
+  assert.equal(note.signatures.length, 2, "the log's signature and one cosignature");
+
+  const stale = await post("old 0\n\n" + log.logCheckpoint());
+  assert.deepEqual([stale.status, stale.type, stale.body], [409, "text/x.tlog.size", "2\n"], "the client is told the latest cosigned size");
+  const fork = new Witness(log.keys.secretKey, { entries: log.entries().slice(1), closings: [] }, log.origin);
+  assert.equal((await post("old 2\n" + fork.consistency(2).map((p) => p + "\n").join("") + "\n" + fork.logCheckpoint())).status, 422, "a fork is never cosigned");
+  assert.equal((await post("old 2\n" + log.consistency(2).map((p) => p + "\n").join("") + "\n" + log.logCheckpoint())).status, 200, "an honest extension is");
+  assert.equal(cosigner.state.get(log.origin)?.size, 3);
+});
+
+test("cosignatures: thresholds, duplicates, outsiders and split views", async () => {
   const d = await deployment(2);
   const { policyHash: hash } = await d.client.registerPolicy(d.auction);
   const bid = await prepareBid(d.auction, 3000, generateKeyPair());
   await d.client.submit(bid.submission, bid.envelope);
-
-  const witness = new Witness();
-  const early = witness.checkpoint(d.beacon.info, d.beacon.release(50), hash);
-  await rejects(d.cosigners[0]!.cosign(hash, d.auction, early), "MALFORMED");
-
   d.clock.advanceTo(100);
   await d.service.tick();
   d.clock.advanceTo(110);
   const evidence = (await d.client.evidence(hash)) as unknown as AuctionInputs;
   assert.equal((await verifyAuction(evidence, d.verifier)).ok, true);
-  const one = { ...evidence, cosignatures: evidence.cosignatures!.slice(0, 1) };
-  assert.equal((await verifyAuction(one, d.verifier)).ok, false, "threshold is 2");
-  const doubled = { ...evidence, cosignatures: [evidence.cosignatures![0]!, evidence.cosignatures![0]!] };
-  assert.equal((await verifyAuction(doubled, d.verifier)).ok, false, "the same cosigner twice counts once");
-  const outsider = new Cosigner(d.clock.source());
-  await rejects(outsider.cosign(hash, d.auction, evidence.closing), "POLICY");
+  const [text, signatures] = evidence.witnessed!.checkpoint.split("\n\n") as [string, string];
+  const [logLine, first] = signatures.split("\n");
+  const only = (lines: string[]) => ({ ...evidence, witnessed: { ...evidence.witnessed!, checkpoint: `${text}\n\n${lines.map((l) => l + "\n").join("")}` } });
+  assert.equal((await verifyAuction(only([logLine!, first!]), d.verifier)).ok, false, "threshold is 2");
+  assert.equal((await verifyAuction(only([logLine!, first!, first!]), d.verifier)).ok, false, "the same cosigner twice counts once");
+  const outsider = new Cosigner({ name: "outsider.example", logs: [d.service.vkey], clock: () => 105 });
+  const reply = await outsider.addCheckpoint(`old 0\n\n${text}\n\n${logLine}\n`);
+  assert.equal(reply.status, 200);
+  assert.equal((await verifyAuction(only([logLine!, first!, reply.body.trimEnd()]), d.verifier)).ok, false, "a cosigner the policy does not name does not count");
 
-  // A cosigner that is first asked after release refuses, so a witness cannot delay closing past it.
+  // A policy must require more than half of its cosigners, or a witness could
+  // show one log to some and another log to the rest.
+  assert.throws(() => policyHash({ ...d.auction, cosignerThreshold: 1 }), /more than half/);
+
+  // A witness that only asks after the release gets nothing that counts.
   const d2 = await deployment(1);
   const { policyHash: hash2 } = await d2.client.registerPolicy(d2.auction);
   d2.clock.advanceTo(110);
   await d2.service.tick();
   const e2 = (await d2.client.evidence(hash2)) as unknown as AuctionInputs;
-  assert.equal(e2.cosignatures!.length, 0);
+  assert.equal(e2.witnessed, undefined);
   assert.equal((await verifyAuction(e2, d2.verifier)).ok, false);
 });
 

@@ -10,6 +10,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  isSubmission,
   POLICY_FORMAT,
   Witness,
   generateKeyPair,
@@ -54,6 +55,7 @@ const policy: AuctionPolicy = {
   closeRound: 100,
   releaseRound: 110,
   witness: witness.publicKey,
+  origin: witness.origin,
   cosigners: [],
   cosignerThreshold: 0,
   minBid: 100,
@@ -79,7 +81,7 @@ for (const agent of agents) {
 }
 
 say("\n3. While sealed");
-const first = witness.entries()[0]!;
+const first = witness.entries().filter(isSubmission)[0]!;
 const sealedOk = verifySealedSubmission(policy, first, envelopes[first.envelopeId]!, verifier).every((c) => c.ok);
 say(`   anyone can check a submission is well-formed: ${sealedOk ? "yes" : "NO"}`);
 try {

@@ -5,6 +5,10 @@ import { MAX_BODY, errorReply, handleCosigner, handleWitness, parseBody, type Re
 import type { WitnessService } from "./service.ts";
 
 export async function readJson(request: IncomingMessage): Promise<unknown> {
+  return parseBody(await readText(request));
+}
+
+export async function readText(request: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of request) {
@@ -12,7 +16,7 @@ export async function readJson(request: IncomingMessage): Promise<unknown> {
     if (size > MAX_BODY) throw new MatteringError("MALFORMED", "request body too large");
     chunks.push(chunk as Buffer);
   }
-  return parseBody(Buffer.concat(chunks).toString("utf8"));
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 export function send(response: ServerResponse, status: number, body: unknown): void {
@@ -25,11 +29,17 @@ export function sendError(response: ServerResponse, error: unknown): void {
   send(response, reply.status, reply.body);
 }
 
-function listener(handle: (method: string, url: URL, body: () => Promise<unknown>) => Promise<Reply>): RequestListener {
+function sendReply(response: ServerResponse, reply: Reply): void {
+  if (!reply.text) return send(response, reply.status, reply.body);
+  response.writeHead(reply.status, { "content-type": reply.text.contentType, "cache-control": "no-store" });
+  response.end(reply.text.body);
+}
+
+function listener(handle: (method: string, url: URL, text: () => Promise<string>) => Promise<Reply>): RequestListener {
   return (request, response) => {
     const url = new URL(request.url ?? "/", "http://localhost");
-    void handle(request.method ?? "GET", url, () => readJson(request)).then(
-      (reply) => send(response, reply.status, reply.body),
+    void handle(request.method ?? "GET", url, () => readText(request)).then(
+      (reply) => sendReply(response, reply),
       (error: unknown) => sendError(response, error),
     );
   };
@@ -37,14 +47,14 @@ function listener(handle: (method: string, url: URL, body: () => Promise<unknown
 
 /** The witness's routes as a request listener, for mounting inside another server. */
 export function witnessListener(service: WitnessService): RequestListener {
-  return listener((method, url, body) => handleWitness(service, method, url.pathname, url.searchParams, body));
+  return listener((method, url, text) => handleWitness(service, method, url.pathname, url.searchParams, async () => parseBody(await text())));
 }
 
 export function witnessServer(service: WitnessService): Server {
   return createServer(witnessListener(service));
 }
 
-/** A cosigner as a service: one route that countersigns closing checkpoints. */
-export function cosignerServer(cosigner: Cosigner, onSigned?: () => void): Server {
-  return createServer(listener((method, url, body) => handleCosigner(cosigner, method, url.pathname, body, onSigned)));
+/** A cosigner as a service, speaking the C2SP tlog-witness protocol. */
+export function cosignerServer(cosigner: Cosigner): Server {
+  return createServer(listener((method, url, text) => handleCosigner(cosigner, method, url.pathname, text)));
 }

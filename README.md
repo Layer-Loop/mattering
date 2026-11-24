@@ -38,7 +38,7 @@ Three rules shaped it:
 **A witness and registry service**
 
 - An **HTTP service** that keeps the log, enforces deadlines, stores envelopes and publishes the evidence for anyone to check.
-- **Cosigners**: independent parties who countersign an auction's close before any bid can be read, so the witness cannot rewrite the log afterwards.
+- **Cosigners**: independent parties who countersign the log, dated, before any bid can be read, so the witness cannot rewrite it or move the close afterwards. They speak the same protocol as the public transparency-log witness network (C2SP tlog-witness), though no public witness has been used yet.
 - **Sealed statements**: commit to a prediction or decision before a deadline; it opens for everyone at a set time.
 - A **registry view**: everything one key has committed to, and what each commitment opened to.
 
@@ -133,7 +133,7 @@ The full list is in [docs/threat-model.md](docs/threat-model.md).
 | `apps/cloudflare` | The same room as a Cloudflare Worker, for the website |
 | `examples/agent-auction` | Three agents, one auction, and a standalone verifier |
 | `examples/hosted-registry` | The same through the hosted service, plus sealed predictions |
-| `tests` | 52 tests: sealing, tampering, replay, early opening, cheating bidders, a cheating witness, a cheating coordinator, and the service over HTTP |
+| `tests` | 65 tests: sealing, tampering, replay, early opening, cheating bidders, a cheating witness, a cheating coordinator, the witness protocol and its formats, and the service over HTTP |
 | `docs/protocol.md` | The envelope, submission, log, auction and statement formats |
 | `docs/service.md` | Running the witness service, its interface, and what it lacks |
 | `docs/showcase.md` | The demonstration page: what is real and what is staged |

@@ -16,6 +16,7 @@ import {
   generateKeyPair,
   inclusionProof,
   isEquivocation,
+  isSubmission,
   leafHash,
   merkleRoot,
   open,
@@ -47,7 +48,7 @@ const CLOSE = 500;
 const RELEASE = 510;
 
 function makePolicy(witness: Witness, auctionId = "gpu-hours-lot-1"): AuctionPolicy {
-  return { format: POLICY_FORMAT, auctionId, beacon: beacon.info, closeRound: CLOSE, releaseRound: RELEASE, witness: witness.publicKey, cosigners: [], cosignerThreshold: 0, minBid: 100, maxBid: 10_000, rule: "highest-bid", tieBreak: "release-round-signature" };
+  return { format: POLICY_FORMAT, auctionId, beacon: beacon.info, closeRound: CLOSE, releaseRound: RELEASE, witness: witness.publicKey, origin: witness.origin, cosigners: [], cosignerThreshold: 0, minBid: 100, maxBid: 10_000, rule: "highest-bid", tieBreak: "release-round-signature" };
 }
 
 interface World {
@@ -167,7 +168,7 @@ test("ties are broken by the release round's signature, not by arrival order", a
   // Same bids, reversed arrival order: the same envelope still wins.
   // The same three sealed bids arriving in the opposite order: the same envelope wins.
   const second = new Witness();
-  const policy2 = { ...w.policy, witness: second.publicKey };
+  const policy2 = { ...w.policy, witness: second.publicKey, origin: second.origin };
   void policy2;
   const reordered = { ...close(w), entries: [...w.witness.entries()].reverse() };
   assert.equal((await verifyAuction(reordered, verifier)).ok, false, "reordering a signed log breaks the checkpoint");
@@ -250,7 +251,8 @@ test("copying: resubmitting a rival's sealed bid under your own key is invalid",
   const bid = await prepareBid(p2, 4200, alice);
   w2.submit(signSubmission({ policyHash: policyHash(p2), envelopeId: bid.submission.envelopeId, commitment: bid.submission.commitment! }, copier));
   w2.submit(bid.submission);
-  const r2 = await verifyAuction({ policy: p2, entries: w2.entries(), closing: w2.close(policyHash(p2), beacon.info, beacon.release(CLOSE)), envelopes: { [bid.submission.envelopeId]: bid.envelope }, release: beacon.release(RELEASE) }, verifier);
+  const closing2 = w2.close(policyHash(p2), beacon.info, beacon.release(CLOSE));
+  const r2 = await verifyAuction({ policy: p2, entries: w2.entries(), closing: closing2, envelopes: { [bid.submission.envelopeId]: bid.envelope }, release: beacon.release(RELEASE) }, verifier);
   assert.deepEqual(r2.bids.map((b) => b.status), ["invalid", "valid"]);
   assert.equal(r2.winner?.submitter, alice.publicKey);
 });
@@ -325,13 +327,33 @@ test("receipts: valid ones verify, and a dropped entry is provable", async () =>
     assert.equal(receiptHonoured(receipts[i]!, b.submission, witness.entries()), true);
   });
   // The witness publishes a log without the highest bid.
-  const censored = witness.entries().filter((e) => e.envelopeId !== bids[1]!.submission.envelopeId);
+  const censored = witness.entries().filter((e) => !isSubmission(e) || e.envelopeId !== bids[1]!.submission.envelopeId);
   assert.equal(receiptHonoured(receipts[1]!, bids[1]!.submission, censored), false);
   // And it cannot pass that log off under the checkpoint it signed.
   const closing = witness.close(policyHash(policy), beacon.info, beacon.release(CLOSE));
   const envelopes = Object.fromEntries(bids.map((b) => [b.submission.envelopeId, b.envelope]));
   const result = await verifyAuction({ policy, entries: censored, closing, envelopes, release: beacon.release(RELEASE) }, verifier);
   assert.equal(result.ok, false);
+});
+
+test("the first close entry fixes the cutoff: a later one cannot move it", async () => {
+  const w = await world([3000, 4200]);
+  const honest = close(w);
+  assert.equal((await verifyAuction(honest, verifier)).ok, true);
+  // After release the witness appends a winning bid of its own and a second
+  // close entry, and signs a closing checkpoint ending with that one.
+  const shill = await prepareBid(w.policy, 9000, generateKeyPair());
+  const entries = [...honest.entries, shill.submission, honest.entries.at(-1)!];
+  const moved = new Witness(w.witness.keys.secretKey, { entries, closings: [] });
+  const closing = moved.checkpoint(beacon.info, beacon.release(CLOSE), policyHash(w.policy));
+  const result = await verifyAuction({ ...honest, entries, closing, envelopes: { ...w.envelopes, [shill.submission.envelopeId]: shill.envelope } }, verifier);
+  assert.equal(result.ok, false);
+  assert.equal(result.checks.find((c) => c.name === "closed-only-once")?.ok, false);
+  // And a closing checkpoint that does not end with the close entry is refused too.
+  const cut = new Witness(w.witness.keys.secretKey, { entries: honest.entries.slice(0, -1), closings: [] });
+  const bare = cut.checkpoint(beacon.info, beacon.release(CLOSE), policyHash(w.policy));
+  const r2 = await verifyAuction({ ...honest, entries: honest.entries.slice(0, -1), closing: bare }, verifier);
+  assert.equal(r2.checks.find((c) => c.name === "closing-is-the-close-entry")?.ok, false);
 });
 
 test("a forked log is provable from two checkpoints", async () => {

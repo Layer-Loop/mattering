@@ -18,9 +18,12 @@ import {
   POLICY_FORMAT,
   QUICKNET,
   STATEMENT_POLICY_FORMAT,
+  countCosignatures,
   generateKeyPair,
   prepareBid,
   prepareStatement,
+  scheduleClock,
+  systemClock,
   timeOfRound,
   verifyAuction,
   verifyStatements,
@@ -55,19 +58,22 @@ async function until(round: number, what: string): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
 }
 
-const cosigner = new Cosigner(sourceFor());
+// The cosigner speaks the same protocol as the public witness network, and keeps its own clock.
+const cosigner = new Cosigner({ name: "localhost/example-cosigner", logs: [], clock: clock ? scheduleClock(clock.source()) : systemClock });
 const cosignerUrl = await listen(cosignerServer(cosigner));
-const service = await WitnessService.open({ store: fileStore(mkdtempSync(join(tmpdir(), "mattering-hosted-"))), source: sourceFor(), cosign: httpCosign({ [cosigner.publicKey]: cosignerUrl }) });
+const service = await WitnessService.open({ store: fileStore(mkdtempSync(join(tmpdir(), "mattering-hosted-"))), source: sourceFor(), origin: "localhost/example-log", cosign: httpCosign({ [cosigner.vkey]: cosignerUrl }) });
+cosigner.addLog(service.vkey);
 const witnessUrl = await listen(witnessServer(service));
 const ticker = setInterval(() => void service.tick().catch(() => {}), 1000);
 const client = new WitnessClient(witnessUrl);
 const verifier = { acceptedBeacons: [beacon] };
 
 say(`Witness   ${short(service.publicKey)} at ${witnessUrl}`);
-say(`Cosigner  ${short(cosigner.publicKey)} at ${cosignerUrl}`);
+say(`Log       ${service.vkey}`);
+say(`Cosigner  ${cosigner.vkey} at ${cosignerUrl}`);
 say(`Beacon    ${offline ? "simulated (offline)" : "drand quicknet"}; close at round ${closeRound}, release at round ${releaseRound}`);
 
-const terms = { beacon, closeRound, releaseRound, witness: service.publicKey, cosigners: [cosigner.publicKey], cosignerThreshold: 1 };
+const terms = { beacon, closeRound, releaseRound, witness: service.publicKey, origin: service.origin, cosigners: [cosigner.vkey], cosignerThreshold: 1 };
 const auction: AuctionPolicy = { format: POLICY_FORMAT, auctionId: "compute-lot-1", ...terms, minBid: 100, maxBid: 10_000, rule: "highest-bid", tieBreak: "release-round-signature" };
 const forecast: StatementPolicy = { format: STATEMENT_POLICY_FORMAT, topic: "What will the winning bid for compute-lot-1 be?", ...terms };
 const auctionHash = (await client.registerPolicy(auction)).policyHash;
@@ -101,12 +107,13 @@ try {
   lateOutcome = `a late bid of 9999: refused (${(error as Error).message})`;
 }
 let closed = await client.evidence(auctionHash);
-for (let i = 0; i < 20 && (closed.state === "open" || (closed.cosignatures?.length ?? 0) < 1); i++) {
+const cosignatures = () => (closed.closing ? countCosignatures(closed.policy, closed.closing, closed.witnessed).cosigners.length : 0);
+for (let i = 0; i < 20 && (closed.state === "open" || cosignatures() < 1); i++) {
   await new Promise((resolve) => setTimeout(resolve, clock ? 0 : 500));
   await service.tick().catch(() => {});
   closed = await client.evidence(auctionHash);
 }
-say(`   auction is ${closed.state}; closing checkpoint covers ${closed.closing?.size} entries, ${closed.cosignatures?.length} cosignature(s)`);
+say(`   auction is ${closed.state}; closing checkpoint covers ${closed.closing?.size} entries, ${cosignatures()} cosignature(s)`);
 say(`   ${lateOutcome}`);
 
 say("\n3. Release");

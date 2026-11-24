@@ -3,7 +3,7 @@
  * what is the signature for a given round. The witness and each cosigner must
  * use their own source, because "what time is it" is the thing they attest.
  */
-import type { BeaconInfo, Release } from "./beacon.ts";
+import { timeOfRound, type BeaconInfo, type Release } from "./beacon.ts";
 
 export interface BeaconSource {
   readonly beacon: BeaconInfo;
@@ -28,4 +28,16 @@ export interface BeaconSource {
 export async function deadlineRound(source: BeaconSource): Promise<{ latest: Release; round: number }> {
   const latest = await source.latest();
   return { latest, round: Math.max(latest.round, source.scheduledRound?.() ?? 0) };
+}
+
+/** UNIX seconds by this machine's clock. */
+export const systemClock = (): number => Math.floor(Date.now() / 1000);
+
+/**
+ * A clock that reads time off a beacon source's schedule: the scheduled time
+ * of the round that should be current. For simulated beacons in tests and
+ * offline demonstrations, where wall-clock time means nothing to the beacon.
+ */
+export function scheduleClock(source: BeaconSource): () => number {
+  return () => (source.scheduledRound ? timeOfRound(source.beacon, source.scheduledRound()) : systemClock());
 }

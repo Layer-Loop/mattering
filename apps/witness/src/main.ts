@@ -8,11 +8,14 @@
  *   MATTERING_DATA       directory for state and the signing key (default ./witness-data or ./cosigner-data)
  *   PORT                 port to listen on
  *   MATTERING_RELAYS     comma-separated drand relay URLs (default: public relays)
- *   MATTERING_COSIGNERS  witness only: comma-separated key=url pairs
+ *   MATTERING_ORIGIN     witness only: the log's origin, such as example.com/log (default: derived from its key)
+ *   MATTERING_COSIGNERS  witness only: comma-separated vkey=url pairs, url being the add-checkpoint prefix
+ *   MATTERING_NAME       cosigner only: its name in signature lines (default localhost/mattering-cosigner)
+ *   MATTERING_LOGS       cosigner only: comma-separated verifier keys of the logs it cosigns for
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { Cosigner, QUICKNET, generateKeyPair, type Cosignature } from "@mattering/core";
+import { Cosigner, QUICKNET, generateKeyPair, systemClock, type CosignedState } from "@mattering/core";
 import { DEFAULT_RELAYS, drandSource } from "@mattering/core/drand-http";
 import { httpCosign } from "./client.ts";
 import { cosignerServer, witnessServer } from "./http.ts";
@@ -22,14 +25,17 @@ import { WitnessService } from "./service.ts";
 const mode = process.argv[2] ?? "witness";
 const relays = process.env.MATTERING_RELAYS?.split(",").filter(Boolean) ?? DEFAULT_RELAYS;
 const source = drandSource(QUICKNET, relays);
+const list = (name: string): string[] => (process.env[name] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 
 if (mode === "witness") {
   const dataDir = process.env.MATTERING_DATA ?? "./witness-data";
-  const urls = Object.fromEntries((process.env.MATTERING_COSIGNERS ?? "").split(",").filter(Boolean).map((pair) => pair.split("=") as [string, string]));
-  const service = await WitnessService.open({ store: fileStore(dataDir), source, cosign: httpCosign(urls) });
+  // A vkey never contains "=" (its key is 33 bytes, so no base64 padding); the first "=" separates the URL.
+  const urls = Object.fromEntries(list("MATTERING_COSIGNERS").map((pair) => [pair.slice(0, pair.indexOf("=")), pair.slice(pair.indexOf("=") + 1)]));
+  const service = await WitnessService.open({ store: fileStore(dataDir), source, origin: process.env.MATTERING_ORIGIN, cosign: httpCosign(urls) });
   const port = Number(process.env.PORT ?? 8787);
   witnessServer(service).listen(port, () => {
     console.log(`mattering witness ${service.publicKey}`);
+    console.log(`log ${service.vkey}`);
     console.log(`listening on :${port}, state in ${dataDir}, beacon drand quicknet`);
     console.log("experimental; not security reviewed");
   });
@@ -38,21 +44,27 @@ if (mode === "witness") {
   const dataDir = process.env.MATTERING_DATA ?? "./cosigner-data";
   mkdirSync(dataDir, { recursive: true });
   const keyFile = join(dataDir, "cosigner-key.json");
-  const signedFile = join(dataDir, "cosigned.jsonl");
+  const stateFile = join(dataDir, "cosigned.json");
   const keys = existsSync(keyFile) ? generateKeyPair((JSON.parse(readFileSync(keyFile, "utf8")) as { secretKey: string }).secretKey) : generateKeyPair();
   if (!existsSync(keyFile)) writeFileSync(keyFile, JSON.stringify({ secretKey: keys.secretKey }) + "\n", { mode: 0o600 });
-  const signed: [string, Cosignature][] = existsSync(signedFile) ? readFileSync(signedFile, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line) as [string, Cosignature]) : [];
-  const cosigner = new Cosigner(source, keys.secretKey, signed);
-  let saved = signed.length;
+  const state: Record<string, CosignedState> = existsSync(stateFile) ? (JSON.parse(readFileSync(stateFile, "utf8")) as Record<string, CosignedState>) : {};
+  const cosigner = new Cosigner({
+    name: process.env.MATTERING_NAME ?? "localhost/mattering-cosigner",
+    logs: list("MATTERING_LOGS"),
+    clock: systemClock,
+    secretKey: keys.secretKey,
+    state,
+    // Written before the cosignature is returned, so a restart cannot be used to get a fork cosigned.
+    persist: (origin, latest) => {
+      state[origin] = latest;
+      writeFileSync(stateFile + ".tmp", JSON.stringify(state, null, 2) + "\n");
+      renameSync(stateFile + ".tmp", stateFile);
+    },
+  });
   const port = Number(process.env.PORT ?? 8788);
-  cosignerServer(cosigner, () => {
-    // Persist what was signed, so a restart cannot be used to obtain a second, different cosignature.
-    const all = [...cosigner.signed.entries()];
-    for (const entry of all.slice(saved)) appendFileSync(signedFile, JSON.stringify(entry) + "\n");
-    saved = all.length;
-  }).listen(port, () => {
-    console.log(`mattering cosigner ${cosigner.publicKey}`);
-    console.log(`listening on :${port}, state in ${dataDir}, beacon drand quicknet`);
+  cosignerServer(cosigner).listen(port, () => {
+    console.log(`mattering cosigner ${cosigner.vkey}`);
+    console.log(`listening on :${port}, state in ${dataDir}, cosigning for ${list("MATTERING_LOGS").length} log(s)`);
     console.log("experimental; not security reviewed");
   });
 } else {

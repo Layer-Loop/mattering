@@ -12,7 +12,8 @@ import { isLowerHex, verifyRelease, type BeaconInfo, type Release } from "./beac
 import { canonicalBytes } from "./canonical.ts";
 import { isCommitment } from "./commitment.ts";
 import { MatteringError } from "./errors.ts";
-import { inclusionProof, leafHash, merkleRoot, rootFromInclusionProof } from "./merkle.ts";
+import { consistencyProof, inclusionProof, leafHash, merkleRoot, rootFromInclusionProof } from "./merkle.ts";
+import { SIGNATURE_ED25519, checkpointText, formatVkey, isKeyName, signNote, toBase64 } from "./note.ts";
 import { generateKeyPair, signCanonical, verifyCanonical, type KeyPair } from "./signing.ts";
 
 export const SUBMISSION_FORMAT = "mattering.submission/1";
@@ -62,13 +63,41 @@ export function verifySubmissionSignature(submission: Submission): boolean {
   return verifyCanonical(SUBMISSION_LABEL, unsigned, signature, submission.submitter);
 }
 
-/** The bytes a log leaf holds for a submission. */
-export function submissionLeaf(submission: Submission): Uint8Array {
-  return canonicalBytes(submission);
+// --- close entries -----------------------------------------------------------
+
+export const CLOSE_FORMAT = "mattering.close/1";
+
+/**
+ * Written into the log by the witness when it closes a policy. The first one
+ * for a policy fixes which entries count: those before it. Because it is in
+ * the log, the cosignatures that date the log also date the closing, so the
+ * witness cannot choose its cutoff after the bids open.
+ */
+export interface CloseEntry {
+  format: typeof CLOSE_FORMAT;
+  policyHash: string;
+  /** The beacon's signature for the policy's close round. */
+  observed: Release;
 }
 
-/** Root over a list of submissions, in log order. */
-export function logRoot(entries: readonly Submission[]): string {
+/** One leaf of the log. */
+export type LogEntry = Submission | CloseEntry;
+
+export function isCloseEntry(entry: unknown): entry is CloseEntry {
+  return (entry as CloseEntry | null)?.format === CLOSE_FORMAT;
+}
+
+export function isSubmission(entry: unknown): entry is Submission {
+  return (entry as Submission | null)?.format === SUBMISSION_FORMAT;
+}
+
+/** The bytes a log leaf holds for an entry. */
+export function submissionLeaf(entry: LogEntry): Uint8Array {
+  return canonicalBytes(entry);
+}
+
+/** Root over a list of entries, in log order. */
+export function logRoot(entries: readonly LogEntry[]): string {
   return bytesToHex(merkleRoot(entries.map((e) => leafHash(submissionLeaf(e)))));
 }
 
@@ -99,7 +128,7 @@ export function verifyReceipt(receipt: Receipt, submission: Submission, witness:
  * Does a published log honour a receipt? False is evidence that the witness
  * dropped, moved or replaced an entry it had promised to include.
  */
-export function receiptHonoured(receipt: Receipt, submission: Submission, entries: readonly Submission[]): boolean {
+export function receiptHonoured(receipt: Receipt, submission: Submission, entries: readonly LogEntry[]): boolean {
   const entry = entries[receipt.index];
   if (!entry || entries.length < receipt.size) return false;
   return (
@@ -139,6 +168,11 @@ export function isEquivocation(a: Checkpoint, b: Checkpoint, witness: string): b
 
 // --- a witness ---------------------------------------------------------------
 
+/** The origin a witness's log gets when none is configured: unique to its key. */
+export function defaultOrigin(publicKey: string): string {
+  return `mattering.invalid/log/${publicKey.slice(0, 16)}`;
+}
+
 /**
  * An in-memory witness. It appends valid submissions, hands out receipts, and
  * closes a policy when shown the beacon signature for that policy's close
@@ -146,12 +180,20 @@ export function isEquivocation(a: Checkpoint, b: Checkpoint, witness: string): b
  */
 export class Witness {
   readonly keys: KeyPair;
-  private readonly log: Submission[] = [];
+  /**
+   * The log's name in the C2SP formats, which public witnesses know it by.
+   * Policies name it, so that one witness cannot run two logs side by side
+   * and pick one after the bids open.
+   */
+  readonly origin: string;
+  private readonly log: LogEntry[] = [];
   private readonly closed = new Map<string, Checkpoint>();
 
   /** Pass previously persisted state to resume a log. */
-  constructor(secretKey?: string, state?: { entries: readonly Submission[]; closings: Iterable<[string, Checkpoint]> }) {
+  constructor(secretKey?: string, state?: { entries: readonly LogEntry[]; closings: Iterable<[string, Checkpoint]> }, origin?: string) {
     this.keys = generateKeyPair(secretKey);
+    this.origin = origin ?? defaultOrigin(this.keys.publicKey);
+    if (!isKeyName(this.origin)) throw new MatteringError("MALFORMED", "origin: want a key name, such as example.com/log");
     if (state) {
       this.log.push(...state.entries.map((e) => ({ ...e })));
       for (const [hash, checkpoint] of state.closings) this.closed.set(hash, checkpoint);
@@ -170,8 +212,26 @@ export class Witness {
     return this.keys.publicKey;
   }
 
+  /** The log's verifier key, as witnesses are configured with it. */
+  get vkey(): string {
+    return formatVkey({ name: this.origin, type: SIGNATURE_ED25519, publicKey: this.publicKey });
+  }
+
+  /** A C2SP checkpoint of the log at `size` (default: now), signed by this witness. */
+  logCheckpoint(size = this.log.length): string {
+    if (!Number.isSafeInteger(size) || size < 0 || size > this.log.length) throw new MatteringError("MALFORMED", "size out of range");
+    const text = checkpointText(this.origin, size, logRoot(this.log.slice(0, size)));
+    return text + "\n" + signNote(text, this.origin, this.keys.secretKey);
+  }
+
+  /** RFC 6962 consistency proof between two sizes of this log, as base64 lines. */
+  consistency(oldSize: number, newSize = this.log.length): string[] {
+    if (!Number.isSafeInteger(newSize) || newSize > this.log.length) throw new MatteringError("MALFORMED", "size out of range");
+    return consistencyProof(this.log.slice(0, newSize).map((e) => leafHash(submissionLeaf(e))), oldSize).map(toBase64);
+  }
+
   /** The whole log, in order. Public. */
-  entries(): Submission[] {
+  entries(): LogEntry[] {
     return this.log.map((e) => ({ ...e }));
   }
 
@@ -202,12 +262,15 @@ export class Witness {
 
   /**
    * Close a policy: called once the witness has seen the policy's close round.
-   * Later submissions under the policy are refused. Closing twice returns the
-   * same checkpoint.
+   * Appends a close entry, so the closing is part of the log, then signs a
+   * closing checkpoint ending with it. Later submissions under the policy are
+   * refused. Closing twice returns the same checkpoint.
    */
   close(policyHash: string, beacon: BeaconInfo, closeRoundRelease: Release): Checkpoint {
     const existing = this.closed.get(policyHash);
     if (existing) return existing;
+    if (!verifyRelease(beacon, closeRoundRelease)) throw new MatteringError("RELEASE_INVALID", "the witness will not cite an invalid beacon signature");
+    this.log.push({ format: CLOSE_FORMAT, policyHash, observed: closeRoundRelease });
     const checkpoint = this.checkpoint(beacon, closeRoundRelease, policyHash);
     this.closed.set(policyHash, checkpoint);
     return checkpoint;

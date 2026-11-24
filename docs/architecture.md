@@ -33,7 +33,9 @@ In the auction, a **witness** sits between bidders and verifier. Bidders hand it
 | `commitment.ts` | Pedersen commitments on Ristretto255 | No |
 | `merkle.ts` | RFC 6962 tree hash and inclusion proofs | No |
 | `witness.ts` | Submission, receipt and checkpoint formats and checks; an in-memory witness | No |
-| `evidence.ts` | Policy terms, cosignatures and a cosigner, shared evidence checks | No |
+| `evidence.ts` | Policy terms, counting witness cosignatures, shared evidence checks | No |
+| `note.ts` | C2SP signed notes, checkpoints and Ed25519 cosignatures, as public witnesses use them | No |
+| `cosigner.ts` | A transparency-log witness speaking C2SP tlog-witness | No |
 | `auction.ts` | Policy, bid preparation, auction verifier | No |
 | `statement.ts` | Sealed statements and their verifier | No |
 | `source.ts` | The interface for a party's own view of the beacon | No |
@@ -54,14 +56,15 @@ In the auction, a **witness** sits between bidders and verifier. Bidders hand it
 
 ## The service
 
-`apps/witness` wraps the core's witness in an HTTP service with file storage, adds a cosigner service, and a client. The witness and each cosigner hold their own view of the beacon. See [service.md](service.md).
+`apps/witness` wraps the core's witness in an HTTP service with file storage, adds a cosigner service, and a client. Cosigners are reached with the C2SP tlog-witness protocol, so a public witness can take the place of the one here. Each cosigner keeps its own clock. See [service.md](service.md).
 
 ```text
  bidders ── signed submission + envelope ──► witness service ──► receipt
                                                   │  at the close round
-                                                  ├── closing checkpoint ──► cosigner(s) ──► cosignature
+                                                  ├── close entry + closing checkpoint
+                                                  ├── log checkpoint + consistency proof ──► cosigner(s) ──► dated cosignature
                                                   ▼
- verifiers ◄── evidence: policy, log, closing, cosignatures, envelopes, release
+ verifiers ◄── evidence: policy, log, closing, witnessed checkpoint, envelopes, release
 ```
 
 ## Planned

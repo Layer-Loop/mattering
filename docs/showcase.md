@@ -37,7 +37,7 @@ Each makes a real attempt against the running system.
 | --- | --- | --- |
 | Peek at a bid early | Takes a sealed bid and tries to open it with the newest key that exists | The key for that envelope has not been created yet |
 | Slip in a late bid | Seals the maximum bid and submits it after the close | The auctioneer refuses it; bidding closed at the agreed time |
-| Rewrite the list as the auctioneer | After the bids are readable, the server adds a winning bid and signs a new list with the auctioneer's real key | The browser rejects it: the cosigner signed the original list first and will not sign another |
+| Rewrite the list as the auctioneer | After the bids are readable, the server slips a winning bid in before the close, signs the new list with the auctioneer's real key, and asks the cosigner to vouch for it | The cosigner refuses: the new list is a fork of the one it countersigned before the bids could be read. The browser rejects the list, because the countersigned one does not extend it |
 | Announce a different winner | Declares that the lowest bidder won | The browser recomputes the result from the evidence and shows the difference |
 
 ## What is real and what is staged
@@ -92,6 +92,6 @@ The auctioneer and the cosigner still run in the same place, so the cosigner is 
 
 ## Not covered by automated tests
 
-`tests/showcase.test.ts` runs an auction through the room and verifies it as the page does. The page itself was checked by driving it in a headless browser by hand; there is no browser test in the suite. On a laptop, online mode against live drand was run by hand on 2026-11-23 and behaved as described.
+`tests/showcase.test.ts` runs an auction through the room and verifies it as the page does. The page itself was checked by driving it in a headless browser by hand; there is no browser test in the suite. On a laptop, online mode against live drand was run by hand on 2026-11-23 and behaved as described. It was run again on 2026-11-24 after cosigners moved to the C2SP witness protocol: a visitor's bid, all four cheats refused or exposed, and every check passing in the browser. That run found the "Simulated clock" badge showing in live mode, a styling bug, now fixed. The Cloudflare version has not been run since that change.
 
 The Cloudflare version was run by hand in Cloudflare's local runtime with the simulated clock: a full auction in the real site page, with all four cheats refused. It was deployed to mattering.ai on 2026-11-23 and run there by hand against live drand, and worked. Nothing checks the deployed version automatically.
