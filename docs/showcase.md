@@ -92,6 +92,6 @@ The auctioneer and the cosigner still run in the same place, so the cosigner is 
 
 ## Not covered by automated tests
 
-`tests/showcase.test.ts` runs an auction through the room and verifies it as the page does. The page itself was checked by driving it in a headless browser by hand; there is no browser test in the suite. On a laptop, online mode against live drand was run by hand on 2026-11-23 and behaved as described.
+`tests/showcase.test.ts` runs an auction through the room and verifies it as the page does. The page itself was checked by driving it in a headless browser by hand; there is no browser test in the suite. On a laptop, online mode against live drand was run by hand on 2026-11-23 and behaved as described. It was run again on 2026-11-24 after cosigners moved to the C2SP witness protocol: a visitor's bid, all four cheats refused or exposed, and every check passing in the browser. That run found the "Simulated clock" badge showing in live mode, a styling bug, now fixed. The Cloudflare version has not been run since that change.
 
 The Cloudflare version was run by hand in Cloudflare's local runtime with the simulated clock: a full auction in the real site page, with all four cheats refused. It was deployed to mattering.ai on 2026-11-23 and run there by hand against live drand, and worked. Nothing checks the deployed version automatically.

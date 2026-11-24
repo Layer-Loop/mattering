@@ -27,7 +27,7 @@ Every statement about what Mattering guarantees should trace to a row here. If a
 
 | # | Claim | Rests on | Assumes | Test (`tests/seal.test.ts` unless noted) | Status |
 | --- | --- | --- | --- | --- | --- |
-| 1 | A sealed payload cannot be read before its round | tlock encryption to the round | A1, A3, A4, A5 | "premature opening" (both tests); `tests/cli.test.ts` | Shown, against a local test beacon in the offline suite. Against live drand quicknet: `tests/live.test.ts`, run by hand and passed on 2026-11-23. It is not part of `npm test`, so re-run it after any change to sealing |
+| 1 | A sealed payload cannot be read before its round | tlock encryption to the round | A1, A3, A4, A5 | "premature opening" (both tests); `tests/cli.test.ts` | Shown, against a local test beacon in the offline suite. Against live drand quicknet: `tests/live.test.ts`, run by hand and passed on 2026-11-23 and again on 2026-11-24. It is not part of `npm test`, so re-run it after any change to sealing |
 | 2 | The lock is cryptographic, not a clock check in Mattering's code | tlock-js fails with a wrong round's signature even with Mattering's checks bypassed | A3 | "the lock is cryptographic" | Shown |
 | 3 | After the round, anyone with the envelope can open it; the sender is not needed | Opening takes the envelope and one public signature | A2, A6 | "opening needs nothing from the sender"; `tests/cli.test.ts` | Shown |
 | 4 | Opening does not depend on a Mattering service | The core has no network code except an optional relay fetch | A2 | `tests/cli.test.ts` (signature passed by hand) | Shown |
@@ -69,7 +69,7 @@ Tests are in `tests/service.test.ts`, over HTTP on localhost with a simulated be
 
 | # | Claim | Rests on | Assumes | Test | Status |
 | --- | --- | --- | --- | --- | --- |
-| 27 | An auction can be run through the service and verified from what it publishes | The evidence endpoint returns the verifier's inputs | A7, A8 | "an auction run entirely through the hosted witness" | Shown on localhost. Against live drand: `npm run example:hosted`. Its first run, on 2026-11-23, exposed the stale-relay bug in claim 28. Re-run by hand after the fix the same day: late bid refused, correct winner. It is not part of `npm test` |
+| 27 | An auction can be run through the service and verified from what it publishes | The evidence endpoint returns the verifier's inputs | A7, A8 | "an auction run entirely through the hosted witness" | Shown on localhost. Against live drand: `npm run example:hosted`. Its first run, on 2026-11-23, exposed the stale-relay bug in claim 28. Re-run by hand after the fix the same day: late bid refused, correct winner. Run again on 2026-11-24 after the move to C2SP cosignatures and close entries: late bid refused, cosignature dated before the release, every check passed. It is not part of `npm test` |
 | 28 | The deadline holds without any timer firing, and when a relay serves a stale "latest" round | On every submission the service checks both its beacon view and its own clock against the beacon's schedule | A7; the witness's clock is roughly right | "the deadline holds even when nobody called tick", "a relay that serves a stale 'latest'" | Shown. The second test exists because the first live run accepted a late bid |
 | 29 | The service refuses submissions it can tell are wrong while sealed | Signature, policy, envelope id, round and context checks | none | "the witness refuses what it can tell is wrong" | Shown |
 | 30 | State survives a restart | Plain files reloaded at start | The disk | "state survives a restart" | Shown |
@@ -80,9 +80,9 @@ Tests are in `tests/service.test.ts`, over HTTP on localhost with a simulated be
 
 | # | Claim | Rests on | Test | Status |
 | --- | --- | --- | --- | --- |
-| 33 | The page's result is computed in the browser from evidence, not taken from the server | The page bundles the same library and calls `verifyAuction` itself | `tests/showcase.test.ts` checks the server side; the page was driven once in a headless browser by hand | Shown by hand, not by an automated browser test |
+| 33 | The page's result is computed in the browser from evidence, not taken from the server | The page bundles the same library and calls `verifyAuction` itself | `tests/showcase.test.ts` checks the server side; the page was driven in a browser by hand, last on 2026-11-24 against live drand | Shown by hand, not by an automated browser test |
 | 34 | A visitor's bid amount never reaches the server | The bid is sealed in the browser before it is sent | Same | Shown by hand |
-| 35 | Each cheat button makes a real attempt | The buttons call the library and the service; see [showcase.md](showcase.md) | `tests/showcase.test.ts` covers the late bid and the rewritten log | Shown. The rewrite now asks the cosigner through the same protocol as the honest witness, and is refused as a fork. The changed page has not been checked in a browser |
+| 35 | Each cheat button makes a real attempt | The buttons call the library and the service; see [showcase.md](showcase.md) | `tests/showcase.test.ts` covers the late bid and the rewritten log | Shown. The rewrite now asks the cosigner through the same protocol as the honest witness, and is refused as a fork. All four were driven by hand in a browser against live drand on 2026-11-24, and each was refused or exposed |
 
 | 36 | A language model can choose what a demo agent bids, and nothing more | Its answer is accepted only as an in-range whole amount and a sentence; otherwise a script decides | `tests/showcase.test.ts` (four tests) | Shown with a stand-in model, and the request is tested against a stand-in server. Run by hand against the real Claude API on 2026-11-24 with `claude-opus-5-5`, and worked. The default then changed to `claude-haiku-5-5`, which was also run by hand against the real API that day and worked. Nothing checks the real API automatically |
 
