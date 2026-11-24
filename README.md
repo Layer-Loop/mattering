@@ -157,6 +157,7 @@ The full list is in [docs/threat-model.md](docs/threat-model.md).
 | [@noble/curves](https://github.com/paulmillr/noble-curves) | 1.9.7 | MIT | Beacon signature verification (BLS12-381), Ed25519 signatures, Ristretto255 commitments |
 | [@noble/hashes](https://github.com/paulmillr/noble-hashes) | 1.8.0 | MIT | SHA-256, SHA3-512 |
 | [canonicalize](https://github.com/erdtman/canonicalize) | 2.1.0 | Apache-2.0 | RFC 8785 canonical JSON |
+| [@anthropic-ai/sdk](https://github.com/anthropics/anthropic-sdk-typescript) | showcase only | MIT | Optional: a language model decides the demo agents' bids. Not used by the core |
 | [esbuild](https://esbuild.github.io) | development only | MIT | Bundling the library for the showcase page |
 
 Versions are pinned exactly. `tlock-js` was last published in July 2025; whether it is maintained actively enough to build on is an open question in [docs/research-questions.md](docs/research-questions.md).

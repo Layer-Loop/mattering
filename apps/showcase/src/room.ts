@@ -22,7 +22,7 @@ import {
 } from "@mattering/core";
 import { errorReply, handleWitness, type Reply } from "@mattering/witness/routes";
 import { WitnessService, type ServiceStore } from "@mattering/witness/service";
-import { AGENTS, SLOT } from "./agents.ts";
+import { AGENTS, SLOT, acceptDecision, drawCeiling, type Decider, type Decision } from "./agents.ts";
 
 interface AgentState {
   name: string;
@@ -32,6 +32,8 @@ interface AgentState {
   secretKey: string;
   dueAt: number;
   submitted: boolean;
+  /** What chose this agent's bid, once chosen. */
+  decidedBy?: "model" | "script";
 }
 
 interface RunState {
@@ -73,10 +75,18 @@ export interface RoomOptions {
   maxEntries?: number;
   /** Refuse policy registration from outside. */
   closed?: boolean;
+  /** A language model to decide the agents' bids. Without it, their scripts decide. */
+  decide?: Decider;
+  /** Called once per auction before the model is used; return false to use the scripts instead. */
+  allowModel?: () => Promise<boolean>;
+  /** Milliseconds to wait for the model before the script decides. */
+  decideTimeoutMs?: number;
 }
 
 export class Room {
   private busy: Promise<unknown> = Promise.resolve();
+  /** Decisions made but not yet sealed. Held in memory only, never stored. */
+  private decided: { runId: number; decisions: Decision[] } | undefined;
 
   private constructor(
     private readonly options: RoomOptions,
@@ -163,15 +173,16 @@ export class Room {
     return this.exclusive(async () => {
       const run = this.state.run;
       if (!run) return undefined;
+      if (run.agents.some((a) => !a.submitted) && this.decided?.runId !== run.id) await this.decideAll(run);
       for (const [i, agent] of run.agents.entries()) {
         if (agent.submitted || agent.dueAt > Date.now()) continue;
         agent.submitted = true;
         await this.options.saveState(this.state);
         try {
-          // The agent decides, seals and submits. Its amount exists in this
-          // call and inside the sealed envelope, and nowhere else.
+          // The agent seals and submits. Its amount exists in this process's
+          // memory and inside the sealed envelope, and nowhere else.
           const keys = generateKeyPair(agent.secretKey);
-          const decision = await AGENTS[i]!.strategy(SLOT, Math.random);
+          const decision = this.decided!.decisions[i]!;
           const bid = await prepareBid(run.auction, decision.bid, keys);
           const statement = await prepareStatement(run.forecast, decision.prediction, keys);
           await this.service.submit(bid.submission, bid.envelope);
@@ -187,6 +198,43 @@ export class Room {
       // Once closed and cosigned there is nothing to do until the release.
       return done ? Math.max(500, run.releaseAt - Date.now()) : 500;
     });
+  }
+
+  /**
+   * Every agent that has not yet bid decides now, all at once. The model is
+   * asked if there is one and it is allowed; whatever it returns is checked,
+   * and anything unusable, slow or failed is replaced by the agent's script.
+   */
+  private async decideAll(run: RunState): Promise<void> {
+    const { decide, allowModel } = this.options;
+    const useModel = decide !== undefined && (allowModel ? await allowModel().catch(() => false) : true);
+    const timeout = this.options.decideTimeoutMs ?? 15_000;
+    const decisions = await Promise.all(
+      AGENTS.map(async (agent, i): Promise<Decision> => {
+        const state = run.agents[i]!;
+        const ceiling = drawCeiling(agent, Math.random);
+        if (useModel && !state.submitted) {
+          try {
+            const answer = await Promise.race([
+              decide(agent, SLOT, ceiling),
+              new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("timed out")), timeout)),
+            ]);
+            const accepted = acceptDecision(SLOT, answer);
+            if (accepted) {
+              state.decidedBy = "model";
+              return accepted;
+            }
+            console.error(`${agent.name}: the model's answer was not a usable bid; using the script`);
+          } catch {
+            // already logged by the decider; fall through to the script
+          }
+        }
+        state.decidedBy = "script";
+        return agent.script(SLOT, ceiling, Math.random);
+      }),
+    );
+    this.decided = { runId: run.id, decisions };
+    await this.options.saveState(this.state);
   }
 
   async view(): Promise<Record<string, unknown>> {

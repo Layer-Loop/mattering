@@ -20,6 +20,8 @@ import { QUICKNET, timeOfRound } from "@mattering/core";
 import { drandSource } from "@mattering/core/drand-http";
 import { TestBeacon, WallTestClock } from "@mattering/core/testing";
 import { memoryStore, readJson, send } from "@mattering/witness";
+import type { Decider } from "./agents.ts";
+import { DEFAULT_MODEL, claudeDecider } from "./llm.ts";
 import { Room, type RoomState } from "./room.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -35,6 +37,9 @@ export interface ShowcaseOptions {
   roundMs?: number;
   /** Milliseconds between the agents' submissions. */
   agentGapMs?: number;
+  /** A language model to decide the agents' bids. Without it, their scripts decide. */
+  decide?: Decider;
+  decideTimeoutMs?: number;
 }
 
 /** Bundle the page's script for the browser. */
@@ -70,8 +75,16 @@ export async function startShowcase(options: ShowcaseOptions): Promise<{ server:
     closeAfter,
     releaseAfter: options.releaseAfter ?? (simulated ? 15 : 5),
     agentGapMs: options.agentGapMs ?? Math.min(3000, (closeAfter * roundMs) / 6),
+    ...(options.decide ? { decide: options.decide } : {}),
+    ...(options.decideTimeoutMs ? { decideTimeoutMs: options.decideTimeoutMs } : {}),
   });
-  const timer = setInterval(() => void room.work().catch(() => {}), Math.min(500, roundMs));
+  // One piece of work at a time: a decision by a language model can take seconds.
+  let working = false;
+  const timer = setInterval(() => {
+    if (working) return;
+    working = true;
+    void room.work().catch(() => {}).finally(() => (working = false));
+  }, Math.min(500, roundMs));
 
   const appJs = await bundlePage();
   const files: Record<string, [string, () => string]> = {
@@ -103,7 +116,14 @@ export async function startShowcase(options: ShowcaseOptions): Promise<{ server:
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const mode = process.argv.includes("offline") ? "simulated" : "live";
-  const { url } = await startShowcase({ mode, port: Number(process.env.PORT ?? 8790) });
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const model = process.env.MATTERING_MODEL ?? DEFAULT_MODEL;
+  const { url } = await startShowcase({
+    mode,
+    port: Number(process.env.PORT ?? 8790),
+    ...(apiKey ? { decide: claudeDecider({ apiKey, model }) } : {}),
+  });
+  console.log(apiKey ? `Agents: bids decided by ${model}, with a script as fallback.` : "Agents: scripted. Set ANTHROPIC_API_KEY to have a language model decide their bids.");
   console.log(`The Sealed Room is at ${url}`);
   console.log(mode === "live" ? "Clock: the real drand quicknet beacon." : "Clock: SIMULATED on this machine, for showing offline. The cryptography is the same; the clock is not independent.");
   console.log("Demonstration only. Not security reviewed.");

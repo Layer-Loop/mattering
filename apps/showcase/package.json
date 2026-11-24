@@ -4,5 +4,9 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "dependencies": { "@mattering/core": "0.1.0", "@mattering/witness": "0.1.0" }
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.13.0",
+    "@mattering/core": "0.1.0",
+    "@mattering/witness": "0.1.0"
+  }
 }

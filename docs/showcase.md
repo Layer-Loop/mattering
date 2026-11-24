@@ -1,6 +1,6 @@
 # The Sealed Room
 
-A web page for showing Mattering to people who do not read code. Three software agents bid for an advertising slot, the visitor can bid too, every bid opens at once when the clock runs out, and the visitor is invited to cheat.
+A web page for showing Mattering to people who do not read code. Three software agents, each acting for a company, bid for an advertising package, the visitor can bid too, every bid opens at once when the clock runs out, and the visitor is invited to cheat.
 
 ![The Sealed Room after the bids have opened](showcase.png)
 
@@ -46,10 +46,29 @@ Each makes a real attempt against the running system.
 
 **Staged:**
 
-- The agents are scripted. Each picks an amount within a range, with some randomness. A language-model agent would plug in at the same point (`apps/showcase/src/agents.ts`).
-- The advertisers, the publication and the slot are invented.
+- The companies and the lot are invented.
+- Each agent is given a private ceiling, drawn at random for each auction, and decides what to bid. A language model decides if one is configured (next section); otherwise a short script does. The page says which, agent by agent.
 - The auctioneer and the "independent" cosigner run in the same process on the same machine. The page says so.
 - In offline mode the clock is simulated by the machine running the demo, which could therefore open bids early. The page shows a "Simulated clock" badge and says so.
+
+## The agents and the language model
+
+Each agent acts for one company: a description, and a ceiling on what it will pay that is drawn afresh for every auction. With a Claude API key configured, each agent's bid and its one-line rationale come from a language model, which is told the auction's rules, the lot and that agent's private ceiling. Without a key, a script bids a fraction of the ceiling.
+
+```bash
+ANTHROPIC_API_KEY=... npm run showcase
+```
+
+`MATTERING_MODEL` chooses the model; the default is `claude-opus-5-5`. Three requests are made per auction, one per agent, at low effort.
+
+What the model can and cannot do:
+
+- **It supplies two things:** a whole number of pounds and a short piece of text. Both are treated as untrusted input. An amount outside the auction's range, or anything that is not a number and a sentence, is thrown away and the script decides for that agent.
+- **It has no part in any check.** Sealing, the deadline, the log, the cosignature and the verification never call a model. A model that bid foolishly would lose the auction; it could not break it.
+- **If it is slow, fails or declines**, the script decides for that agent, and the page says "Bid chosen by a script".
+- **Its decisions are held in memory only** until they are sealed, and are not stored.
+
+The request to the model is covered by a test against a stand-in for the API (`tests/showcase.test.ts`). The author had no API key or network access to the real API, so whether the real API accepts the request as written is shown only by running it with a key.
 
 ## On the website
 
@@ -66,6 +85,7 @@ How the hosted version differs from the laptop one:
 - **One room per visitor.** Each browser session gets its own room: its own auctioneer key, cosigner key, log and auction. Visitors cannot see or affect each other's auctions.
 - **Nothing happens until the visitor starts an auction**, so loading the page costs nothing.
 - **Limits.** A room runs at most 20 auctions and takes at most 12 submissions per auction, refuses policies from outside, and deletes itself 30 minutes after it was last used.
+- **The model has a daily allowance.** If the Worker has an `ANTHROPIC_API_KEY` secret, at most `MODEL_AUCTIONS_PER_DAY` auctions a day (default 300), across all visitors, use the model. After that, and if the counter cannot be reached, the scripts decide. This caps spending whatever the traffic. A spend limit on the API key itself is still worth setting.
 - **The clock is always the real drand network.** A simulated clock is available for local development only (`npm run dev:offline` in the site repository).
 
 The auctioneer and the cosigner still run in the same place, so the cosigner is not independent. The page says so.

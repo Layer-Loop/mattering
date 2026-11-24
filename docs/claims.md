@@ -57,7 +57,7 @@ Tests are in `tests/auction.test.ts`. The witness in these tests is an in-proces
 | 21 | The winner follows from the policy and the evidence, and anyone can recompute it | Deterministic verifier; tie-break from the release round's signature | A1 | "three bidders", "ties", "coordinator announces the wrong winner"; `npm run example:verify` | Shown |
 | 22 | A coordinator who withholds or swaps an envelope cannot change the result, only block it | An envelope is identified by its hash; a missing or wrong one leaves the bid unresolved and the auction without a result | A4 | "coordinator withholds an envelope", "coordinator swaps an envelope" | Shown. An earlier version treated a swapped envelope as an invalid bid, which let a coordinator void the top bid; fixed |
 | 23 | A coordinator cannot substitute the policy or the release signature | Policy hash and signature checks | A4 | "coordinator swaps an envelope or edits the policy" | Shown |
-| 24 | Cryptography and adjudication run without any AI model | No model is called anywhere in `packages/core`; the example's agents are plain functions | none | whole suite | Shown |
+| 24 | Cryptography and adjudication run without any AI model | No model is called anywhere in `packages/core` or `apps/witness`. In the showcase a model may choose an agent's bid amount and rationale, which are checked as untrusted input | none | whole suite; `tests/showcase.test.ts` "a model that fails, stalls or returns junk", "a model's answer is accepted only if" | Shown |
 | 25 | The witness cannot rewrite the log after it can read the bids | The closing checkpoint must be countersigned before the release round by the policy's cosigners, who sign one checkpoint per policy | A8 | `tests/service.test.ts` "a witness that rewrites the log", "cosigners" | Shown for policies that require cosigners. With a threshold of 0 it is pure trust in the witness, and the same test shows the forgery succeeding |
 | 26 | The witness cannot add an entry between the close round and the cosignatures | Nothing | A7 | none | **Not provided.** Such an entry is blind (the bids are still sealed) but late |
 
@@ -81,6 +81,8 @@ Tests are in `tests/service.test.ts`, over HTTP on localhost with a simulated be
 | 33 | The page's result is computed in the browser from evidence, not taken from the server | The page bundles the same library and calls `verifyAuction` itself | `tests/showcase.test.ts` checks the server side; the page was driven once in a headless browser by hand | Shown by hand, not by an automated browser test |
 | 34 | A visitor's bid amount never reaches the server | The bid is sealed in the browser before it is sent | Same | Shown by hand |
 | 35 | Each cheat button makes a real attempt | The buttons call the library and the service; see [showcase.md](showcase.md) | `tests/showcase.test.ts` covers the late bid and the rewritten log | Shown |
+
+| 36 | A language model can choose what a demo agent bids, and nothing more | Its answer is accepted only as an in-range whole amount and a sentence; otherwise a script decides | `tests/showcase.test.ts` (four tests) | Shown with a stand-in model. The request to the real Claude API is tested against a stand-in server only; **not yet run against the real API** |
 
 ## Not claimed
 

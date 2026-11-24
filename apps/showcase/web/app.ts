@@ -32,7 +32,7 @@ interface RunState {
   forecastHash: string;
   closeAt: number;
   releaseAt: number;
-  agents: { name: string; tagline: string; series: number; publicKey: string; submitted: boolean }[];
+  agents: { name: string; tagline: string; series: number; publicKey: string; submitted: boolean; decidedBy?: "model" | "script" }[];
   phase: "open" | "closed" | "released";
   cosigned: boolean;
   entries: { submitter: string; envelopeId: string }[];
@@ -171,7 +171,14 @@ function render(): void {
 
   // Bids.
   const result = outcome?.runId === run.id ? outcome : undefined;
-  const cards = run.agents.map((a) => ({ name: a.name, tagline: a.tagline, colour: `var(--s${a.series})`, key: a.publicKey, submitted: a.submitted }));
+  const cards = run.agents.map((a) => ({
+    name: a.name,
+    // Say what chose each bid, once it has been chosen.
+    tagline: a.tagline + (a.decidedBy === "model" ? " Bid chosen by a language model." : a.decidedBy === "script" ? " Bid chosen by a script." : ""),
+    colour: `var(--s${a.series})`,
+    key: a.publicKey,
+    submitted: a.submitted,
+  }));
   if (visitor?.runId === run.id && visitor.submitted) cards.push({ name: "You", tagline: run.phase === "released" ? "You sealed this bid in your browser. It opened with the others." : `You sealed a bid in this browser. Until the bids open, only you know it is ${pounds(visitor.amount)}.`, colour: "var(--s4)", key: visitor.keys.publicKey, submitted: true });
   const rows = $("bids").dataset.layout === "rows";
   $("bids").innerHTML = cards

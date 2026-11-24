@@ -1,9 +1,10 @@
 /**
- * The bidders in the showcase. An agent is a name and a strategy: a function
- * from the public auction terms to a bid and a sealed prediction. The scripted
- * strategies below are deterministic given a random source. A language-model
- * agent is another function of the same shape; whatever it returns is sealed
- * and checked exactly like these.
+ * The bidders in the showcase. Each agent has a public description, a private
+ * ceiling it draws afresh for every auction, and a scripted way of bidding.
+ * When a language model is available it decides the bid instead; the script is
+ * what runs when no model is configured, or when the model fails, is slow or
+ * returns something unusable. Whatever decides, the result is sealed and
+ * checked in exactly the same way.
  */
 
 export interface Slot {
@@ -14,10 +15,10 @@ export interface Slot {
 }
 
 export const SLOT: Slot = {
-  title: "Homepage banner, one week",
-  detail: "The top banner on The Daily Ledger's homepage for seven days. About 2.1 million views.",
-  minBid: 500,
-  maxBid: 10_000,
+  title: "Exclusive advertising package, one quarter",
+  detail: "Exclusive category sponsorship across a national media network for three months.",
+  minBid: 100_000,
+  maxBid: 1_000_000,
 };
 
 export interface Decision {
@@ -27,46 +28,82 @@ export interface Decision {
   prediction: string;
 }
 
-export type Strategy = (slot: Slot, random: () => number) => Decision | Promise<Decision>;
-
 export interface Agent {
   name: string;
+  /** Shown on the page. */
   tagline: string;
+  /** Given to the language model. */
+  persona: string;
   /** Categorical series slot (1 to 3) used for this agent's colour. */
   series: number;
-  strategy: Strategy;
+  /** The most this company might be willing to pay, in whole pounds: [low, high]. */
+  ceiling: [number, number];
+  /** The fallback: bid from the private ceiling without a model. */
+  script: (slot: Slot, ceiling: number, random: () => number) => Decision;
 }
 
-const between = (random: () => number, low: number, high: number, step = 10): number =>
-  Math.round((low + random() * (high - low)) / step) * step;
+/** Ask something else (a language model) to decide for an agent. May throw or return junk. */
+export type Decider = (agent: Agent, slot: Slot, ceiling: number) => Promise<unknown>;
+
+const round = (amount: number, step = 1000): number => Math.round(amount / step) * step;
+const pounds = (amount: number): string => "£" + amount.toLocaleString("en-GB");
+
+export function drawCeiling(agent: Agent, random: () => number): number {
+  const [low, high] = agent.ceiling;
+  return round(low + random() * (high - low), 5000);
+}
+
+/** Longest rationale kept, in characters. */
+const MAX_RATIONALE = 320;
+
+/**
+ * Accept a decision from outside only if it is a whole number of pounds inside
+ * the auction's range with a non-empty rationale. Anything else is discarded
+ * and the script decides. This is the only say a model has: an amount and a
+ * sentence. It cannot affect any check.
+ */
+export function acceptDecision(slot: Slot, value: unknown): Decision | undefined {
+  const v = value as { bid?: unknown; prediction?: unknown } | null;
+  if (v === null || typeof v !== "object") return undefined;
+  if (!Number.isSafeInteger(v.bid) || (v.bid as number) < slot.minBid || (v.bid as number) > slot.maxBid) return undefined;
+  if (typeof v.prediction !== "string" || !v.prediction.isWellFormed()) return undefined;
+  const text = v.prediction.replace(/\s+/g, " ").trim();
+  if (text === "") return undefined;
+  return { bid: v.bid as number, prediction: text.length > MAX_RATIONALE ? text.slice(0, MAX_RATIONALE - 1) + "…" : text };
+}
 
 export const AGENTS: Agent[] = [
   {
-    name: "Northwind Outdoors",
-    tagline: "Brand team with a winter range to launch. Wants the slot and has the budget.",
+    name: "Company A",
+    tagline: "A market leader planning a major launch this quarter.",
+    persona: "a market-leading consumer brand with a major product launch this quarter. Winning this package matters a great deal to the launch, and the budget is generous.",
     series: 1,
-    strategy: (_slot, random) => {
-      const bid = between(random, 6200, 7800);
-      return { bid, prediction: `We expect to win at £${bid.toLocaleString("en-GB")}. Nobody else needs this week as much as we do.` };
+    ceiling: [620_000, 900_000],
+    script: (_slot, ceiling, random) => {
+      const bid = round(ceiling * (0.84 + random() * 0.08));
+      return { bid, prediction: `We are bidding ${pounds(bid)} and expect to win. This quarter matters more to us than to anyone else in the room.` };
     },
   },
   {
-    name: "Pixel & Pine",
-    tagline: "Performance marketer. Bids what the clicks are worth and not a pound more.",
+    name: "Company B",
+    tagline: "A returns-led advertiser that bids what the numbers support.",
+    persona: "a disciplined, returns-led advertiser. It bids what its forecast return supports and would sooner lose than overpay.",
     series: 2,
-    strategy: (_slot, random) => {
-      const clicks = between(random, 16_000, 23_000, 100);
-      const bid = Math.round((clicks * 0.3) / 10) * 10;
-      return { bid, prediction: `About ${clicks.toLocaleString("en-GB")} clicks at 30p each makes this worth £${bid.toLocaleString("en-GB")} to us. A brand advertiser will probably pay more.` };
+    ceiling: [450_000, 720_000],
+    script: (_slot, ceiling, random) => {
+      const bid = round(ceiling * (0.88 + random() * 0.07));
+      return { bid, prediction: `Our forecast return supports ${pounds(bid)} and no more. A bidder buying for brand reasons will probably go higher.` };
     },
   },
   {
-    name: "Bargain Barn",
-    tagline: "Opportunist. Bids low and hopes the others stay away.",
+    name: "Company C",
+    tagline: "A challenger with a smaller budget, hoping for a bargain.",
+    persona: "a challenger brand with a much smaller budget than its rivals. It can only win if the others bid cautiously, and it knows that.",
     series: 3,
-    strategy: (slot, random) => {
-      const bid = between(random, slot.minBid + 300, slot.minBid + 1100);
-      return { bid, prediction: `A long shot at £${bid.toLocaleString("en-GB")}. The winning bid will be over £6,000.` };
+    ceiling: [160_000, 320_000],
+    script: (slot, ceiling, random) => {
+      const bid = Math.max(slot.minBid, round(ceiling * (0.78 + random() * 0.12)));
+      return { bid, prediction: `A long shot at ${pounds(bid)}. We expect the winning bid to be more than twice ours.` };
     },
   },
 ];
