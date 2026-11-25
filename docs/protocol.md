@@ -255,7 +255,39 @@ The **registry** is the witness log read as a public record: for any key, what i
 
 A statement proves that a key committed to some text before the close. It says nothing about who or what controls the key, or whether the same party also committed to the opposite under another key.
 
-## 9. Things this design does not do
+## 9. Sealed negotiation
+
+Two parties, a **buyer** and a **seller**, each seal one offer per step, to the step's release round and to both parties only (version 2 envelopes, section 5). The offers open together. Neither side can see the other's before committing its own, and neither can change its own afterwards. Software agents acting for firms are the case in mind.
+
+**Policy**, one per step, identified by `H("mattering/negotiation-policy/v1", canonical(policy))`:
+
+```text
+{ format: "mattering.negotiation-policy/1", negotiationId, step, previous, item, unit, minPrice, maxPrice,
+  buyer: { signer, recipient }, seller: { signer, recipient }, rule: "midpoint-if-crossed",
+  beacon, closeRound, releaseRound, witness, origin, logFrom, cosigners, cosignerThreshold }
+```
+
+`signer` is the Ed25519 key that signs a side's submissions; `recipient` is the age key its offers open to. `step` counts from 1, and `previous` is `""` for step 1 and the previous step's policy hash after. The buyer and the seller must have keys of their own.
+
+**Offer**, the sealed payload, as canonical JSON:
+
+```text
+{ format: "mattering.offer/1", policyHash, side: "buyer" | "seller", signer, price }
+```
+
+The envelope is version 2, addressed to exactly the buyer's and the seller's recipients, with context `{ kind: "mattering.offer/1", policyHash, side }`. The submission carries no commitment.
+
+**While sealed** the witness checks that a submission is signed by the buyer or the seller, names this step, and names an envelope locked to the step's release round, with the right context and addressed to both parties and nobody else. It cannot read the offer, then or later.
+
+**After release** whoever can open the offers judges the step: the parties with their identities, or anyone a party gives the offers' file keys to. The evidence checks are those of section 7. Then, for each side, the first on-time offer counts. It is valid if it opens to a canonical offer for this step, from the side and signer that submitted it, with a whole price in range. If both are valid and the buyer's price is at least the seller's, there is a **deal at the midpoint**, rounded down; otherwise there is no deal at this step.
+
+An offer the judge cannot open is **unresolved**, not invalid. A dishonest party can seal an offer the other party cannot open (section 5). Everyone who can open an offer reads the same one, so any two judges who can both judge a step agree. A shut-out party gets "unresolved" and can ask for the file key.
+
+**A negotiation** is a chain of steps: numbered from 1, each naming the one before, with the same parties and terms, each closing after the previous one opened. A step with a deal ends it: later steps do not count.
+
+What the log and cosigners add here is that both offers were in before the close and that neither can be swapped after the other is seen. What a negotiation does not give: an outsider cannot learn the outcome without a party's disclosure, and nothing stops a party from refusing to disclose.
+
+## 10. Things this design does not do
 
 - Keep anything secret after the release round.
 - Prove a range, or anything else, about a sealed value before it opens.

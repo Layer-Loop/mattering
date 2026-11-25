@@ -58,3 +58,5 @@ Mattering has no mitigation for any of these. A use that cannot accept them shou
 11. **Evidence leaves out the log before a policy.** A policy's evidence carries the entries from its `logFrom` on and only hashes for those before. The argument that nothing relevant can be in the part left out is in [protocol.md](protocol.md) section 6; it is unreviewed.
 12. **Recipients can be shut out.** A version 2 envelope can name a recipient whose key stanza does not open. Nobody can see this before the round, and afterwards only that recipient can, without being able to prove it.
 13. **A recipient key is only a key.** Nothing ties an `age1…` recipient to a person or organisation, and an identity file is a secret on disk like any other.
+14. **A negotiation shows who is negotiating, and when.** The parties' signing keys, the item, the price range and the timing are public in the policy and the log. Only the offers are sealed.
+15. **A party can withhold the outcome.** Outsiders learn a negotiation's outcome only from a party's disclosure, and a party shut out of the other's offer depends on that side disclosing its file key.
