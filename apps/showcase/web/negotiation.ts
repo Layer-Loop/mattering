@@ -16,6 +16,7 @@ interface StepView {
   submitted: Record<Side, boolean>;
   decidedBy: Partial<Record<Side, "model" | "script">>;
   notes: Partial<Record<Side, string>>;
+  withheld: Side[];
 }
 interface State {
   mode: "live" | "simulated";
@@ -140,7 +141,9 @@ function stepCard(run: NonNullable<State["run"]>, step: StepView, now: number): 
     if (offer?.status === "valid") {
       const m = offer.mandate;
       const note = step.notes[side];
-      inner = `<p class="amount">${pounds(offer.price!)}</p>${m ? `<p class="${m === "within" ? "chip-ok" : "reason"}">${MANDATE_TEXT[m]}</p>` : ""}${note ? `<p class="said">“${escape(note)}”</p>` : ""}`;
+      const withheld = step.withheld.includes(side);
+      const said = note ? `<p class="said">“${escape(note)}”</p>` : withheld ? `<p class="muted said">Note withheld: it named an amount this agent had not seen.</p>` : "";
+      inner = `<p class="amount">${pounds(offer.price!)}</p>${m ? `<p class="${m === "within" ? "chip-ok" : "reason"}">${MANDATE_TEXT[m]}</p>` : ""}${said}`;
     } else if (offer) inner = `<p class="state">${offer.status}</p><p class="reason">${escape(offer.reason ?? "")}</p>`;
     else inner = `<p class="state">${step.submitted[side] ? "Sealed" : "Deciding…"}</p><p class="cipher">${step.submitted[side] ? "readable only by the two firms, and only once this step opens" : ""}</p>`;
     const by = step.decidedBy[side];
