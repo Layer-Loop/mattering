@@ -19,7 +19,25 @@ Then open http://127.0.0.1:8790/negotiation. `npm run showcase:offline` runs it 
 3. **The step closes** on the beacon's clock, the log is countersigned, and the offers open.
 4. **Your browser judges the step.** The two firms disclose to it what they would to an auditor: the keys to both offers and their mandates' limits. The browser opens the offers, checks each against its mandate, and works out the outcome: a deal at the midpoint if Acme's offer is at least Bolt's, otherwise another step, up to three.
 
-The agents concede toward their limits step by step, and the limits are drawn so that they overlap: the third step reaches a deal.
+The limits are drawn so that they overlap, so a deal is possible at a price neither side knows.
+
+## Who chooses the offers
+
+With a Claude API key configured, a language model chooses each agent's offer:
+
+```bash
+ANTHROPIC_API_KEY=... npm run showcase
+```
+
+`MATTERING_MODEL` chooses the model, as for the auction; the default is `claude-haiku-5-5`. At the start of each step both agents are asked at once. Each is told the rules (offers sealed and opened together, the midpoint if they cross, up to three steps, the invoice paid in full if there is no deal), its own firm's limit, and both sides' offers from earlier steps. It answers with an offer and one sentence to its firm.
+
+- **The mandate binds the model as it binds the script.** An answer beyond the agent's limit is thrown away like any unusable answer, and the script decides for that agent. So does an amount out of range, a malformed answer, a refusal, a failure, or no answer within ten seconds.
+- **The page says which,** offer by offer: "Offer chosen by a language model" or "by a script".
+- **The note is shown once the step opens,** under the offer. It is the agent's explanation to its own firm, not part of the evidence, and it is never sealed or checked.
+- **Chosen offers are held in memory only** until they are sealed.
+- **The rogue option overrides the model:** in the last step Acme's agent offers past its limit by script, whatever the model would have done.
+
+Without a key, the scripts decide: each agent concedes toward its limit, reaching it at the third step.
 
 ## The cheat buttons and the rogue agent
 
@@ -39,10 +57,10 @@ The agents concede toward their limits step by step, and the limits are drawn so
 **Staged:**
 
 - Both agents run on the same server, which holds both firms' keys and mandate openings. In practice each agent runs at its own firm.
-- The firms, the invoice and the limits are invented, and the agents follow a script, not a language model.
+- The firms, the invoice and the limits are invented. The offers come from a language model if one is configured, and from a script otherwise.
 - The disclosure to the visitor is automatic. In practice a firm decides whom to disclose to.
 - Until public witnesses cosign the log, the cosigner is run by the same operator. The page says so.
 
 ## Not covered by automated tests
 
-`tests/negotiation-room.test.ts` runs an honest and a rogue negotiation through the server on a fast simulated clock and judges them as the page does, including the peek and the late revision. The page itself was driven by hand in a browser against live drand on 2026-11-25: three steps to a deal within both mandates, all four cheats refused or rejected, every check passing, and a rogue run showing Acme's offer beyond its mandate. There is no browser test in the suite.
+`tests/negotiation-room.test.ts` runs an honest and a rogue negotiation through the server on a fast simulated clock and judges them as the page does, including the peek and the late revision. `tests/negotiation-model.test.ts` covers the model path with a stand-in model: what each agent is told, that its offers are sealed as given, that an offer beyond the mandate or an unusable answer is replaced by the script, and the request sent to the Messages API, against a stand-in server. The model path has not been run against the real API: there was no key on the machine where it was built. The page with a stand-in model was checked by hand in a browser on 2026-11-25. The page itself was driven by hand in a browser against live drand on 2026-11-25: three steps to a deal within both mandates, all four cheats refused or rejected, every check passing, and a rogue run showing Acme's offer beyond its mandate. There is no browser test in the suite.

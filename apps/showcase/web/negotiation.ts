@@ -14,6 +14,8 @@ interface StepView {
   phase: "open" | "closed" | "released";
   cosigned: boolean;
   submitted: Record<Side, boolean>;
+  decidedBy: Partial<Record<Side, "model" | "script">>;
+  notes: Partial<Record<Side, string>>;
 }
 interface State {
   mode: "live" | "simulated";
@@ -22,7 +24,7 @@ interface State {
   invoice: { item: string; unit: string; minPrice: number; maxPrice: number };
   firms: Record<Side, { organisation: string; agent: string; role: string }>;
   serverTime: number;
-  run: { id: number; rogue: boolean; done: boolean; negotiationId: string; mandates: Record<Side, Mandate>; steps: StepView[] } | null;
+  run: { id: number; rogue: boolean; useModel: boolean; done: boolean; negotiationId: string; mandates: Record<Side, Mandate>; steps: StepView[] } | null;
 }
 interface Disclosure {
   evidence: StepInputs;
@@ -110,10 +112,13 @@ function stepCard(run: NonNullable<State["run"]>, step: StepView, now: number): 
     let inner: string;
     if (offer?.status === "valid") {
       const m = offer.mandate;
-      inner = `<p class="amount">${pounds(offer.price!)}</p>${m ? `<p class="${m === "within" ? "chip-ok" : "reason"}">${MANDATE_TEXT[m]}</p>` : ""}`;
+      const note = step.notes[side];
+      inner = `<p class="amount">${pounds(offer.price!)}</p>${m ? `<p class="${m === "within" ? "chip-ok" : "reason"}">${MANDATE_TEXT[m]}</p>` : ""}${note ? `<p class="said">“${escape(note)}”</p>` : ""}`;
     } else if (offer) inner = `<p class="state">${offer.status}</p><p class="reason">${escape(offer.reason ?? "")}</p>`;
     else inner = `<p class="state">${step.submitted[side] ? "Sealed" : "Deciding…"}</p><p class="cipher">${step.submitted[side] ? "readable only by the two firms, and only once this step opens" : ""}</p>`;
-    return `<div class="offer" style="--c: var(--s${i + 1})"><p class="who">${escape(firm.agent)}</p><div class="envelope ${offer ? "" : "sealed"}">${inner}</div></div>`;
+    const by = step.decidedBy[side];
+    const byText = by === "model" ? "Offer chosen by a language model" : by === "script" ? "Offer chosen by a script" : "";
+    return `<div class="offer" style="--c: var(--s${i + 1})"><p class="who">${escape(firm.agent)}</p><div class="envelope ${offer ? "" : "sealed"}">${inner}</div>${byText ? `<p class="muted by">${byText}</p>` : ""}</div>`;
   }).join("");
   const outcome = j?.result.outcome;
   const line = !j ? "" : !j.result.ok ? `<p class="reason">Could not be checked: ${escape(j.result.checks.find((c) => !c.ok)?.detail ?? "")}</p>` : outcome!.deal ? `<p class="deal">Deal at ${pounds(outcome!.price)}: the offers crossed, so the price is the midpoint.</p>` : `<p class="muted">No deal at this step: ${escape(outcome!.reason)}.</p>`;

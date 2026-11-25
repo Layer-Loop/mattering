@@ -63,7 +63,7 @@
       <li><strong>The cosigners</strong> <span id="trust-cosigners">to be independent of the log's operator.</span></li>
       <li><strong>The firms' keys.</strong> A mandate proves which key signed it, not that the key belongs to the firm named.</li>
     </ul>
-    <p class="muted">Staged: both agents run on this server, which holds their keys; in practice each runs at its own firm. The firms, the invoice and the limits are invented, and the agents follow a script. Mattering is an experimental proof of concept. It has not had a security review.</p>
+    <p class="muted">Staged: both agents run on this server, which holds their keys; in practice each runs at its own firm. The firms, the invoice and the limits are invented. Each offer is chosen by a language model when one is configured, and by a script otherwise; each offer says which, and the model's offers are held to the same mandate. An agent's note to its firm is shown once the step has opened; it is not part of the evidence. Mattering is an experimental proof of concept. It has not had a security review.</p>
   </section>
 </main>
 <script type="module" src="/negotiation.js"></script>

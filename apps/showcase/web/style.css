@@ -84,3 +84,4 @@ code { font: .85em ui-monospace, Menlo, monospace; }
 .deal { margin: 10px 0 0; font-weight: 700; color: var(--good); }
 .chip-ok { margin: 4px 0 0; font-size: .85rem; font-weight: 600; color: var(--good); }
 .result h3 { margin: 2px 0 6px; font-size: 1.3rem; }
+.offer .by { margin: 6px 0 0; font-size: .8rem; }

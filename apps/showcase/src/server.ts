@@ -21,7 +21,7 @@ import { drandSource } from "@mattering/core/drand-http";
 import { TestBeacon, WallTestClock } from "@mattering/core/testing";
 import { memoryStore, readJson, send } from "@mattering/witness";
 import type { Decider } from "./agents.ts";
-import { DEFAULT_MODEL, claudeDecider } from "./llm.ts";
+import { DEFAULT_MODEL, claudeDecider, claudeNegotiator, type OfferDecider } from "./llm.ts";
 import { LocalLogHost } from "./log-host.ts";
 import { Room, type RoomState } from "./room.ts";
 import { NegotiationRoom, type NegotiationRoomState } from "./negotiation-room.ts";
@@ -42,6 +42,8 @@ export interface ShowcaseOptions {
   /** A language model to decide the agents' bids. Without it, their scripts decide. */
   decide?: Decider;
   decideTimeoutMs?: number;
+  /** A language model to choose the negotiating agents' offers. Without it, their scripts do. */
+  negotiate?: OfferDecider;
   /** Rounds from a negotiation step's start to its close, and from close to release. */
   negotiationCloseAfter?: number;
   negotiationReleaseAfter?: number;
@@ -105,6 +107,8 @@ export async function startShowcase(options: ShowcaseOptions): Promise<{ server:
     closeAfter: options.negotiationCloseAfter ?? (simulated ? 12 : 5),
     releaseAfter: options.negotiationReleaseAfter ?? (simulated ? 6 : 3),
     agentGapMs: options.agentGapMs ?? Math.min(1500, ((options.negotiationCloseAfter ?? (simulated ? 12 : 5)) * roundMs) / 4),
+    ...(options.negotiate ? { decide: options.negotiate } : {}),
+    ...(options.decideTimeoutMs ? { decideTimeoutMs: options.decideTimeoutMs } : {}),
   });
 
   // One piece of work at a time: a decision by a language model can take seconds.
@@ -153,7 +157,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const { url } = await startShowcase({
     mode,
     port: Number(process.env.PORT ?? 8790),
-    ...(apiKey ? { decide: claudeDecider({ apiKey, model }) } : {}),
+    ...(apiKey ? { decide: claudeDecider({ apiKey, model }), negotiate: claudeNegotiator({ apiKey, model }) } : {}),
   });
   console.log(apiKey ? `Agents: bids decided by ${model}, with a script as fallback.` : "Agents: scripted. Set ANTHROPIC_API_KEY to have a language model decide their bids.");
   console.log(`The Sealed Room is at ${url}`);
