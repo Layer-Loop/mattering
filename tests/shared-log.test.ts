@@ -38,7 +38,8 @@ function setup(store: ServiceStore = memoryStore()) {
   };
   const verifier = { acceptedBeacons: [beacon.info] };
   const open = async (overrides: Partial<Parameters<typeof WitnessService.open>[0]> = {}) => {
-    const service = await WitnessService.open({ store, source: clock.source(), origin: ORIGIN, cosign, ...overrides });
+    // The service's clock is the simulated beacon's: one round, one second.
+    const service = await WitnessService.open({ store, source: clock.source(), origin: ORIGIN, cosign, now: () => clock.now * 1000, ...overrides });
     cosigner.addLog(service.vkey);
     return service;
   };
@@ -174,4 +175,53 @@ test("a cosigner is asked once per checkpoint, and again only when the log has g
     const evidence = await service.evidence(hash);
     assert.equal(countCosignatures(evidence.policy, evidence.closing!, evidence.witnessed).cosigners.length, 1);
   }
+});
+
+test("each cosigner gets at most one request every 3 seconds, whatever asks for it", async () => {
+  const s = setup();
+  const service = await s.open();
+  const a = s.auction(service, "a", 100, 120);
+  const b = s.auction(service, "b", 101, 120);
+  const hb = (await service.registerPolicy(b)).policyHash;
+  await service.registerPolicy(a);
+  await s.bid(service, a, 5);
+  await s.bid(service, b, 6);
+  s.clock.advanceTo(100);
+  await service.tick();
+  assert.deepEqual(s.requests, [0], "a closes and is cosigned at once");
+  await s.bid(service, b, 7); // a bid while nothing waits asks nobody
+  s.clock.advanceTo(101);
+  await service.tick(); // b closes one second later: too soon to ask again
+  await s.bid(service, a, 8).catch(() => {}); // a late bid triggers the same work, and is refused
+  s.clock.advanceTo(102);
+  await service.tick();
+  assert.deepEqual(s.requests, [0], "nothing more within 3 seconds, however often the service is prodded");
+  assert.equal((await service.phase(hb)).cosignatures, 0);
+  s.clock.advanceTo(103);
+  await service.tick();
+  assert.deepEqual(s.requests, [0, 3], "3 seconds on, the cosigner is asked again");
+  assert.equal((await service.phase(hb)).cosignatures, 1, "b is cosigned well before its release");
+
+  // A refusal counts too: after a 409 the corrected size waits for the next slot.
+  const quick = setup();
+  let replies = 0;
+  const pushy = await WitnessService.open({
+    store: memoryStore(),
+    source: quick.clock.source(),
+    origin: "pushy.example/log",
+    now: () => quick.clock.now * 1000,
+    cosign: async () => {
+      replies += 1;
+      return { status: 409, body: "0\n" };
+    },
+  });
+  const p = { ...quick.auction(pushy, "p", 100, 120), cosigners: [quick.cosigner.vkey] };
+  await pushy.registerPolicy(p);
+  quick.clock.advanceTo(100);
+  await pushy.tick();
+  await pushy.tick();
+  assert.equal(replies, 1, "a 409 is not followed at once");
+  quick.clock.advanceTo(103);
+  await pushy.tick();
+  assert.equal(replies, 2);
 });
