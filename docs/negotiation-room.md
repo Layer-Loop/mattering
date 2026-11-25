@@ -32,7 +32,7 @@ ANTHROPIC_API_KEY=... npm run showcase
 `MATTERING_MODEL` chooses the model, as for the auction; the default is `claude-haiku-5-5`. At the start of each step both agents are asked at once. Each is told the rules (offers sealed and opened together, the midpoint if they cross, up to three steps, the invoice paid in full if there is no deal), its own firm's limit, and both sides' offers from earlier steps. It answers with an offer and one sentence to its firm.
 
 - **The mandate binds the model as it binds the script.** An answer beyond the agent's limit is thrown away like any unusable answer, and the script decides for that agent. So does an amount out of range, a malformed answer, a refusal, a failure, or no answer within ten seconds.
-- **The page says which,** offer by offer: "Offer chosen by a language model" or "by a script".
+- **The page says which.** Before a negotiation starts, the deal panel names the model that will choose the offers (such as "Claude Haiku 5.5"), or says a script will because no model is configured. Each offer then carries a "chosen by …" label beside the agent's name.
 - **The note is shown once the step opens,** under the offer. It is the agent's explanation to its own firm, not part of the evidence, and it is never sealed or checked.
 - **Chosen offers are held in memory only** until they are sealed.
 - **The rogue option overrides the model:** in the last step Acme's agent offers past its limit by script, whatever the model would have done.

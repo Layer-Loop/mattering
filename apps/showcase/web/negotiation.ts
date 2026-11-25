@@ -21,6 +21,8 @@ interface State {
   mode: "live" | "simulated";
   beacon: BeaconInfo;
   ownCosigner?: string;
+  /** The model that will choose offers, by name, or null when the scripts do. */
+  decider: string | null;
   invoice: { item: string; unit: string; minPrice: number; maxPrice: number };
   firms: Record<Side, { organisation: string; agent: string; role: string }>;
   serverTime: number;
@@ -117,8 +119,8 @@ function stepCard(run: NonNullable<State["run"]>, step: StepView, now: number): 
     } else if (offer) inner = `<p class="state">${offer.status}</p><p class="reason">${escape(offer.reason ?? "")}</p>`;
     else inner = `<p class="state">${step.submitted[side] ? "Sealed" : "Deciding…"}</p><p class="cipher">${step.submitted[side] ? "readable only by the two firms, and only once this step opens" : ""}</p>`;
     const by = step.decidedBy[side];
-    const byText = by === "model" ? "Offer chosen by a language model" : by === "script" ? "Offer chosen by a script" : "";
-    return `<div class="offer" style="--c: var(--s${i + 1})"><p class="who">${escape(firm.agent)}</p><div class="envelope ${offer ? "" : "sealed"}">${inner}</div>${byText ? `<p class="muted by">${byText}</p>` : ""}</div>`;
+    const chip = by === "model" ? `<span class="by-chip model">chosen by ${escape(state!.decider ?? "a language model")}</span>` : by === "script" ? `<span class="by-chip">chosen by a script</span>` : "";
+    return `<div class="offer" style="--c: var(--s${i + 1})"><p class="who">${escape(firm.agent)} ${chip}</p><div class="envelope ${offer ? "" : "sealed"}">${inner}</div></div>`;
   }).join("");
   const outcome = j?.result.outcome;
   const line = !j ? "" : !j.result.ok ? `<p class="reason">Could not be checked: ${escape(j.result.checks.find((c) => !c.ok)?.detail ?? "")}</p>` : outcome!.deal ? `<p class="deal">Deal at ${pounds(outcome!.price)}: the offers crossed, so the price is the midpoint.</p>` : `<p class="muted">No deal at this step: ${escape(outcome!.reason)}.</p>`;
@@ -134,6 +136,12 @@ function render(): void {
   mode.hidden = state.mode === "live";
   mode.textContent = "Simulated clock";
   $("trust-clock").textContent = state.mode === "live" ? "The drand network, run by a group of independent organisations. If enough of them colluded, offers could be opened early." : "In this offline mode the clock is simulated on this machine, so whoever runs the machine could open offers early. Online, it is the public drand network.";
+  // Say who chooses the offers before anything starts, and for the negotiation shown.
+  const model = state.decider;
+  const usingModel = run ? run.useModel && model !== null : model !== null;
+  $("who-decides").innerHTML = usingModel
+    ? `Offers ${run ? "are" : "will be"} chosen by <strong>${escape(model!)}</strong>, held to each agent's mandate. If it fails, or answers beyond the mandate, a script chooses instead, and the offer says so.`
+    : `Offers ${run ? "are" : "will be"} chosen by <strong>a script</strong>${model === null ? ": no language model is configured. Set ANTHROPIC_API_KEY to have Claude choose them." : "."}`;
   $<HTMLButtonElement>("start").textContent = run ? "Start a new negotiation" : "Start the negotiation";
   for (const id of ["parties-section", "steps-section", "cheat-section", "verify-section"]) $(id).hidden = !run;
   if (!run) return;

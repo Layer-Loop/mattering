@@ -10,7 +10,7 @@ import { verifyNegotiation, verifyNegotiationStep, withFileKeys, type StepInputs
 import { scriptedOffer } from "../apps/showcase/src/negotiation-room.ts";
 import { startShowcase } from "../apps/showcase/src/server.ts";
 
-type State = { beacon: BeaconInfo; run: { id: number; done: boolean; steps: { step: number; phase: string }[] } | null };
+type State = { beacon: BeaconInfo; decider: string | null; run: { id: number; done: boolean; steps: { step: number; phase: string }[] } | null };
 type Disclosure = { evidence: StepInputs; fileKeys: Record<string, string>; openings: Record<Side, MandateOpening> };
 
 async function negotiate(rogue: boolean) {
@@ -22,7 +22,9 @@ async function negotiate(rogue: boolean) {
   try {
     assert.match(await (await fetch(url + "/negotiation")).text(), /The Negotiation Room/);
     assert.ok((await (await fetch(url + "/negotiation.js")).text()).length > 50_000, "the page's script is served");
-    assert.equal((await get<State>("/negotiation/state")).json.run, null);
+    const before = (await get<State>("/negotiation/state")).json;
+    assert.equal(before.run, null);
+    assert.equal(before.decider, null, "without a model the page is told the scripts decide");
     const started = (await get<State>("/negotiation/start", { rogue })).json;
     const verifier = { acceptedBeacons: [started.beacon] };
 

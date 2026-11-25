@@ -9,11 +9,11 @@ import type { AddressInfo } from "node:net";
 import { test } from "node:test";
 import type { BeaconInfo, MandateOpening, Side } from "@mattering/core";
 import { verifyNegotiation, verifyNegotiationStep, withFileKeys, type StepInputs } from "@mattering/core/negotiation";
-import { acceptOffer, claudeNegotiator, type OfferAsk, type OfferDecider } from "../apps/showcase/src/llm.ts";
+import { acceptOffer, claudeNegotiator, modelLabel, type OfferAsk, type OfferDecider } from "../apps/showcase/src/llm.ts";
 import { startShowcase } from "../apps/showcase/src/server.ts";
 
 type StepView = { step: number; phase: string; decidedBy: Partial<Record<Side, string>>; notes: Partial<Record<Side, string>> };
-type State = { beacon: BeaconInfo; run: { done: boolean; useModel: boolean; steps: StepView[] } | null };
+type State = { beacon: BeaconInfo; decider: string | null; run: { done: boolean; useModel: boolean; steps: StepView[] } | null };
 type Disclosure = { evidence: StepInputs; fileKeys: Record<string, string>; openings: Record<Side, MandateOpening> };
 
 const ask = (over: Partial<OfferAsk> = {}): OfferAsk => ({ side: "buyer", organisation: "Acme Treasury Ltd", role: "Pays early", item: "INV", minPrice: 9_000, maxPrice: 10_000, faceValue: 10_000, step: 1, maxSteps: 3, limit: 9_750, history: [], ...over });
@@ -29,8 +29,15 @@ test("a model's offer is accepted only if whole, in range, within the mandate, w
   assert.ok(acceptOffer(ask(), { offer: 9_600, note: "x".repeat(2000) })!.note.length <= 280);
 });
 
+test("the page names the model as people read it", () => {
+  assert.equal(modelLabel("claude-haiku-5-5"), "Claude Haiku 5.5");
+  assert.equal(modelLabel("claude-opus-5-5"), "Claude Opus 5.5");
+  assert.equal(modelLabel("claude-sonnet-5"), "Claude Sonnet 5");
+  assert.equal(modelLabel("some-other-model"), "some-other-model");
+});
+
 async function run(negotiate: OfferDecider) {
-  const { url, stop } = await startShowcase({ mode: "simulated", roundMs: 150, negotiationCloseAfter: 10, negotiationReleaseAfter: 4, agentGapMs: 150, negotiate, decideTimeoutMs: 400 });
+  const { url, stop } = await startShowcase({ mode: "simulated", roundMs: 150, negotiationCloseAfter: 10, negotiationReleaseAfter: 4, agentGapMs: 150, negotiate, negotiateLabel: "Claude Haiku 5.5", decideTimeoutMs: 400 });
   const get = async <T>(path: string, body?: unknown): Promise<T> => (await (await fetch(url + path, body === undefined ? {} : { method: "POST", body: JSON.stringify(body) })).json()) as T;
   try {
     const started = await get<State>("/negotiation/start", {});
@@ -58,6 +65,7 @@ test("the model's offers are sealed as given, and each agent sees its own limit 
     return a.step === 1 ? { offer: a.side === "buyer" ? 9_500 : 9_900, note: `${a.side} opens.` } : { offer: a.limit, note: `${a.side} goes to its limit.` };
   });
   assert.equal(state.run!.useModel, true);
+  assert.equal(state.decider, "Claude Haiku 5.5", "the page is told which model chooses");
   assert.equal(results.length, 2);
   assert.deepEqual(results[0]!.outcome, { deal: false, reason: "the offers did not cross" });
   assert.equal(chain.ok, true, chain.problem);

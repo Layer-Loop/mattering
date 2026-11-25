@@ -104,6 +104,8 @@ export interface NegotiationRoomOptions {
   maxRuns?: number;
   /** A language model to choose the agents' offers. Without it, their scripts do. */
   decide?: OfferDecider;
+  /** What to call that model on the page, such as "Claude Haiku 5.5". */
+  decideLabel?: string;
   /** Called once per negotiation before the model is used; return false to use the scripts. */
   allowModel?: () => Promise<boolean>;
   /** Milliseconds to wait for the model before the script decides. */
@@ -325,7 +327,9 @@ export class NegotiationRoom {
 
   async view(): Promise<Record<string, unknown>> {
     const log = await this.options.log.terms();
-    const base = { mode: this.options.mode, beacon: this.beacon, invoice: INVOICE, firms: FIRMS, serverTime: Date.now(), ...(log.ownCosigner ? { ownCosigner: log.ownCosigner } : {}) };
+    // Who will choose the offers, said before anything starts: a model by name, or the scripts.
+    const decider = this.options.decide ? (this.options.decideLabel ?? "a language model") : null;
+    const base = { mode: this.options.mode, beacon: this.beacon, invoice: INVOICE, firms: FIRMS, decider, serverTime: Date.now(), ...(log.ownCosigner ? { ownCosigner: log.ownCosigner } : {}) };
     const run = this.state.run;
     if (!run) return { ...base, run: null };
     const steps = [];
