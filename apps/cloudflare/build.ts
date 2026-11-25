@@ -1,8 +1,10 @@
 /**
  * Build the two files the Mattering website needs from this repository:
  *
- *   <site>/src/worker.js                   the Worker and its Durable Object
- *   <site>/public/assets/sealed-room.js    the page's script
+ *   <site>/src/worker.js                       the Worker and its Durable Object
+ *   <site>/public/assets/sealed-room.js        the auction page's script
+ *   <site>/public/assets/negotiation-room.js   the negotiation page's script
+ *   <site>/public/assets/negotiation-room.css  its styles, until the page is redesigned
  *
  *   npm run build:site -- ../mattering
  *
@@ -10,7 +12,7 @@
  * here. Rebuild and commit there whenever this repository changes.
  */
 import { execSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -51,6 +53,9 @@ mkdirSync(join(out, "src"), { recursive: true });
 mkdirSync(join(out, "public", "assets"), { recursive: true });
 writeFileSync(join(out, "src", "worker.js"), `${banner}\n${worker.outputFiles[0]!.text}`);
 writeFileSync(join(out, "public", "assets", "sealed-room.js"), `${banner}\n${await bundlePage(true)}`);
+writeFileSync(join(out, "public", "assets", "negotiation-room.js"), `${banner}\n${await bundlePage(true, "negotiation.ts")}`);
+writeFileSync(join(out, "public", "assets", "negotiation-room.css"), `/* ${banner.slice(3)} */\n${readFileSync(join(here, "..", "showcase", "web", "style.css"), "utf8")}`);
 console.log(`worker:  ${join(out, "src", "worker.js")}  (${Math.round(worker.outputFiles[0]!.text.length / 1024)} KB)`);
 console.log(`page:    ${join(out, "public", "assets", "sealed-room.js")}`);
+console.log(`page:    ${join(out, "public", "assets", "negotiation-room.js")} and .css`);
 console.log(`source:  ${commit}`);
