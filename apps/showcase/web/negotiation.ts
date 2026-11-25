@@ -14,9 +14,10 @@ interface StepView {
   phase: "open" | "closed" | "released";
   cosigned: boolean;
   submitted: Record<Side, boolean>;
-  decidedBy: Partial<Record<Side, "model" | "script">>;
-  notes: Partial<Record<Side, string>>;
-  withheld: Side[];
+  // Optional: a room still on an older Worker during a deploy may not send them.
+  decidedBy?: Partial<Record<Side, "model" | "script">>;
+  notes?: Partial<Record<Side, string>>;
+  withheld?: Side[];
 }
 interface State {
   mode: "live" | "simulated";
@@ -140,13 +141,13 @@ function stepCard(run: NonNullable<State["run"]>, step: StepView, now: number): 
     let inner: string;
     if (offer?.status === "valid") {
       const m = offer.mandate;
-      const note = step.notes[side];
-      const withheld = step.withheld.includes(side);
+      const note = step.notes?.[side];
+      const withheld = step.withheld?.includes(side) ?? false;
       const said = note ? `<p class="said">“${escape(note)}”</p>` : withheld ? `<p class="muted said">Note withheld: it named an amount this agent had not seen.</p>` : "";
       inner = `<p class="amount">${pounds(offer.price!)}</p>${m ? `<p class="${m === "within" ? "chip-ok" : "reason"}">${MANDATE_TEXT[m]}</p>` : ""}${said}`;
     } else if (offer) inner = `<p class="state">${offer.status}</p><p class="reason">${escape(offer.reason ?? "")}</p>`;
-    else inner = `<p class="state">${step.submitted[side] ? "Sealed" : "Deciding…"}</p><p class="cipher">${step.submitted[side] ? "readable only by the two firms, and only once this step opens" : ""}</p>`;
-    const by = step.decidedBy[side];
+    else inner = `<p class="state">${step.submitted?.[side] ? "Sealed" : "Deciding…"}</p><p class="cipher">${step.submitted?.[side] ? "readable only by the two firms, and only once this step opens" : ""}</p>`;
+    const by = step.decidedBy?.[side];
     const chip = by === "model" ? `<span class="by-chip model">chosen by ${escape(state!.decider ?? "a language model")}</span>` : by === "script" ? `<span class="by-chip">chosen by a script</span>` : "";
     return `<div class="offer" style="--c: var(--s${i + 1})"><p class="who">${escape(firm.agent)} ${chip}</p><div class="envelope ${offer ? "" : "sealed"}">${inner}</div></div>`;
   }).join("");
@@ -177,7 +178,15 @@ function render(): void {
   $("trust-cosigners").textContent = own ? "to be independent of the log's operator. In this demonstration the cosigner runs on the same machine, so it is not." : "to be independent of the log's operator and of each other.";
   const now = Date.now() + skew;
   $("parties").innerHTML = partyCards(run);
-  $("steps").innerHTML = run.steps.map((s) => stepCard(run, s, now)).join("");
+  // One step that cannot be drawn must not freeze the rest of the page.
+  $("steps").innerHTML = run.steps.map((s) => {
+    try {
+      return stepCard(run, s, now);
+    } catch (error) {
+      console.error(`step ${s.step} could not be drawn:`, error);
+      return `<article class="panel step"><div class="step-head"><h3>Step ${s.step}</h3><span class="muted">${escape(s.phase)}</span></div><p class="muted">This step could not be shown. Reload the page.</p></article>`;
+    }
+  }).join("");
   const last = run.steps.at(-1);
   const finalJudged = run.done && last ? judged.get(key(run.id, last.step)) : undefined;
   const result = $("result");
