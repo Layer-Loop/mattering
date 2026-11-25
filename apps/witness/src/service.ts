@@ -132,6 +132,15 @@ export interface ServiceOptions {
    * policies' entries. Default 10,000.
    */
   maxPolicyLag?: number;
+  /**
+   * The least time between two requests to the same cosigner, in
+   * milliseconds, whatever triggers them. Public witnesses ask logs to state
+   * their add-checkpoint rate and may block a log that exceeds it. Default
+   * 3,000: one drand quicknet round.
+   */
+  minCosignIntervalMs?: number;
+  /** Milliseconds since the epoch, for spacing requests to cosigners. Default `Date.now`. */
+  now?: () => number;
 }
 
 interface PolicyRecord {
@@ -174,6 +183,7 @@ const HEX32 = /^[0-9a-f]{64}$/;
 /** Most entries returned by one read of the log. */
 export const LOG_PAGE = 1000;
 const DEFAULT_MAX_POLICY_LAG = 10_000;
+const DEFAULT_MIN_COSIGN_INTERVAL_MS = 3_000;
 
 export class WitnessService {
   private readonly results = new Map<string, AuctionResult | StatementsResult>();
@@ -181,6 +191,8 @@ export class WitnessService {
   private readonly cosignedSize = new Map<string, number>();
   /** Cosignature lines already collected for the log at one size, by cosigner, so no cosigner is asked twice for the same checkpoint. */
   private collected: { size: number; lines: Map<string, string> } = { size: -1, lines: new Map() };
+  /** When each cosigner was last sent a request, by this process's clock. */
+  private readonly lastAsked = new Map<string, number>();
   private queue: Promise<unknown> = Promise.resolve();
 
   private constructor(
@@ -390,24 +402,30 @@ export class WitnessService {
     }
   }
 
-  /** One cosigner's signature lines for `checkpoint`, or undefined. Follows a 409 once, as the protocol intends. */
+  /**
+   * One cosigner's signature lines for `checkpoint`, or undefined. At most one
+   * request per cosigner per `minCosignIntervalMs`, counting failures and
+   * refusals: a request not sent now is sent on a later tick. After a 409 the
+   * size it names is used next time, rather than at once.
+   */
   private async requestCosignature(cosigner: string, checkpoint: string, size: number): Promise<string | undefined> {
     const name = parseVkey(cosigner).name;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const old = this.cosignedSize.get(cosigner) ?? 0;
-      if (old > size) return undefined;
-      const body = `old ${old}\n` + this.witness.consistency(old, size).map((p) => p + "\n").join("") + "\n" + checkpoint;
-      const reply = await this.options.cosign!(cosigner, body).catch(() => undefined);
-      if (reply?.status === 409 && /^(0|[1-9][0-9]*)\n$/.test(reply.body)) {
-        this.cosignedSize.set(cosigner, Number(reply.body.trim()));
-        continue;
-      }
-      if (reply?.status !== 200) return undefined;
-      this.cosignedSize.set(cosigner, size);
-      // Keep only this cosigner's lines; a response may carry several signatures.
-      return reply.body.split("\n").filter((line) => line.startsWith(`\u2014 ${name} `)).map((line) => line + "\n").join("") || undefined;
+    const now = (this.options.now ?? Date.now)();
+    const last = this.lastAsked.get(cosigner);
+    if (last !== undefined && now - last < (this.options.minCosignIntervalMs ?? DEFAULT_MIN_COSIGN_INTERVAL_MS)) return undefined;
+    const old = this.cosignedSize.get(cosigner) ?? 0;
+    if (old > size) return undefined;
+    this.lastAsked.set(cosigner, now);
+    const body = `old ${old}\n` + this.witness.consistency(old, size).map((p) => p + "\n").join("") + "\n" + checkpoint;
+    const reply = await this.options.cosign!(cosigner, body).catch(() => undefined);
+    if (reply?.status === 409 && /^(0|[1-9][0-9]*)\n$/.test(reply.body)) {
+      this.cosignedSize.set(cosigner, Number(reply.body.trim()));
+      return undefined;
     }
-    return undefined;
+    if (reply?.status !== 200) return undefined;
+    this.cosignedSize.set(cosigner, size);
+    // Keep only this cosigner's lines; a response may carry several signatures.
+    return reply.body.split("\n").filter((line) => line.startsWith(`\u2014 ${name} `)).map((line) => line + "\n").join("") || undefined;
   }
 
   private saveClosing(record: PolicyRecord): Promise<void> {
