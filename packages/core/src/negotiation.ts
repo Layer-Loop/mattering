@@ -31,6 +31,7 @@ import { fileKeyOf, openAs, openWithFileKey, sealTo } from "./recipient-seal.ts"
 import type { Check, VerifierPolicy } from "./seal.ts";
 import type { KeyPair } from "./signing.ts";
 import { signSubmission, type Submission } from "./witness.ts";
+import { withinMandate, type MandateOpening, type MandateStatus } from "./mandate.ts";
 
 export * from "./negotiation-policy.ts";
 
@@ -44,10 +45,16 @@ export interface Offer {
   price: number;
 }
 
-/** Seal one side's offer for a step, sign its submission, and hand both to the witness. */
-export async function prepareOffer(policy: NegotiationPolicy, side: Side, price: number, signer: KeyPair): Promise<{ envelope: Envelope; submission: Submission }> {
+/**
+ * Seal one side's offer for a step, sign its submission, and hand both to the
+ * witness. Given the agent's mandate opening, it refuses an offer beyond the
+ * mandate: the agent's own safeguard, which a dishonest agent can skip.
+ */
+export async function prepareOffer(policy: NegotiationPolicy, side: Side, price: number, signer: KeyPair, opening?: MandateOpening): Promise<{ envelope: Envelope; submission: Submission }> {
   const hash = negotiationPolicyHash(policy);
   if (policy[side].signer !== signer.publicKey) throw new MatteringError("POLICY", `this key is not the ${side}'s signing key`);
+  const mandate = policy[side].mandate;
+  if (mandate && opening && withinMandate(mandate, price, opening) !== "within") throw new MatteringError("POLICY", `an offer of ${price} is beyond this agent's mandate`);
   const offer: Offer = { format: OFFER_FORMAT, policyHash: hash, side, signer: signer.publicKey, price };
   const envelope = await sealTo({
     payload: canonicalBytes(offer),
@@ -88,6 +95,13 @@ export interface OfferOutcome {
   submitter: string;
   envelopeId: string;
   side?: Side;
+  /**
+   * For a valid offer from a side with a mandate: whether the price was within
+   * it. "undisclosed" without the opening. Does not change the outcome: an
+   * offer beyond its mandate still counts, and shows that the agent exceeded
+   * its authority.
+   */
+  mandate?: MandateStatus;
   /** "ignored": not from a party. "unresolved": could not be opened by whoever is judging. */
   status: "valid" | "invalid" | "unresolved" | "ignored";
   reason?: string;
@@ -144,7 +158,7 @@ async function judgeOffer(policy: NegotiationPolicy, hash: string, side: Side, s
  * cosigned before anyone could read them, and what do they give? Needs a way
  * to open the offers: a party's identity, or file keys a party disclosed.
  */
-export async function verifyNegotiationStep(inputs: StepInputs, opener: OfferOpener, verifier: VerifierPolicy): Promise<StepResult> {
+export async function verifyNegotiationStep(inputs: StepInputs, opener: OfferOpener, verifier: VerifierPolicy, openings: Partial<Record<Side, MandateOpening>> = {}): Promise<StepResult> {
   const envelopes = inputs.envelopes instanceof Map ? inputs.envelopes : new Map(Object.entries(inputs.envelopes));
   let hash: string;
   try {
@@ -173,6 +187,8 @@ export async function verifyNegotiationStep(inputs: StepInputs, opener: OfferOpe
     const outcome: OfferOutcome = envelope
       ? { ...base, side, ...(await judgeOffer(inputs.policy, hash, side, submission, envelope, inputs.release, opener, verifier)) }
       : { ...base, side, status: "unresolved", reason: "envelope not supplied" };
+    const mandate = inputs.policy[side].mandate;
+    if (mandate && outcome.status === "valid") outcome.mandate = withinMandate(mandate, outcome.price!, openings[side]);
     counted.set(side, outcome);
     offers.push(outcome);
   }

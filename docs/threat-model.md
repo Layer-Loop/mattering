@@ -60,3 +60,4 @@ Mattering has no mitigation for any of these. A use that cannot accept them shou
 13. **A recipient key is only a key.** Nothing ties an `age1…` recipient to a person or organisation, and an identity file is a secret on disk like any other.
 14. **A negotiation shows who is negotiating, and when.** The parties' signing keys, the item, the price range and the timing are public in the policy and the log. Only the offers are sealed.
 15. **A party can withhold the outcome.** Outsiders learn a negotiation's outcome only from a party's disclosure, and a party shut out of the other's offer depends on that side disclosing its file key.
+16. **A mandate is checked after the fact.** An agent can make an offer beyond its mandate; it is detected only when someone shown the limit's opening judges the step. An organisation key is only a key: nothing ties it to the organisation it names.
