@@ -29,6 +29,8 @@ In the auction, a **witness** sits between bidders and verifier. Bidders hand it
 | `envelope.ts` | Envelope format, strict parsing, armor, frame | No |
 | `tlock.ts` | The only caller of `tlock-js` | No |
 | `seal.ts` | `seal`, `verifyEnvelope`, `open`, `verifyOpen` | No |
+| `recipients.ts` | The only caller of the age library (`age-encryption`) | No |
+| `recipient-seal.ts` | Version 2 envelopes: `sealTo`, `unlock`, `openAs`, file-key disclosure. Exported as `@mattering/core/recipients`, so code that does not need it does not carry age | No |
 | `signing.ts` | Ed25519 over labelled canonical hashes | No |
 | `commitment.ts` | Pedersen commitments on Ristretto255 | No |
 | `merkle.ts` | RFC 6962 tree hash, inclusion and consistency proofs, an incremental tree, and roots rebuilt from a compact prefix | No |
@@ -76,4 +78,4 @@ The showcase (`apps/showcase`) runs its rooms on one such log through a small lo
 | A deployed public witness and registry | Mattering. The demonstration's shared log is the first step; it is not yet registered with any public witness |
 | Cosigners | Parties independent of Mattering |
 | Anchoring checkpoints to a public ledger | Mattering's witness |
-| Range proofs, recipient encryption, durable storage | Undecided; only if review supports them |
+| Range proofs, durable storage | Undecided; only if review supports them |

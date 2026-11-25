@@ -4,6 +4,10 @@
  * An envelope is public. It carries a drand tlock ciphertext (age format, as
  * produced by drand's tlock-js) and the parameters needed to open it later
  * with nothing but the envelope and one public beacon signature.
+ *
+ * A version 2 envelope also names recipients. Inside the time lock its
+ * payload is a standard age file encrypted to those recipients' X25519 keys,
+ * so after the round only they can read it.
  */
 import { concatBytes, utf8ToBytes } from "@noble/hashes/utils";
 import { assertBeaconInfo, assertRound, type BeaconInfo } from "./beacon.ts";
@@ -11,6 +15,10 @@ import { assertCanonicalizable, bytesToHex, hashCanonical, type Json } from "./c
 import { MatteringError } from "./errors.ts";
 
 export const ENVELOPE_FORMAT = "mattering.envelope/1";
+/** An envelope that opens to named recipients only. */
+export const RECIPIENT_ENVELOPE_FORMAT = "mattering.envelope/2";
+/** Most recipients one envelope may name. */
+export const MAX_RECIPIENTS = 16;
 const HEADER_LABEL = "mattering/envelope-header/v1";
 const ENVELOPE_LABEL = "mattering/envelope/v1";
 /** "MTRG" ‖ frame version 1. */
@@ -19,12 +27,18 @@ const FRAME_MAGIC = Uint8Array.of(0x4d, 0x54, 0x52, 0x47, 0x01);
 export type Context = { [key: string]: Json };
 
 export interface EnvelopeHeader {
-  format: typeof ENVELOPE_FORMAT;
+  format: typeof ENVELOPE_FORMAT | typeof RECIPIENT_ENVELOPE_FORMAT;
   beacon: BeaconInfo;
   /** The drand round whose signature opens the ciphertext. */
   round: number;
   /** Public, caller-defined metadata. Bound to the ciphertext; not secret. */
   context: Context;
+  /**
+   * Version 2 only: the age X25519 recipients (`age1…`) who can read the
+   * payload once the round has come, sorted and distinct. Public, and bound to
+   * the ciphertext like the rest of the header.
+   */
+  recipients?: string[];
 }
 
 export interface Envelope extends EnvelopeHeader {
@@ -33,12 +47,23 @@ export interface Envelope extends EnvelopeHeader {
 }
 
 export function headerOf(envelope: EnvelopeHeader): EnvelopeHeader {
-  return {
+  const header: EnvelopeHeader = {
     format: envelope.format,
     beacon: { ...envelope.beacon },
     round: envelope.round,
     context: envelope.context,
   };
+  return envelope.recipients === undefined ? header : { ...header, recipients: [...envelope.recipients] };
+}
+
+/** True iff the envelope opens to named recipients only. */
+export function isRecipientEnvelope(envelope: EnvelopeHeader): boolean {
+  return envelope.format === RECIPIENT_ENVELOPE_FORMAT;
+}
+
+/** An age X25519 recipient: "age1" and 58 bech32 characters, lowercase. */
+export function isRecipient(value: unknown): value is string {
+  return typeof value === "string" && /^age1[02-9ac-hj-np-z]{58}$/.test(value);
 }
 
 export function headerHash(header: EnvelopeHeader): Uint8Array {
@@ -57,10 +82,14 @@ export function assertEnvelope(value: unknown): asserts value is Envelope {
     throw new MatteringError("MALFORMED", "envelope: not an object");
   }
   const keys = Object.keys(e).sort().join(",");
-  if (keys !== "beacon,ciphertext,context,format,round") {
+  const want = e.format === RECIPIENT_ENVELOPE_FORMAT ? "beacon,ciphertext,context,format,recipients,round" : "beacon,ciphertext,context,format,round";
+  if (keys !== want) {
     throw new MatteringError("MALFORMED", `envelope: unexpected fields (${keys})`);
   }
-  if (e.format !== ENVELOPE_FORMAT) throw new MatteringError("MALFORMED", `envelope.format: want ${ENVELOPE_FORMAT}`);
+  if (e.format !== ENVELOPE_FORMAT && e.format !== RECIPIENT_ENVELOPE_FORMAT) {
+    throw new MatteringError("MALFORMED", `envelope.format: want ${ENVELOPE_FORMAT} or ${RECIPIENT_ENVELOPE_FORMAT}`);
+  }
+  if (e.format === RECIPIENT_ENVELOPE_FORMAT) assertRecipients(e.recipients);
   assertBeaconInfo(e.beacon, "envelope.beacon");
   assertRound(e.round, "envelope.round");
   if (e.context === null || typeof e.context !== "object" || Array.isArray(e.context)) {
@@ -69,6 +98,20 @@ export function assertEnvelope(value: unknown): asserts value is Envelope {
   assertCanonicalizable(e.context, "envelope.context");
   if (typeof e.ciphertext !== "string") throw new MatteringError("MALFORMED", "envelope.ciphertext: want a string");
   parseArmor(e.ciphertext);
+}
+
+/**
+ * One to `MAX_RECIPIENTS` age X25519 recipients, sorted and distinct, so a set
+ * of recipients has exactly one spelling and the envelope one identifier.
+ */
+export function assertRecipients(value: unknown, field = "envelope.recipients"): asserts value is string[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_RECIPIENTS) {
+    throw new MatteringError("MALFORMED", `${field}: want 1 to ${MAX_RECIPIENTS} recipients`);
+  }
+  for (const [i, r] of value.entries()) {
+    if (!isRecipient(r)) throw new MatteringError("MALFORMED", `${field}: want age X25519 recipients (age1…)`);
+    if (i > 0 && !(value[i - 1] < r)) throw new MatteringError("MALFORMED", `${field}: want sorted, distinct recipients`);
+  }
 }
 
 export function parseEnvelope(json: string): Envelope {

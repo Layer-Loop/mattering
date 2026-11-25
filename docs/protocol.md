@@ -93,6 +93,26 @@ Each step fails with its own error code. The signature is public once emitted an
 
 **Verifying an opening** (`verifyOpen`) repeats the opening and compares the result with a claimed payload.
 
+### Version 2: sealed to recipients
+
+A version 2 envelope opens at its round **and** only to named recipients. It is the version 1 envelope with `format` set to `mattering.envelope/2` and one more header field:
+
+| Field | Meaning |
+| --- | --- |
+| `recipients` | 1 to 16 [age](https://age-encryption.org/v1) X25519 recipients (`age1…`), sorted and distinct, so a set of recipients has one spelling |
+
+**Sealing** (`sealTo`, in `@mattering/core/recipients`): encrypt the payload with age to the recipients, then seal the resulting age file exactly as in section 4, with the version 2 header. The recipients are part of the header, so the frame binds them to the age file inside: an envelope readdressed to someone else fails the frame check. Mattering adds no cryptography of its own here: the inner file is standard age, written by the age project's own JavaScript library, and any age implementation opens it with a recipient's identity.
+
+**Opening** has stages:
+
+1. `unlock`: anyone, once the round has come, removes the time lock as in section 5 and gets the age file. It must hold one `X25519` key stanza per named recipient and no other stanza. Which stanza is whose cannot be checked: a stanza does not name its key.
+2. `openAs`: a recipient decrypts the age file with their identity (`AGE-SECRET-KEY-1…`).
+3. `fileKeyOf` and `verifyDisclosure`: a recipient can hand over the age **file key**, 16 bytes. With it anyone can decrypt this one envelope and check that it opens to a claimed payload, without the recipient's identity.
+
+What this rests on: age wraps one random file key per recipient and authenticates the whole header, every recipient's stanza included, with a MAC keyed by the file key. So a single age file has one file key that verifies, and every recipient who can open it reads the same payload. A dishonest sealer can still name a recipient and give them a stanza that does not open: that recipient learns it only at the round, and cannot prove it to others without revealing their identity.
+
+A version 2 envelope is not publicly verifiable after the round: outsiders see that it existed, when a log recorded it and that it was not changed, but not what it held. Auctions and statements therefore stay on version 1, whose results anyone can recompute.
+
 ## 6. Submissions and the witness log
 
 Sealing proves nothing about when. A deadline needs someone to say "I saw this before then", and that someone is the **witness**: a party that keeps an append-only log of submissions. Mattering intends to run a public witness; the formats are open and anyone can run another.
@@ -238,7 +258,6 @@ A statement proves that a key committed to some text before the close. It says n
 ## 9. Things this design does not do
 
 - Keep anything secret after the release round.
-- Encrypt to a recipient.
 - Prove a range, or anything else, about a sealed value before it opens.
 - Store envelopes durably. Whoever needs an envelope opened must keep it.
 - Identify or authenticate agents. A submitter is a public key, and what that key stands for is someone else's problem.

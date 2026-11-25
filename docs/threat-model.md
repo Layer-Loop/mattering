@@ -15,7 +15,10 @@ The secrecy of a sealed payload until its round, and the integrity of the link b
 | **Replayer** | Move a ciphertext into an envelope with a different round, beacon or context | Opening fails at the frame check |
 | **Dishonest sealer** | Name a beacon they control | Rejected by the verifier's beacon policy |
 | **Dishonest sealer** | Seal garbage, or a frame that will not open | Not detectable until the round. The envelope is then provably invalid |
-| **Dishonest sealer** | Claim after the round that the envelope held something else | `verifyOpen` shows what it opens to |
+| **Dishonest sealer** | Claim after the round that the envelope held something else | `verifyOpen` shows what it opens to; for a version 2 envelope, `verifyDisclosure` with a recipient's file key |
+| **Dishonest sealer** of a version 2 envelope | Readdress it to other recipients | Opening fails at the frame check |
+| **Dishonest sealer** of a version 2 envelope | Name a recipient who cannot open it | Not detectable until the round, and then only by that recipient (weakness 12) |
+| **Outsider** after the round of a version 2 envelope | Read it | Fails without a recipient's identity or a disclosed file key |
 | **Network attacker** between opener and drand relay | Serve a false signature | Rejected: the signature is verified against the key in the envelope, which the verifier's policy pinned |
 | **Network attacker** | Block access to drand | The envelope cannot be opened until a signature is obtained from anywhere. Delay, not disclosure |
 
@@ -53,3 +56,5 @@ Mattering has no mitigation for any of these. A use that cannot accept them shou
 9. **Timing.** No attempt has been made at constant-time behaviour beyond what the libraries do. Opening only handles public inputs, so this is believed not to matter, but it has not been examined.
 10. **No public witness has been used.** The formats are those of the public witness network, but no Mattering log is registered with it, ML-DSA-44 cosignatures are not supported, and the only cosigners that have run are this repository's own.
 11. **Evidence leaves out the log before a policy.** A policy's evidence carries the entries from its `logFrom` on and only hashes for those before. The argument that nothing relevant can be in the part left out is in [protocol.md](protocol.md) section 6; it is unreviewed.
+12. **Recipients can be shut out.** A version 2 envelope can name a recipient whose key stanza does not open. Nobody can see this before the round, and afterwards only that recipient can, without being able to prove it.
+13. **A recipient key is only a key.** Nothing ties an `age1…` recipient to a person or organisation, and an identity file is a secret on disk like any other.

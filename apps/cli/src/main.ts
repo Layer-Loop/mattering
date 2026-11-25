@@ -27,19 +27,26 @@ import {
   type VerifierPolicy,
 } from "@mattering/core";
 import { DEFAULT_RELAYS, fetchRelease } from "@mattering/core/drand-http";
+import { fileKeyOf, generateRecipientKeys, openAs, openWithFileKey, recipientOf, sealTo, verifyDisclosure } from "@mattering/core/recipients";
 import { TestBeacon } from "@mattering/core/testing";
 
 const USAGE = `mattering <command> [options]
 
   seal         --payload <file> --out <envelope.json>
                (--round <n> | --at <ISO time> | --after <seconds>)
-               [--context key=value ...] [--beacon <info.json>]
+               [--to <age1…> ...] [--context key=value ...] [--beacon <info.json>]
   inspect      <envelope.json>
   verify       <envelope.json> [--round <n>] [--allow-beacon <info.json> ...]
   open         <envelope.json> --out <file|->
+               [--identity <key.txt> | --file-key <hex>]
                [--signature <hex> | --relay <url> ...] [--allow-beacon <info.json> ...]
-  verify-open  <envelope.json> --payload <file>
+  verify-open  <envelope.json> --payload <file> [--file-key <hex>]
                [--signature <hex> | --relay <url> ...] [--allow-beacon <info.json> ...]
+
+  Recipients (seal --to): only they can read the envelope once its round comes.
+  keygen       --out <key.txt>       writes an age X25519 identity, prints its recipient
+  file-key     <envelope.json> --identity <key.txt> [--signature <hex> | --relay <url> ...]
+               prints the file key, which lets anyone read this one envelope
 
   Test beacons (offline testing only; the key holder can open everything):
   test-beacon new      --out <secret.json>
@@ -77,6 +84,18 @@ function readEnvelope(path: string | undefined): Envelope {
   }
 }
 
+/** The identity in a key file: the AGE-SECRET-KEY-1 line, as age-keygen writes it. */
+function readIdentity(path: string): string {
+  let text = "";
+  try {
+    text = readFileSync(path, "utf8");
+  } catch (error) {
+    fail(`cannot read ${path}: ${(error as Error).message}`);
+  }
+  const line = text.split("\n").map((l) => l.trim()).find((l) => l.startsWith("AGE-SECRET-KEY-1"));
+  return line ?? fail(`${path}: no AGE-SECRET-KEY-1 line`);
+}
+
 function policyFrom(allow: string[] | undefined, round?: string): VerifierPolicy {
   const acceptedBeacons = [...DEFAULT_POLICY.acceptedBeacons, ...(allow ?? []).map(readBeacon)];
   return round === undefined ? { acceptedBeacons } : { acceptedBeacons, expectedRound: Number(round) };
@@ -107,6 +126,9 @@ const common = {
   "allow-beacon": { type: "string", multiple: true },
   signature: { type: "string" },
   relay: { type: "string", multiple: true },
+  to: { type: "string", multiple: true },
+  identity: { type: "string" },
+  "file-key": { type: "string" },
   help: { type: "boolean", short: "h" },
 } as const;
 
@@ -137,7 +159,8 @@ async function main(): Promise<void> {
         if (eq < 1) fail(`--context wants key=value, got ${pair}`);
         context[pair.slice(0, eq)] = pair.slice(eq + 1);
       }
-      const envelope = await seal({ payload: readFileSync(values.payload), round, beacon, context });
+      const options = { payload: readFileSync(values.payload), round, beacon, context };
+      const envelope = values.to?.length ? await sealTo({ ...options, recipients: values.to }) : await seal(options);
       writeFileSync(values.out, serializeEnvelope(envelope));
       process.stdout.write(`sealed until round ${round}`);
       if (!values.beacon) process.stdout.write(` (${new Date(timeOfRound(beacon, round) * 1000).toISOString()})`);
@@ -154,6 +177,7 @@ async function main(): Promise<void> {
           `beacon chain: ${envelope.beacon.chainHash}${known ? " (drand quicknet)" : " (NOT a default beacon)"}`,
           `opens at:     round ${envelope.round}${known ? ` (${new Date(timeOfRound(envelope.beacon, envelope.round) * 1000).toISOString()})` : ""}`,
           `context:      ${JSON.stringify(envelope.context)}`,
+          ...(envelope.recipients ? [`opens to:     ${envelope.recipients.join(", ")}`] : [`opens to:     everyone`]),
           `ciphertext:   ${envelope.ciphertext.length} characters of armored age`,
           "",
         ].join("\n"),
@@ -168,7 +192,12 @@ async function main(): Promise<void> {
       if (!values.out) fail("open needs --out (use - for stdout)");
       const envelope = readEnvelope(rest[0]);
       const release = await releaseFor(envelope, values.signature, values.relay);
-      const payload = await open(envelope, release, policyFrom(values["allow-beacon"]));
+      const policy = policyFrom(values["allow-beacon"]);
+      const payload = values.identity
+        ? await openAs(envelope, release, readIdentity(values.identity), policy)
+        : values["file-key"]
+          ? await openWithFileKey(envelope, release, values["file-key"], policy)
+          : await open(envelope, release, policy);
       if (values.out === "-") process.stdout.write(payload);
       else {
         writeFileSync(values.out, payload);
@@ -180,7 +209,26 @@ async function main(): Promise<void> {
       if (!values.payload) fail("verify-open needs --payload");
       const envelope = readEnvelope(rest[0]);
       const release = await releaseFor(envelope, values.signature, values.relay);
-      printResult(await verifyOpen(envelope, readFileSync(values.payload), release, policyFrom(values["allow-beacon"])));
+      const policy = policyFrom(values["allow-beacon"]);
+      const payload = readFileSync(values.payload);
+      printResult(values["file-key"] ? await verifyDisclosure(envelope, payload, release, values["file-key"], policy) : await verifyOpen(envelope, payload, release, policy));
+      return;
+    }
+    case "keygen": {
+      if (!values.out) fail("keygen needs --out");
+      const keys = await generateRecipientKeys();
+      writeFileSync(values.out, `# created: ${new Date().toISOString()}\n# public key: ${keys.recipient}\n${keys.identity}\n`, { mode: 0o600 });
+      process.stderr.write(`wrote a secret identity to ${values.out}; keep it private\n`);
+      process.stdout.write(`${keys.recipient}\n`);
+      return;
+    }
+    case "file-key": {
+      if (!values.identity) fail("file-key needs --identity");
+      const envelope = readEnvelope(rest[0]);
+      const release = await releaseFor(envelope, values.signature, values.relay);
+      const identity = readIdentity(values.identity);
+      await recipientOf(identity);
+      process.stdout.write(`${await fileKeyOf(envelope, release, identity, policyFrom(values["allow-beacon"]))}\n`);
       return;
     }
     case "test-beacon": {

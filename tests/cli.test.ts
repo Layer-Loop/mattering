@@ -68,3 +68,34 @@ test("beacon outage: without release material the envelope stays sealed, with a 
   assert.equal(result.status, 1);
   assert.match(result.stderr, /UNAVAILABLE/);
 });
+
+test("sealed to a recipient: only their key opens it, and a disclosed file key lets others check it", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mattering-"));
+  const p = (name: string) => join(dir, name);
+  writeFileSync(p("offer.txt"), "offer: 98.40 per unit\n");
+  run("test-beacon", "new", "--out", p("beacon-secret.json"));
+  writeFileSync(p("beacon.json"), run("test-beacon", "info", "--beacon", p("beacon-secret.json")).stdout);
+  const buyer = run("keygen", "--out", p("buyer.txt"));
+  assert.equal(buyer.status, 0, buyer.stderr);
+  const recipient = buyer.stdout.trim();
+  assert.match(recipient, /^age1[02-9ac-hj-np-z]{58}$/);
+  run("keygen", "--out", p("outsider.txt"));
+
+  const sealed = run("seal", "--payload", p("offer.txt"), "--out", p("envelope.json"), "--round", "7", "--beacon", p("beacon.json"), "--to", recipient);
+  assert.equal(sealed.status, 0, sealed.stderr);
+  assert.match(run("inspect", p("envelope.json")).stdout, new RegExp(`opens to: +${recipient}`));
+  const sig = run("test-beacon", "release", "--beacon", p("beacon-secret.json"), "--round", "7").stdout.trim();
+  const allow = ["--allow-beacon", p("beacon.json"), "--signature", sig];
+
+  assert.notEqual(run("open", p("envelope.json"), "--out", "-", ...allow).status, 0, "no key, no opening");
+  assert.notEqual(run("open", p("envelope.json"), "--out", "-", "--identity", p("outsider.txt"), ...allow).status, 0);
+  const opened = run("open", p("envelope.json"), "--out", "-", "--identity", p("buyer.txt"), ...allow);
+  assert.equal(opened.status, 0, opened.stderr);
+  assert.equal(opened.stdout, "offer: 98.40 per unit\n");
+
+  const key = run("file-key", p("envelope.json"), "--identity", p("buyer.txt"), ...allow);
+  assert.equal(key.status, 0, key.stderr);
+  const checked = run("verify-open", p("envelope.json"), "--payload", p("offer.txt"), "--file-key", key.stdout.trim(), ...allow);
+  assert.equal(checked.status, 0, checked.stdout);
+  assert.match(checked.stdout, /PASS +opens-with-file-key/);
+});

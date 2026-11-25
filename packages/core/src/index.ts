@@ -13,6 +13,10 @@ export {
 export { canonicalBytes, hashCanonical, hashLabelled, type Json } from "./canonical.ts";
 export {
   ENVELOPE_FORMAT,
+  MAX_RECIPIENTS,
+  RECIPIENT_ENVELOPE_FORMAT,
+  isRecipient,
+  isRecipientEnvelope,
   assertEnvelope,
   envelopeId,
   parseEnvelope,

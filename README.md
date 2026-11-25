@@ -27,6 +27,7 @@ Three rules shaped it:
 - **Verify** a sealed envelope: is it well-formed, and is it locked to a time source and round the verifier accepts?
 - **Open** it once the round's signature exists, with only the envelope file and that public signature. The sender does not need to be online and no Mattering service is involved.
 - **Verify an opening**: does this envelope open to exactly these bytes?
+- **Seal to recipients**: locked to a round and to named age X25519 keys, so once the round comes only they can read it. A recipient can disclose the file key so that others can check what the envelope held.
 
 **Witnessed commitments and a sealed-bid auction**
 
@@ -42,7 +43,7 @@ Three rules shaped it:
 - **Sealed statements**: commit to a prediction or decision before a deadline; it opens for everyone at a set time.
 - A **registry view**: everything one key has committed to, and what each commitment opened to.
 
-The service runs the demo at mattering.ai, where each visitor gets a room of their own and every room writes into one shared log. It is still a proof of concept. Not yet built: range proofs, recipient encryption, durable storage. [docs/claims.md](docs/claims.md) lists every claim with its status.
+The service runs the demo at mattering.ai, where each visitor gets a room of their own and every room writes into one shared log. It is still a proof of concept. Not yet built: range proofs, durable storage. [docs/claims.md](docs/claims.md) lists every claim with its status.
 
 ## See it
 
@@ -116,7 +117,7 @@ What it does not give you:
 
 - **Secrecy from the sender.** The sender knows the payload and can disclose it whenever they like.
 - **Proof of when it was sealed.** An envelope carries no trustworthy creation time. The witness log supplies a deadline, and it is only as trustworthy as the witness and its cosigners.
-- **Secrecy after the round.** Opening is public. There is no private recipient in this version.
+- **Secrecy after the round, unless you name recipients.** A plain seal opens to everyone. A seal to recipients opens only to them, but a dishonest sender can name a recipient who then cannot open it, and nothing shows that before the round.
 - **Protection if drand fails.** If a threshold of drand's operators collude, seals open early. If the network stops, they do not open. If the envelope file is lost, it is gone.
 - **Long-term or post-quantum secrecy.** The time lock rests on pairing-based cryptography that a large quantum computer would break. Someone who stores an envelope today could open it then.
 
@@ -133,7 +134,7 @@ The full list is in [docs/threat-model.md](docs/threat-model.md).
 | `apps/cloudflare` | The same room as a Cloudflare Worker, for the website |
 | `examples/agent-auction` | Three agents, one auction, and a standalone verifier |
 | `examples/hosted-registry` | The same through the hosted service, plus sealed predictions |
-| `tests` | 71 tests: sealing, tampering, replay, early opening, cheating bidders, a cheating witness, a cheating coordinator, the witness protocol and its formats, the service over HTTP, and one log shared by many auctions |
+| `tests` | 77 tests: sealing, sealing to recipients, tampering, replay, early opening, cheating bidders, a cheating witness, a cheating coordinator, the witness protocol and its formats, the service over HTTP, and one log shared by many auctions |
 | `docs/protocol.md` | The envelope, submission, log, auction and statement formats |
 | `docs/service.md` | Running the witness service, its interface, and what it lacks |
 | `docs/showcase.md` | The demonstration page: what is real and what is staged |

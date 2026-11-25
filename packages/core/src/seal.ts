@@ -15,6 +15,7 @@ import {
   ENVELOPE_FORMAT,
   envelopeId,
   frame,
+  isRecipientEnvelope,
   parseArmor,
   readStanza,
   unframe,
@@ -37,16 +38,26 @@ export interface SealOptions {
 
 /**
  * Seal `payload` until `round`. Purely local: needs only the beacon's public
- * parameters, no network and no Mattering service.
+ * parameters, no network and no Mattering service. To seal to named
+ * recipients as well, use `sealTo` from `@mattering/core/recipients`.
  */
 export async function seal(options: SealOptions): Promise<Envelope> {
+  return sealHeader(baseHeader(options), options.payload);
+}
+
+/** The version 1 header for these options, checked. */
+export function baseHeader(options: SealOptions): EnvelopeHeader {
   const beacon = options.beacon ?? QUICKNET;
   const context = options.context ?? {};
   assertBeaconInfo(beacon);
   assertRound(options.round);
   assertCanonicalizable(context, "context");
-  const header: EnvelopeHeader = { format: ENVELOPE_FORMAT, beacon: { ...beacon }, round: options.round, context };
-  const armored = await tlockEncrypt(beacon, options.round, frame(header, options.payload));
+  return { format: ENVELOPE_FORMAT, beacon: { ...beacon }, round: options.round, context };
+}
+
+/** Frame `inner` under `header`, time-lock it, and armor it canonically. */
+export async function sealHeader(header: EnvelopeHeader, inner: Uint8Array): Promise<Envelope> {
+  const armored = await tlockEncrypt(header.beacon, header.round, frame(header, inner));
   // Re-armor into the one canonical layout rather than trusting the library's.
   const ciphertext = armor(decodeAnyArmor(armored));
   const envelope: Envelope = { ...header, ciphertext };
@@ -153,13 +164,20 @@ export function verifyEnvelope(value: unknown, policy: VerifierPolicy = DEFAULT_
  *
  * Needs the envelope, the release material and nothing else: no sender, no
  * recipient key, no Mattering service. Throws `MatteringError`; the code says
- * which step failed.
+ * which step failed. A version 2 envelope opens to its recipients only: use
+ * `openAs`, or `unlock` for the age file inside.
  */
 export async function open(
   envelope: Envelope,
   release: Release,
   policy: VerifierPolicy = DEFAULT_POLICY,
 ): Promise<Uint8Array> {
+  if (isRecipientEnvelope(envelope)) throw new MatteringError("POLICY", "this envelope opens to named recipients only: open it with a recipient's identity");
+  return removeTimeLock(envelope, release, policy);
+}
+
+/** The checks and tlock decryption every opening shares; returns what the time lock held. */
+export async function removeTimeLock(envelope: Envelope, release: Release, policy: VerifierPolicy): Promise<Uint8Array> {
   const pre = verifyEnvelope(envelope, policy);
   if (!pre.ok) {
     const failed = pre.checks.find((c) => !c.ok)!;
