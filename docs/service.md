@@ -43,10 +43,10 @@ Everything is JSON. Everything served is public, so there is no authentication; 
 | Request | Does |
 | --- | --- |
 | `GET /` | The witness's public key, the log's origin and verifier key, its beacon, and the log size |
-| `POST /policies` | Register a policy (an auction or a statement policy). Returns its hash. The policy's `logFrom` must be the log's size from `GET /`, or at most 10,000 entries behind it |
+| `POST /policies` | Register a policy (an auction, a statement policy, or a negotiation step). Returns its hash. The policy's `logFrom` must be the log's size from `GET /`, or at most 10,000 entries behind it |
 | `GET /policies` | List live policies: open, or closed and not yet released |
 | `GET /policies/<hash>/evidence` | Everything a verifier needs for that policy, as far as it exists: policy, the log from its `logFrom` to its close with the prefix that stands for the entries before, closing checkpoint, the witnessed checkpoint with its cosignatures, envelopes, and the release signature once emitted |
-| `GET /policies/<hash>/result` | The outcome as the service computes it. A convenience; recompute it from the evidence |
+| `GET /policies/<hash>/result` | The outcome as the service computes it. A convenience; recompute it from the evidence. For a negotiation there is none: the offers open to the two parties only |
 | `POST /submissions` | Body `{ submission, envelope }`. Returns a receipt, or refuses |
 | `GET /log?from=<n>` | Up to 1,000 log entries from index `n`: submissions and close entries |
 | `GET /checkpoint` | A signed checkpoint of the log as it is now |

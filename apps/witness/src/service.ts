@@ -16,6 +16,10 @@ import {
   policyHash,
   sameBeacon,
   statementPolicyHash,
+  NEGOTIATION_POLICY_FORMAT,
+  negotiationPolicyHash,
+  verifySealedOffer,
+  type NegotiationPolicy,
   countCosignatures,
   parseVkey,
   verifyAuction,
@@ -41,8 +45,8 @@ import {
   entryLeafHash,
 } from "@mattering/core";
 
-export type AnyPolicy = AuctionPolicy | StatementPolicy;
-export type PolicyKind = "auction" | "statements";
+export type AnyPolicy = AuctionPolicy | StatementPolicy | NegotiationPolicy;
+export type PolicyKind = "auction" | "statements" | "negotiation";
 
 /**
  * Send one C2SP tlog-witness add-checkpoint request to the cosigner with this
@@ -172,6 +176,7 @@ function describe(policy: unknown): { hash: string; kind: PolicyKind } {
   const format = (policy as { format?: unknown } | null)?.format;
   if (format === POLICY_FORMAT) return { hash: policyHash(policy as AuctionPolicy), kind: "auction" };
   if (format === STATEMENT_POLICY_FORMAT) return { hash: statementPolicyHash(policy as StatementPolicy), kind: "statements" };
+  if (format === NEGOTIATION_POLICY_FORMAT) return { hash: negotiationPolicyHash(policy as NegotiationPolicy), kind: "negotiation" };
   throw new MatteringError("MALFORMED", "unknown policy format");
 }
 
@@ -311,11 +316,13 @@ export class WitnessService {
       const checks =
         record.kind === "auction"
           ? verifySealedSubmission(record.policy as AuctionPolicy, submission, envelope, verifier)
-          : verifySealedStatement(record.policy as StatementPolicy, submission, envelope, verifier);
+          : record.kind === "negotiation"
+            ? verifySealedOffer(record.policy as NegotiationPolicy, submission, envelope, verifier)
+            : verifySealedStatement(record.policy as StatementPolicy, submission, envelope, verifier);
       const failed = checks.find((c) => !c.ok);
       if (failed) throw new MatteringError("MALFORMED", `submission rejected: ${failed.name}${failed.detail ? ` (${failed.detail})` : ""}`);
       if ((record.kind === "auction") !== (submission.commitment !== undefined)) {
-        throw new MatteringError("MALFORMED", record.kind === "auction" ? "an auction submission needs a commitment" : "a statement submission carries no commitment");
+        throw new MatteringError("MALFORMED", record.kind === "auction" ? "an auction submission needs a commitment" : "this kind of submission carries no commitment");
       }
       // The deadline: the close round has been emitted as far as this witness
       // has seen, or is due by this witness's clock and the beacon's schedule,
@@ -512,7 +519,8 @@ export class WitnessService {
   async result(hash: string): Promise<{ state: EvidenceBundle["state"]; kind: PolicyKind; result?: AuctionResult | StatementsResult }> {
     const record = await this.lookup(hash);
     const bundle = await this.evidence(hash);
-    if (bundle.state !== "released") return { state: bundle.state, kind: record.kind };
+    // Offers open to the two parties only: the service cannot read them, and does not try.
+    if (bundle.state !== "released" || record.kind === "negotiation") return { state: bundle.state, kind: record.kind };
     let result = this.results.get(hash);
     if (!result) {
       const verifier = { acceptedBeacons: [this.options.source.beacon] };
@@ -548,7 +556,8 @@ export class WitnessService {
       else if (index >= record.closing.size) item.state = "late";
       else {
         const { state, result } = await this.result(entry.policyHash);
-        if (state !== "released" || !result) item.state = "sealed";
+        if (record.kind === "negotiation" && state === "released") item.state = "opened to the parties";
+        else if (state !== "released" || !result) item.state = "sealed";
         else if (!result.ok) item.state = "evidence invalid";
         else {
           const outcomes: { index: number }[] = "bids" in result ? result.bids : result.statements;

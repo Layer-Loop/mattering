@@ -125,3 +125,17 @@ export {
   type StatementPolicy,
   type StatementsResult,
 } from "./statement.ts";
+export {
+  NEGOTIATION_POLICY_FORMAT,
+  OFFER_FORMAT,
+  SIDES,
+  assertNegotiationPolicy,
+  negotiationPolicyHash,
+  offerContext,
+  offerRecipients,
+  sideOf,
+  verifySealedOffer,
+  type NegotiationPolicy,
+  type Party,
+  type Side,
+} from "./negotiation-policy.ts";

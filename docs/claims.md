@@ -51,6 +51,19 @@ Tests are in `tests/recipients.test.ts` and `tests/cli.test.ts`, against a local
 | 43 | Every recipient who can open an envelope reads the same payload, and a disclosed file key lets anyone check it | age authenticates the whole header under the one file key | A4, A9 | "a recipient can disclose the file key"; "a dishonest sender can shut out a named recipient, but not show recipients different contents" | Shown for the tested attack (one stanza spliced from another file). The general argument is **unreviewed**: research question 16 |
 | 44 | A named recipient cannot be shut out | Nothing | none | "a dishonest sender can shut out a named recipient" | **Not provided.** A sender can give a named recipient a stanza that does not open; it shows only at the round, and only to that recipient |
 
+## Sealed negotiation
+
+Tests are in `tests/negotiation.test.ts`, through the witness service with a simulated beacon clock and a cosigner.
+
+| # | Claim | Rests on | Assumes | Test | Status |
+| --- | --- | --- | --- | --- | --- |
+| 45 | Neither party can read the other's offer before committing its own, nor change its own after | Offers are sealed to the release round, which comes after the close; the log, closed and cosigned before the release, fixes which offers count | A1, A3, A4, A5, A8, A9 | "a deal: both offers sealed to both sides…"; "cheating parties: a second offer…" | Shown. A second offer from the same side does not count |
+| 46 | The witness and outsiders cannot read the offers, before or after the release | Offers are version 2 envelopes to the two parties | A1, A4, A9 | "a deal…" (the evidence holds no price; the service gives no result) | Shown |
+| 47 | Everyone who can judge a step reaches the same outcome: both parties, and an auditor given a party's file keys | Every recipient who can open an offer reads the same offer (claim 43); the rule is deterministic | A4, A9 | "a deal…"; "cheating parties… shutting the other side out" | Shown. A shut-out party gets "unresolved", not a different outcome, until the file key is disclosed |
+| 48 | The witness refuses offers it can tell are wrong while sealed | Signer, step, round, context and addressing checks | none | "the witness refuses offers it can tell are wrong while sealed" | Shown for an outsider, an offer that would also open to a third key, the wrong round, and a late offer |
+| 49 | A chain of steps is checked: order, links, unchanged terms, and no step after a deal | `verifyNegotiation` | A4 | "no deal at step 1, a deal at step 2…"; "a deal…" | Shown |
+| 50 | A party cannot be shut out of a deal | Nothing | none | "cheating parties… shutting the other side out" | **Not provided.** The other side's offer is unresolved for it until that side discloses its file key, which nothing compels |
+
 ## Phase 2 and 3: witness, commitments, auction
 
 Tests are in `tests/auction.test.ts`. The witness in these tests is an in-process object, not a service.

@@ -40,6 +40,8 @@ In the auction, a **witness** sits between bidders and verifier. Bidders hand it
 | `cosigner.ts` | A transparency-log witness speaking C2SP tlog-witness | No |
 | `auction.ts` | Policy, bid preparation, auction verifier | No |
 | `statement.ts` | Sealed statements and their verifier | No |
+| `negotiation-policy.ts` | Negotiation steps: the policy and the checks a witness makes on sealed offers. No recipient encryption needed | No |
+| `negotiation.ts` | Making offers, judging steps and chains, disclosing to an auditor. Exported as `@mattering/core/negotiation` | No |
 | `source.ts` | The interface for a party's own view of the beacon | No |
 | `drand-http.ts` | Optional: fetch a round's signature from a relay | Yes |
 | `testing.ts` | A local beacon for tests. Never accepted by default | No |

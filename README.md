@@ -41,6 +41,7 @@ Three rules shaped it:
 - An **HTTP service** that keeps the log, enforces deadlines, stores envelopes and publishes the evidence for anyone to check. One log runs for a long time and carries many auctions; each auction's evidence covers only its own stretch of it.
 - **Cosigners**: independent parties who countersign the log, dated, before any bid can be read, so the witness cannot rewrite it or move the close afterwards. They speak the same protocol as the public transparency-log witness network (C2SP tlog-witness), though no public witness has been used yet.
 - **Sealed statements**: commit to a prediction or decision before a deadline; it opens for everyone at a set time.
+- **Sealed negotiation**: a buyer and a seller, such as two firms' software agents, each seal an offer to the other; the offers open together, and if they cross the deal is at the midpoint. The witness cannot read them; a party can disclose them to an auditor.
 - A **registry view**: everything one key has committed to, and what each commitment opened to.
 
 The service runs the demo at mattering.ai, where each visitor gets a room of their own and every room writes into one shared log. It is still a proof of concept. Not yet built: range proofs, durable storage. [docs/claims.md](docs/claims.md) lists every claim with its status.
@@ -134,7 +135,7 @@ The full list is in [docs/threat-model.md](docs/threat-model.md).
 | `apps/cloudflare` | The same room as a Cloudflare Worker, for the website |
 | `examples/agent-auction` | Three agents, one auction, and a standalone verifier |
 | `examples/hosted-registry` | The same through the hosted service, plus sealed predictions |
-| `tests` | 77 tests: sealing, sealing to recipients, tampering, replay, early opening, cheating bidders, a cheating witness, a cheating coordinator, the witness protocol and its formats, the service over HTTP, and one log shared by many auctions |
+| `tests` | 82 tests: sealing, sealing to recipients, sealed negotiation, tampering, replay, early opening, cheating bidders, a cheating witness, a cheating coordinator, the witness protocol and its formats, the service over HTTP, and one log shared by many auctions |
 | `docs/protocol.md` | The envelope, submission, log, auction and statement formats |
 | `docs/service.md` | Running the witness service, its interface, and what it lacks |
 | `docs/showcase.md` | The demonstration page: what is real and what is staged |
