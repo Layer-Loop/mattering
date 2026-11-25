@@ -2,7 +2,7 @@
 
 A web page that shows sealed negotiation between software agents to people who do not read code. Acme's treasury agent and Bolt's sales agent negotiate early payment of a £10,000 invoice: what Acme pays today for an invoice due in 60 days. Each agent acts under a mandate from its firm, with a limit the other side cannot see.
 
-**Status:** runs on a laptop, beside the Sealed Room. It is not on the website. It is a demonstration, and the service behind it is not hardened ([service.md](service.md)).
+**Status:** runs on a laptop beside the Sealed Room, and is built for the website at mattering.ai/negotiate. It is a demonstration, and the service behind it is not hardened ([service.md](service.md)).
 
 ## Running it
 
@@ -61,6 +61,15 @@ Without a key, the scripts decide: each agent concedes toward its limit, reachin
 - The disclosure to the visitor is automatic. In practice a firm decides whom to disclose to.
 - Until public witnesses cosign the log, the cosigner is run by the same operator. The page says so.
 
+## On the website
+
+The website serves the page at `/negotiate`, with its script and styles built from this repository (`npm run build:site`, which writes `negotiation-room.js` and `negotiation-room.css`). Until the page is redesigned it keeps the laptop version's look.
+
+- **One room per visitor holds both demonstrations.** The negotiation runs in the same Durable Object as the visitor's auction room, under `/room/<id>/negotiation/…`, on the shared log, and is deleted with it 30 minutes after last use. A room runs at most 10 negotiations.
+- **Nothing happens until the visitor starts.** Before that the page asks only `/demo-info`, which the Worker answers without creating a room, for the name of the model that will choose the offers, if any. The website's `wrangler.jsonc` must send `/demo-info` to the Worker.
+- **The model shares the daily allowance** with the auction (`MODEL_AUCTIONS_PER_DAY`). A negotiation makes about six model requests against an auction's three, so it counts as two auctions. Once the allowance is spent, the scripts choose.
+- **The clock is the real drand network,** with steps of 5 rounds to the close and 3 more to the opening, about 25 seconds each.
+
 ## Not covered by automated tests
 
-`tests/negotiation-room.test.ts` runs an honest and a rogue negotiation through the server on a fast simulated clock and judges them as the page does, including the peek and the late revision. `tests/negotiation-model.test.ts` covers the model path with a stand-in model: what each agent is told, that its offers are sealed as given, that an offer beyond the mandate or an unusable answer is replaced by the script, and the request sent to the Messages API, against a stand-in server. The model path was run by hand against the real Claude API with `claude-haiku-5-5` on 2026-11-25, and the page showed the offers chosen by Claude Haiku 5.5. Nothing checks the real API automatically. The page with a stand-in model was checked by hand in a browser on 2026-11-25. The page itself was driven by hand in a browser against live drand on 2026-11-25: three steps to a deal within both mandates, all four cheats refused or rejected, every check passing, and a rogue run showing Acme's offer beyond its mandate. There is no browser test in the suite.
+`tests/negotiation-room.test.ts` runs an honest and a rogue negotiation through the server on a fast simulated clock and judges them as the page does, including the peek and the late revision. `tests/negotiation-model.test.ts` covers the model path with a stand-in model: what each agent is told, that its offers are sealed as given, that an offer beyond the mandate or an unusable answer is replaced by the script, and the request sent to the Messages API, against a stand-in server. The model path was run by hand against the real Claude API with `claude-haiku-5-5` on 2026-11-25, and the page showed the offers chosen by Claude Haiku 5.5. Nothing checks the real API automatically. The page with a stand-in model was checked by hand in a browser on 2026-11-25. The website version was run on 2026-11-25 in Cloudflare's local runtime with the simulated clock: a rogue negotiation through three steps to a deal, Acme's last offer shown beyond its mandate, three cheats refused or rejected, every other check passing, and no room created before the visitor pressed Start. It has not yet run on mattering.ai or against live drand on Cloudflare. The page itself was driven by hand in a browser against live drand on 2026-11-25: three steps to a deal within both mandates, all four cheats refused or rejected, every check passing, and a rogue run showing Acme's offer beyond its mandate. There is no browser test in the suite.

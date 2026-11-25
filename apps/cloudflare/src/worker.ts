@@ -16,9 +16,10 @@ import { TestBeacon, WallTestClock } from "@mattering/core/testing";
 import { MAX_BODY, parseBody, type Reply } from "@mattering/witness/routes";
 import { httpCosign } from "@mattering/witness/client";
 import type { AnyPolicy, ServiceStore, StoredClosing, StoredState } from "@mattering/witness/service";
-import { DEFAULT_MODEL, claudeDecider } from "../../showcase/src/llm.ts";
+import { DEFAULT_MODEL, claudeDecider, claudeNegotiator, modelLabel } from "../../showcase/src/llm.ts";
 import { LocalLogHost, RemoteLogHost, handleLogHost } from "../../showcase/src/log-host.ts";
 import { Room, type RoomState } from "../../showcase/src/room.ts";
+import { NegotiationRoom, type NegotiationRoomState } from "../../showcase/src/negotiation-room.ts";
 
 interface Env {
   ROOMS: { idFromName(name: string): unknown; get(id: unknown): { fetch(request: Request): Promise<Response> } };
@@ -147,6 +148,7 @@ function wallClock(params: TestClockParams): WallTestClock {
 
 export class SealedRoom extends DurableObject<Env> {
   private room: Promise<Room> | undefined;
+  private negotiation: Promise<NegotiationRoom> | undefined;
   private log: Promise<LocalLogHost> | undefined;
   private markedAsLog = false;
 
@@ -228,22 +230,70 @@ export class SealedRoom extends DurableObject<Env> {
 
   // --- a visitor's room --------------------------------------------------------
 
+  /** What every demonstration in a visitor's room shares: the log, and the clock. */
+  private async roomContext() {
+    const stub = this.logStub();
+    const fetchLog = (path: string, init?: RequestInit): Promise<Response> => stub.fetch(new Request(`https://${LOG_NAME}${path}`, init));
+    const simulated = this.env.SIMULATED === "1";
+    const clock = simulated ? wallClock((await (await fetchLog("/host/test-clock")).json()) as TestClockParams) : undefined;
+    return {
+      simulated,
+      mode: simulated ? ("simulated" as const) : ("live" as const),
+      sourceFor: (): BeaconSource => (clock ? clock.source() : drandSource(QUICKNET)),
+      timeOfRound: (round: number): number => (clock ? clock.timeOfRound(round) : timeOfRound(QUICKNET, round) * 1000),
+      log: new RemoteLogHost(fetchLog),
+    };
+  }
+
+  /** Ask the shared counter before spending anything, charging `units` auctions' worth. If it cannot be reached, don't spend. */
+  private async takeModelBudget(units: number): Promise<boolean> {
+    const budget = this.env.ROOMS.get(this.env.ROOMS.idFromName(BUDGET_NAME));
+    const reply = await budget.fetch(new Request(`https://budget/take?units=${units}`, { method: "POST" }));
+    return reply.ok && ((await reply.json()) as { allowed?: boolean }).allowed === true;
+  }
+
+  private openNegotiation(): Promise<NegotiationRoom> {
+    this.negotiation ??= (async () => {
+      const storage = this.ctx.storage;
+      const context = await this.roomContext();
+      const model = this.env.MATTERING_MODEL ?? DEFAULT_MODEL;
+      return NegotiationRoom.open({
+        mode: context.mode,
+        sourceFor: context.sourceFor,
+        timeOfRound: context.timeOfRound,
+        log: context.log,
+        loadState: () => storage.get<NegotiationRoomState>("negotiation"),
+        saveState: (state) => storage.put("negotiation", state),
+        closeAfter: context.simulated ? 12 : 5,
+        releaseAfter: context.simulated ? 6 : 3,
+        agentGapMs: 1500,
+        maxRuns: 10,
+        ...(this.env.ANTHROPIC_API_KEY
+          ? {
+              decide: claudeNegotiator({ apiKey: this.env.ANTHROPIC_API_KEY, model }),
+              decideLabel: modelLabel(model),
+              // Six model calls a negotiation against three an auction: charge two auctions' worth.
+              allowModel: () => this.takeModelBudget(2),
+            }
+          : {}),
+      });
+    })();
+    return this.negotiation;
+  }
+
   private openRoom(): Promise<Room> {
     this.room ??= (async () => {
       const storage = this.ctx.storage;
-      const stub = this.logStub();
-      const fetchLog = (path: string, init?: RequestInit): Promise<Response> => stub.fetch(new Request(`https://${LOG_NAME}${path}`, init));
-      const simulated = this.env.SIMULATED === "1";
-      const clock = simulated ? wallClock((await (await fetchLog("/host/test-clock")).json()) as TestClockParams) : undefined;
+      const context = await this.roomContext();
       return Room.open({
-        mode: simulated ? "simulated" : "live",
-        sourceFor: () => (clock ? clock.source() : drandSource(QUICKNET)),
-        timeOfRound: (round) => (clock ? clock.timeOfRound(round) : timeOfRound(QUICKNET, round) * 1000),
-        log: new RemoteLogHost(fetchLog),
+        mode: context.mode,
+        sourceFor: context.sourceFor,
+        timeOfRound: context.timeOfRound,
+        log: context.log,
         loadState: () => storage.get<RoomState>("room"),
         saveState: (state) => storage.put("room", state),
-        closeAfter: simulated ? 30 : 10,
-        releaseAfter: simulated ? 15 : 5,
+        closeAfter: context.simulated ? 30 : 10,
+        releaseAfter: context.simulated ? 15 : 5,
         agentGapMs: 3000,
         maxRuns: 20,
         maxEntries: 12,
@@ -251,12 +301,7 @@ export class SealedRoom extends DurableObject<Env> {
         ...(this.env.ANTHROPIC_API_KEY
           ? {
               decide: claudeDecider({ apiKey: this.env.ANTHROPIC_API_KEY, model: this.env.MATTERING_MODEL ?? DEFAULT_MODEL }),
-              // Ask the shared counter before spending anything. If it cannot be reached, don't spend.
-              allowModel: async () => {
-                const budget = this.env.ROOMS.get(this.env.ROOMS.idFromName(BUDGET_NAME));
-                const reply = await budget.fetch(new Request("https://budget/take", { method: "POST" }));
-                return reply.ok && ((await reply.json()) as { allowed?: boolean }).allowed === true;
-              },
+              allowModel: () => this.takeModelBudget(1),
             }
           : {}),
       });
@@ -265,22 +310,23 @@ export class SealedRoom extends DurableObject<Env> {
   }
 
   /**
-   * The budget object: counts auctions that used the model today, across all
-   * rooms, and says no once the day's allowance is spent.
+   * The budget object: counts model use today, across all rooms, in auctions'
+   * worth (a negotiation is two), and says no once the day's allowance is spent.
    */
-  private async takeFromBudget(): Promise<Response> {
+  private async takeFromBudget(url: URL): Promise<Response> {
     const limit = Number(this.env.MODEL_AUCTIONS_PER_DAY ?? DEFAULT_MODEL_AUCTIONS_PER_DAY);
+    const units = Math.max(1, Math.min(10, Number(url.searchParams.get("units") ?? 1) || 1));
     const today = new Date().toISOString().slice(0, 10);
     const saved = (await this.ctx.storage.get<{ day: string; used: number }>("budget")) ?? { day: today, used: 0 };
     const used = saved.day === today ? saved.used : 0;
-    const allowed = Number.isFinite(limit) && used < limit;
-    if (allowed) await this.ctx.storage.put("budget", { day: today, used: used + 1 });
-    return json(200, { allowed, used: allowed ? used + 1 : used, limit });
+    const allowed = Number.isFinite(limit) && used + units <= limit;
+    if (allowed) await this.ctx.storage.put("budget", { day: today, used: used + units });
+    return json(200, { allowed, used: allowed ? used + units : used, limit });
   }
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    if (url.hostname === "budget") return this.takeFromBudget();
+    if (url.hostname === "budget") return this.takeFromBudget(url);
     try {
       if (url.hostname === LOG_NAME || url.hostname === "log-public") {
         if (!this.markedAsLog) {
@@ -289,8 +335,9 @@ export class SealedRoom extends DurableObject<Env> {
         }
         return await this.logFetch(url, request, url.hostname === LOG_NAME);
       }
-      const room = await this.openRoom();
-      const reply = await room.handle(request.method, url.pathname, url.searchParams, () => readBody(request));
+      // One room per visitor holds both demonstrations: the auction, and the negotiation under /negotiation/.
+      const target = url.pathname.startsWith("/negotiation/") ? await this.openNegotiation() : await this.openRoom();
+      const reply = await target.handle(request.method, url.pathname, url.searchParams, () => readBody(request));
       // Work happens in the alarm, never in a visitor's request: an agent's
       // decision can take seconds when a language model makes it.
       await this.ctx.storage.put("expires", Date.now() + ROOM_LIFETIME_MS);
@@ -305,13 +352,22 @@ export class SealedRoom extends DurableObject<Env> {
   async alarm(): Promise<void> {
     // The log is never deleted, whatever happens to rooms.
     if ((await this.ctx.storage.get<string>("role")) === "log") return this.logAlarm();
-    const room = await this.openRoom();
-    const wait = await room.work();
-    if (wait !== undefined) return this.ctx.storage.setAlarm(Date.now() + wait);
+    const waits: number[] = [];
+    // Open only what this room has used: a visitor may run one demonstration and not the other.
+    if (await this.ctx.storage.get("room")) {
+      const wait = await (await this.openRoom()).work();
+      if (wait !== undefined) waits.push(wait);
+    }
+    if (await this.ctx.storage.get("negotiation")) {
+      const wait = await (await this.openNegotiation()).work();
+      if (wait !== undefined) waits.push(wait);
+    }
+    if (waits.length > 0) return this.ctx.storage.setAlarm(Date.now() + Math.min(...waits));
     const expires = (await this.ctx.storage.get<number>("expires")) ?? 0;
     if (Date.now() >= expires) {
       await this.ctx.storage.deleteAll();
       this.room = undefined;
+      this.negotiation = undefined;
       return;
     }
     await this.ctx.storage.setAlarm(expires);
@@ -328,6 +384,10 @@ export default {
     if (room) {
       const stub = env.ROOMS.get(env.ROOMS.idFromName(room[1]!));
       return stub.fetch(new Request(new URL(room[2]! + url.search, url.origin), request));
+    }
+    // What a demonstration page needs to know before any room exists: which model, if any, chooses for the agents.
+    if (url.pathname === "/demo-info") {
+      return json(200, { decider: env.ANTHROPIC_API_KEY ? modelLabel(env.MATTERING_MODEL ?? DEFAULT_MODEL) : null, mode: env.SIMULATED === "1" ? "simulated" : "live" });
     }
     // The shared log, read-only: its witness API at /log/, /log/log?from=…, /log/policies/<hash>/evidence, …
     const log = LOG_PATH.exec(url.pathname);

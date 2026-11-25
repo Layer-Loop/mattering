@@ -39,6 +39,31 @@ interface Judged {
 }
 
 const SIDES: Side[] = ["buyer", "seller"];
+
+/**
+ * Where the room lives. On a laptop the page and the room share an origin and
+ * the base is empty. On the hosted site each visitor's browser session has a
+ * room of its own, the same one the auction page uses.
+ */
+function roomBase(): string {
+  const template = document.documentElement.dataset.roomBase;
+  if (!template) return "";
+  let id = sessionStorage.getItem("mattering-room");
+  if (!id) {
+    id = crypto.randomUUID();
+    sessionStorage.setItem("mattering-room", id);
+  }
+  return template.replace("{id}", id);
+}
+const BASE = roomBase();
+/** Hosted: do not create a room until the visitor starts a negotiation. */
+const LAZY = BASE !== "";
+/** Shown before any room exists: the deal is fixed, and who decides comes from /demo-info. */
+const PRESTART = {
+  title: "Early payment of invoice INV-2041",
+  detail: "Pay invoice INV-2041 (£10,000, due in 60 days) today: the amount paid now. Offers from £9,000 to £10,000. If Acme's offer is at least Bolt's, they meet in the middle; otherwise they try again, up to three steps.",
+};
+let polling: ReturnType<typeof setInterval> | undefined;
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const escape = (text: string): string => text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const pounds = (amount: number): string => "£" + amount.toLocaleString("en-GB");
@@ -51,7 +76,7 @@ const judged = new Map<string, Judged>();
 let judging = false;
 
 async function getJson<T>(path: string, body?: unknown): Promise<{ ok: boolean; json: T }> {
-  const response = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const response = await fetch(BASE + path, body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   return { ok: response.ok, json: (await response.json()) as T };
 }
 
@@ -245,6 +270,26 @@ async function verifyAll(): Promise<void> {
   $("checks").innerHTML = items.join("") + `<li class="muted">Checked in this browser at ${new Date().toLocaleTimeString()}.</li>`;
 }
 
+/** Before a hosted room exists: the deal, and who will choose the offers, without creating a room. */
+async function renderPrestart(): Promise<void> {
+  $("deal-title").textContent = PRESTART.title;
+  $("deal-detail").textContent = PRESTART.detail;
+  let decider: string | null | undefined;
+  try {
+    decider = ((await (await fetch("/demo-info")).json()) as { decider: string | null }).decider;
+  } catch {
+    // say nothing about the model rather than guess
+  }
+  if (state) return; // a negotiation started meanwhile; render() says who decides
+  $("who-decides").innerHTML = decider
+    ? `Offers will be chosen by <strong>${escape(decider)}</strong>, held to each agent's mandate. If it fails, or answers beyond the mandate, a script chooses instead, and the offer says so.`
+    : decider === null ? "Offers will be chosen by <strong>a script</strong>." : "";
+}
+
+function startPolling(): void {
+  polling ??= setInterval(() => void poll(), 1000);
+}
+
 $("start").addEventListener("click", async () => {
   judged.clear();
   for (const id of ["out-peek", "out-revise", "out-drop", "out-outsider"]) setOut(id, "", "");
@@ -253,6 +298,7 @@ $("start").addEventListener("click", async () => {
   if (!ok) return alert(json.error ?? "Could not start.");
   state = json;
   render();
+  startPolling();
 });
 for (const button of document.querySelectorAll<HTMLButtonElement>("[data-cheat]")) {
   button.addEventListener("click", async () => {
@@ -266,6 +312,9 @@ for (const button of document.querySelectorAll<HTMLButtonElement>("[data-cheat]"
 }
 $("verify").addEventListener("click", () => void verifyAll());
 
-void poll();
-setInterval(() => void poll(), 1000);
+if (LAZY) void renderPrestart();
+else {
+  void poll();
+  startPolling();
+}
 setInterval(render, 250);
