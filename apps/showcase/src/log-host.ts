@@ -19,6 +19,7 @@ import {
   type LogEntry,
   type MatteringErrorCode,
   type PreparedBid,
+  type Receipt,
   type Submission,
 } from "@mattering/core";
 import { errorReply, handleWitness, type Reply } from "@mattering/witness/routes";
@@ -46,7 +47,8 @@ export interface Forgery {
 export interface LogHost {
   terms(): Promise<LogTerms>;
   registerPolicy(policy: AnyPolicy): Promise<string>;
-  submit(submission: Submission, envelope: Envelope): Promise<void>;
+  /** Submit, and return the witness's receipt: where in the log the entry went. */
+  submit(submission: Submission, envelope: Envelope): Promise<Receipt>;
   phase(hash: string): Promise<{ state: EvidenceBundle["state"]; cosignatures: number }>;
   /** Submissions under a live policy so far. */
   count(hash: string): Promise<number>;
@@ -145,8 +147,8 @@ export class LocalLogHost implements LogHost {
     return (await this.service.registerPolicy(policy)).policyHash;
   }
 
-  async submit(submission: Submission, envelope: Envelope): Promise<void> {
-    await this.service.submit(submission, envelope);
+  submit(submission: Submission, envelope: Envelope): Promise<Receipt> {
+    return this.service.submit(submission, envelope);
   }
 
   phase(hash: string): Promise<{ state: EvidenceBundle["state"]; cosignatures: number }> {
@@ -246,7 +248,7 @@ export class RemoteLogHost implements LogHost {
 
   terms = (): Promise<LogTerms> => this.call("/host/terms");
   registerPolicy = async (policy: AnyPolicy): Promise<string> => (await this.call<{ policyHash: string }>("/policies", policy)).policyHash;
-  submit = async (submission: Submission, envelope: Envelope): Promise<void> => void (await this.call("/submissions", { submission, envelope }));
+  submit = (submission: Submission, envelope: Envelope): Promise<Receipt> => this.call("/submissions", { submission, envelope });
   phase = (hash: string): Promise<{ state: EvidenceBundle["state"]; cosignatures: number }> => this.call(`/host/policies/${hash}/phase`);
   count = async (hash: string): Promise<number> => (await this.call<{ count: number }>(`/host/policies/${hash}/count`)).count;
   submissions = (hash: string): Promise<Submission[]> => this.call(`/host/policies/${hash}/submissions`);

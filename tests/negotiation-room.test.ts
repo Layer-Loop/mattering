@@ -10,7 +10,7 @@ import { verifyNegotiation, verifyNegotiationStep, withFileKeys, type StepInputs
 import { scriptedOffer } from "../apps/showcase/src/negotiation-room.ts";
 import { startShowcase } from "../apps/showcase/src/server.ts";
 
-type State = { beacon: BeaconInfo; decider: string | null; run: { id: number; done: boolean; steps: { step: number; phase: string }[] } | null };
+type State = { beacon: BeaconInfo; decider: string | null; run: { id: number; done: boolean; startedAt: number; steps: { step: number; phase: string; sealedAt: Partial<Record<Side, number>>; logIndex: Partial<Record<Side, number>> }[] } | null };
 type Disclosure = { evidence: StepInputs; fileKeys: Record<string, string>; openings: Record<Side, MandateOpening> };
 
 async function negotiate(rogue: boolean) {
@@ -42,6 +42,13 @@ async function negotiate(rogue: boolean) {
       state = (await get<State>("/negotiation/state")).json;
     }
     assert.equal(state.run!.done, true, "the negotiation finished");
+    // Every offer says when it was sealed and where it sits in the log.
+    for (const s of state.run!.steps) {
+      for (const side of ["buyer", "seller"] as const) {
+        assert.ok(s.sealedAt[side]! >= state.run!.startedAt, `step ${s.step} ${side} sealed time`);
+        assert.ok(Number.isSafeInteger(s.logIndex[side]), `step ${s.step} ${side} log position`);
+      }
+    }
     const disclosures = await Promise.all(state.run!.steps.map(async (s) => (await get<Disclosure>(`/negotiation/disclosure/${s.step}`)).json));
     const results = await Promise.all(disclosures.map((d) => verifyNegotiationStep(d.evidence, withFileKeys(d.fileKeys), verifier, d.openings)));
     for (const r of results) assert.equal(r.ok, true, JSON.stringify(r.checks));
