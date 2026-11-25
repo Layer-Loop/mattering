@@ -9,6 +9,14 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { Decider } from "./agents.ts";
 
 export const DEFAULT_MODEL = "claude-haiku-5-5";
+
+/** A model id as people read it: "claude-haiku-5-5" becomes "Claude Haiku 5.5". */
+export function modelLabel(model: string): string {
+  const match = /^claude-([a-z]+)-(\d+)(?:-(\d+))?$/.exec(model);
+  if (!match) return model;
+  const [, family, major, minor] = match;
+  return `Claude ${family![0]!.toUpperCase()}${family!.slice(1)} ${major}${minor ? `.${minor}` : ""}`;
+}
 /** Models for which the API can retry a declined request on another model. */
 const WITH_FALLBACK = /^claude-(opus-5|sonnet-5-5|fable-5)/;
 
