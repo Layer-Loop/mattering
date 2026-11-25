@@ -118,17 +118,52 @@ export interface OfferAsk {
 export type OfferDecider = (ask: OfferAsk) => Promise<unknown>;
 
 /**
- * Accept a model's offer only if it is a whole amount in range and within the
- * agent's mandate, with a short note. Anything else and the script decides:
- * the mandate binds a model's offers exactly as it binds the script's.
+ * The amounts an agent may mention in its note: the ones it has actually seen
+ * (every opened offer, both sides), its own limit, the deal's fixed figures,
+ * and the offer it is making now. Never the other side's current offer, which
+ * is sealed.
  */
-export function acceptOffer(ask: OfferAsk, value: unknown): { offer: number; note: string } | undefined {
+export function knownAmounts(ask: OfferAsk, offer: number): Set<number> {
+  return new Set([ask.limit, ask.faceValue, ask.minPrice, ask.maxPrice, offer, ...ask.history.flatMap((h) => [h.mine, h.theirs])]);
+}
+
+/** Every amount of money a note states: £9,400, 9400, £9.4k, 9,400.00. Small numbers (steps, percentages) are not money here. */
+export function amountsIn(note: string): number[] {
+  const out: number[] = [];
+  for (const match of note.matchAll(/£?\s?(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s?(k)?\b/gi)) {
+    const whole = Number(match[1]!.replace(/,/g, ""));
+    const value = match[3] ? Math.round(Number(`${whole}${match[2] ?? ""}`) * 1000) : whole;
+    if (value >= 1000) out.push(value);
+  }
+  return out;
+}
+
+export interface AcceptedOffer {
+  offer: number;
+  /** The agent's note, if it mentions only amounts it has seen. */
+  note?: string;
+  /** True when the note was dropped for stating an amount the agent could not have seen. */
+  noteWithheld?: boolean;
+}
+
+/**
+ * Accept a model's offer only if it is a whole amount in range and within the
+ * agent's mandate. Anything else and the script decides: the mandate binds a
+ * model's offers exactly as it binds the script's. The note is kept only if
+ * every amount it states is one the agent has seen: a note that names a price
+ * the agent could not know, such as the other side's sealed offer, is
+ * withheld, whatever the model meant by it.
+ */
+export function acceptOffer(ask: OfferAsk, value: unknown): AcceptedOffer | undefined {
   const v = value as { offer?: unknown; note?: unknown } | null;
-  if (v === null || typeof v !== "object" || typeof v.offer !== "number" || !Number.isSafeInteger(v.offer) || typeof v.note !== "string") return undefined;
+  if (v === null || typeof v !== "object" || typeof v.offer !== "number" || !Number.isSafeInteger(v.offer)) return undefined;
   if (v.offer < ask.minPrice || v.offer > ask.maxPrice) return undefined;
   if (ask.side === "buyer" ? v.offer > ask.limit : v.offer < ask.limit) return undefined;
-  const note = v.note.replace(/\s+/g, " ").trim().slice(0, 280);
-  return note === "" ? undefined : { offer: v.offer, note };
+  const note = typeof v.note === "string" ? v.note.replace(/\s+/g, " ").trim().slice(0, 280) : "";
+  if (note === "") return { offer: v.offer };
+  const known = knownAmounts(ask, v.offer);
+  if (amountsIn(note).some((amount) => !known.has(amount))) return { offer: v.offer, noteWithheld: true };
+  return { offer: v.offer, note };
 }
 
 export function claudeNegotiator(options: ClaudeOptions): OfferDecider {
@@ -143,9 +178,12 @@ export function claudeNegotiator(options: ClaudeOptions): OfferDecider {
 
   return async (ask) => {
     const buyer = ask.side === "buyer";
+    const last = ask.step === ask.maxSteps;
+    // Every price this agent has actually seen, step by step: all it may know about the other side.
     const history = ask.history.length === 0
-      ? "This is the first step; nothing has been offered yet."
-      : ask.history.map((h) => `Step ${h.step}: you offered ${pounds(h.mine)}, the other side offered ${pounds(h.theirs)}. The offers did not cross.`).join("\n");
+      ? "Prices seen so far: none. This is the first step, and nothing has been offered yet."
+      : "Prices seen so far (both offers of each step, opened once the step closed):\n" +
+        ask.history.map((h) => `- Step ${h.step}: you offered ${pounds(h.mine)}; the other side offered ${pounds(h.theirs)}. They did not cross.`).join("\n");
     try {
       const response = await client.beta.messages.create({
         model,
@@ -159,7 +197,7 @@ export function claudeNegotiator(options: ClaudeOptions): OfferDecider {
               type: "object",
               properties: {
                 offer: { type: "integer", description: "This step's offer, in whole pounds." },
-                note: { type: "string", description: "One short sentence to your firm explaining the offer." },
+                note: { type: "string", description: "One short sentence to your firm explaining the offer. Mention only prices listed as seen, your limit, and this offer." },
               },
               required: ["offer", "note"],
               additionalProperties: false,
@@ -174,13 +212,19 @@ export function claudeNegotiator(options: ClaudeOptions): OfferDecider {
           "How it works: in each step both sides seal one offer at the same time. Neither side can see the other's offer until both are opened together, and an offer cannot be changed once sealed. " +
           `If the buyer's offer is at least the seller's, the deal is done at the midpoint of the two. Otherwise both offers are revealed and the next step begins, up to ${ask.maxSteps} steps; after the last step there is no deal.\n\n` +
           (buyer
-            ? `Your firm's mandate lets you pay at most ${pounds(ask.limit)}. Never offer more. The other side cannot see this limit.`
-            : `Your firm's mandate lets you accept no less than ${pounds(ask.limit)}. Never ask for less. The other side cannot see this limit.`),
+            ? `Your firm's mandate lets you pay at most ${pounds(ask.limit)}. Never offer more. The other side cannot see this limit. `
+            : `Your firm's mandate lets you accept no less than ${pounds(ask.limit)}. Never ask for less. The other side cannot see this limit. `) +
+          "Your firm counts any deal within the mandate as better than no deal.\n\n" +
+          "What you know about the other side is only the offers listed as seen. Its offer for the current step is sealed: you cannot know it, so never describe, guess or imply it, nor say how the other side has moved this step. " +
+          "In your note, mention only prices you have been shown as seen, your own limit, and the offer you are making now.",
         messages: [
           {
             role: "user",
             content:
-              `${history}\n\nThis is step ${ask.step} of ${ask.maxSteps}${ask.step === ask.maxSteps ? ", the last" : ""}. ` +
+              `${history}\n\nThis is step ${ask.step} of ${ask.maxSteps}. ` +
+              (last
+                ? `It is the last step: if the two offers do not cross now, there is no deal at all, and ${buyer ? `your firm pays ${pounds(ask.faceValue)} when the invoice is due` : `your firm waits for ${pounds(ask.faceValue)} until the invoice is due`}. A deal at any price within your mandate is better for your firm than that. `
+                : "") +
               `Offers must be whole pounds from ${pounds(ask.minPrice)} to ${pounds(ask.maxPrice)}. ` +
               "Decide your offer for this step, and write one short sentence to your firm explaining it.",
           },

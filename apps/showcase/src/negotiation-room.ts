@@ -54,6 +54,13 @@ interface AgentState {
   opening: MandateOpening;
 }
 
+/** An offer an agent has chosen for a step, with its note if it may be shown. */
+interface DecidedOffer {
+  price: number;
+  note?: string;
+  noteWithheld?: boolean;
+}
+
 interface StepState {
   policy: NegotiationPolicy;
   hash: string;
@@ -65,6 +72,8 @@ interface StepState {
   decidedBy?: Partial<Record<Side, "model" | "script">>;
   /** Each agent's note to its firm, published only once the step has opened. */
   notes?: Partial<Record<Side, string>>;
+  /** Sides whose note was withheld for stating an amount the agent could not have seen. */
+  withheld?: Side[];
   /** Both offers, once the step has opened and been judged here: the history the agents see next. */
   opened?: Partial<Record<Side, number>>;
   /** Set once released and judged here. */
@@ -128,7 +137,7 @@ export function scriptedOffer(side: Side, step: number, limit: number, rogue: bo
 export class NegotiationRoom {
   private busy: Promise<unknown> = Promise.resolve();
   /** Offers chosen but not yet sealed, with the agents' notes. Held in memory only, never stored. */
-  private decided: { runId: number; step: number; offers: Record<Side, { price: number; note?: string }> } | undefined;
+  private decided: { runId: number; step: number; offers: Record<Side, DecidedOffer> } | undefined;
 
   private constructor(
     private readonly options: NegotiationRoomOptions,
@@ -233,7 +242,7 @@ export class NegotiationRoom {
     const timeout = this.options.decideTimeoutMs ?? 10_000;
     const decide = this.options.decide;
     step.decidedBy = {};
-    const offers = {} as Record<Side, { price: number; note?: string }>;
+    const offers = {} as Record<Side, DecidedOffer>;
     await Promise.all(
       (["buyer", "seller"] as const).map(async (side) => {
         const limit = run.agents[side].opening.limit;
@@ -263,7 +272,8 @@ export class NegotiationRoom {
           const accepted = acceptOffer(ask, answer);
           if (accepted) {
             step.decidedBy![side] = "model";
-            offers[side] = { price: accepted.offer, note: accepted.note };
+            offers[side] = { price: accepted.offer, ...(accepted.note ? { note: accepted.note } : {}), ...(accepted.noteWithheld ? { noteWithheld: true } : {}) };
+            if (accepted.noteWithheld) console.error(`${side}: the model's note named an amount the agent had not seen; it is withheld`);
             return;
           }
           console.error(`${side}: the model's offer was not usable or not within the mandate; using the script`);
@@ -318,6 +328,7 @@ export class NegotiationRoom {
       step.opened = Object.fromEntries(result.offers.filter((o) => o.side && o.price !== undefined && o.status === "valid").map((o) => [o.side, o.price]));
       const notes = this.decided?.runId === run.id && this.decided.step === step.policy.step ? this.decided.offers : undefined;
       step.notes = Object.fromEntries((["buyer", "seller"] as const).filter((s) => notes?.[s]?.note).map((s) => [s, notes![s].note!]));
+      step.withheld = (["buyer", "seller"] as const).filter((s) => notes?.[s]?.noteWithheld);
       if (step.outcome.deal || run.steps.length >= MAX_STEPS) run.done = true;
       else await this.beginStep(run, (await deadlineRound(this.viewer)).round);
       await this.options.saveState(this.state);
@@ -346,6 +357,7 @@ export class NegotiationRoom {
         decidedBy: step.decidedBy ?? {},
         // Notes can give an offer away, so they are shown only once the step has opened.
         notes: phase.state === "released" ? (step.notes ?? {}) : {},
+        withheld: phase.state === "released" ? (step.withheld ?? []) : [],
       });
     }
     const mandates = { buyer: run.agents.buyer.mandate, seller: run.agents.seller.mandate };
