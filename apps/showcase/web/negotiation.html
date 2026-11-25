@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Negotiation Room · Mattering</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <p class="brand">Mattering <span id="mode" class="badge" hidden></span></p>
+    <h1>The Negotiation Room</h1>
+    <p class="lede">Two firms' software agents negotiate early payment of an invoice. Each seals its offer so that only the two firms can read it, and only once the step's time comes, so neither agent sees the other's offer before committing its own. Each acts under a mandate whose limit the other side cannot see. Then you check every step yourself.</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="panel lot" aria-labelledby="deal-title">
+    <div>
+      <p class="eyebrow">The deal</p>
+      <h2 id="deal-title">…</h2>
+      <p id="deal-detail" class="muted"></p>
+      <label class="option"><input id="rogue" type="checkbox"> Let Acme's agent ignore its mandate in the last step</label>
+    </div>
+    <button id="start" class="primary" type="button">Start the negotiation</button>
+  </section>
+
+  <section id="parties-section" hidden aria-labelledby="parties-title">
+    <h2 id="parties-title">The agents and their mandates</h2>
+    <div id="parties" class="cards two"></div>
+  </section>
+
+  <section id="steps-section" hidden aria-labelledby="steps-title">
+    <h2 id="steps-title">The steps</h2>
+    <div id="steps" class="steps-list"></div>
+    <div id="result" class="panel result" hidden aria-live="polite"></div>
+  </section>
+
+  <section id="cheat-section" class="panel" hidden aria-labelledby="cheat-title">
+    <h2 id="cheat-title">Try to cheat</h2>
+    <p class="muted">Each button makes a real attempt against the running system. Nothing here is animation.</p>
+    <div class="cheats">
+      <div class="cheat"><button type="button" data-cheat="peek">Peek at Acme's offer as Bolt</button><p class="muted">While a step is sealed, Bolt's agent tries to open Acme's offer with its own key.</p><p class="out" id="out-peek"></p></div>
+      <div class="cheat"><button type="button" data-cheat="revise">Change Bolt's offer after seeing Acme's</button><p class="muted">Once a step has opened, Bolt's agent submits a better offer for it.</p><p class="out" id="out-revise"></p></div>
+      <div class="cheat"><button type="button" data-cheat="drop">Drop Bolt's offer as the log's operator</button><p class="muted">Remove an offer from the record after the step opened, so the step looks like no deal.</p><p class="out" id="out-drop"></p></div>
+      <div class="cheat"><button type="button" data-cheat="outsider">Read the offers as an outsider</button><p class="muted">Take the public evidence without the firms' disclosure and try to learn the prices.</p><p class="out" id="out-outsider"></p></div>
+    </div>
+  </section>
+
+  <section id="verify-section" class="panel" hidden aria-labelledby="verify-title">
+    <h2 id="verify-title">Don't trust this page</h2>
+    <p class="muted">Each step's outcome was worked out in your browser from the evidence and from what the two firms disclosed to you, as they would to an auditor: the keys to both offers and their mandates' limits. Nothing was taken from the server's say-so. Run the checks again whenever you like.</p>
+    <button id="verify" type="button">Check it yourself</button>
+    <ul id="checks" class="checks"></ul>
+  </section>
+
+  <section class="panel trust" aria-labelledby="trust-title">
+    <h2 id="trust-title">What you are still trusting</h2>
+    <ul>
+      <li><strong>The clock.</strong> <span id="trust-clock"></span></li>
+      <li><strong>The log's operator</strong> to accept every offer submitted. It can refuse one, and nobody could prove it.</li>
+      <li><strong>The cosigners</strong> <span id="trust-cosigners">to be independent of the log's operator.</span></li>
+      <li><strong>The firms' keys.</strong> A mandate proves which key signed it, not that the key belongs to the firm named.</li>
+    </ul>
+    <p class="muted">Staged: both agents run on this server, which holds their keys; in practice each runs at its own firm. The firms, the invoice and the limits are invented, and the agents follow a script. Mattering is an experimental proof of concept. It has not had a security review.</p>
+  </section>
+</main>
+<script type="module" src="/negotiation.js"></script>
+</body>
+</html>

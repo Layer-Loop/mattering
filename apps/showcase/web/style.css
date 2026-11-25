@@ -70,3 +70,17 @@ input[type=number] { font: inherit; font-size: 1.2rem; width: 9em; padding: 9px 
 .checks .mark-no { color: var(--bad); font-weight: 800; }
 .trust ul { margin: 6px 0 10px; padding-left: 20px; }
 .trust li { margin: 4px 0; }
+/* The Negotiation Room */
+.option { display: flex; gap: 8px; align-items: center; margin-top: 10px; font-size: .92rem; color: var(--muted); }
+.cards.two { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.cards.two .card { min-height: 0; }
+code { font: .85em ui-monospace, Menlo, monospace; }
+.steps-list { display: grid; gap: 12px; margin: 10px 0 14px; }
+.step-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.step-head h3 { margin: 0; }
+.offers { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.offer { border-left: 5px solid var(--c); padding-left: 10px; }
+.offer .who { margin: 0 0 6px; font-weight: 600; }
+.deal { margin: 10px 0 0; font-weight: 700; color: var(--good); }
+.chip-ok { margin: 4px 0 0; font-size: .85rem; font-weight: 600; color: var(--good); }
+.result h3 { margin: 2px 0 6px; font-size: 1.3rem; }

@@ -80,6 +80,8 @@ export interface LocalLogOptions {
   /** Reach the public witnesses. Required when there are any. */
   reachWitness?: CosignRequest;
   ownCosigner?: OwnCosigner | undefined;
+  /** Least milliseconds between two requests to one cosigner. Default: the service's, 3,000 (one drand quicknet round). */
+  minCosignIntervalMs?: number;
 }
 
 /**
@@ -121,6 +123,7 @@ export class LocalLogHost implements LogHost {
       source: options.source,
       origin: options.origin,
       secretKey: options.secretKey,
+      ...(options.minCosignIntervalMs !== undefined ? { minCosignIntervalMs: options.minCosignIntervalMs } : {}),
       cosign: async (vkey, body) => {
         if (cosigner && vkey === cosigner.vkey) {
           const reply = await cosigner.addCheckpoint(body);
