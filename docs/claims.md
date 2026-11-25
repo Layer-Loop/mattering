@@ -64,6 +64,19 @@ Tests are in `tests/negotiation.test.ts`, through the witness service with a sim
 | 49 | A chain of steps is checked: order, links, unchanged terms, and no step after a deal | `verifyNegotiation` | A4 | "no deal at step 1, a deal at step 2…"; "a deal…" | Shown |
 | 50 | A party cannot be shut out of a deal | Nothing | none | "cheating parties… shutting the other side out" | **Not provided.** The other side's offer is unresolved for it until that side discloses its file key, which nothing compels |
 
+## Agent mandates
+
+Tests are in `tests/mandate.test.ts`.
+
+| # | Claim | Rests on | Assumes | Test | Status |
+| --- | --- | --- | --- | --- | --- |
+| 51 | A mandate is the organisation's: any change to it, or a signature by another key, is detected | Ed25519 signature over the canonical mandate | A4 | "a mandate is signed by the organisation…" | Shown for every field |
+| 52 | A witness refuses a negotiation whose mandate is forged, for another agent, side or unit, or expires before the close | Checked when the policy is registered | A4 | "the witness refuses a negotiation whose mandate…" | Shown |
+| 53 | The other side cannot learn an agent's limit from its mandate | Pedersen commitments hide the amount | A4 | "a mandate… hides its limit" (the limit is not in it) | Shown in the sense that it is not there; hiding rests on the commitment, **unreviewed** like section 7's |
+| 54 | Nobody can move the limit after the mandate is issued | Pedersen commitments bind the amount | A4 | "…hides its limit"; "an agent that goes beyond its mandate…" (a different claimed limit does not open) | Shown |
+| 55 | Shown the opening, anyone can tell whether a deal was within the agent's authority | The opening checked against the commitment and the offer | A4, A9 | "a deal within both mandates…"; "an agent that goes beyond its mandate…" | Shown. Without the opening the status is "undisclosed", and the outcome is the same |
+| 56 | An agent cannot make an offer beyond its mandate | Only the agent's own software refusing | none | "an agent that goes beyond its mandate…" | **Not provided.** It is detected afterwards, given the opening, not prevented. Proving an offer within the limit without revealing it needs a range proof, not built |
+
 ## Phase 2 and 3: witness, commitments, auction
 
 Tests are in `tests/auction.test.ts`. The witness in these tests is an in-process object, not a service.
@@ -126,6 +139,7 @@ Tests are in `tests/service.test.ts`, over HTTP on localhost with a simulated be
 | "The sender cannot leak the payload early" | The sender knows it |
 | "Only the recipient can open it", for version 1 envelopes | Version 1 opens to everyone after the round. Version 2 opens to named recipients only (claims 40 to 44) |
 | "A recipient key identifies an organisation" | A recipient is an age key. What it stands for is outside Mattering |
+| "A mandate proves which organisation an agent acts for" | It proves which organisation key signed it. Tying that key to a real organisation is outside Mattering, and is planned as a separate identity layer |
 | "Quantum-safe" or "safe for decades" | tlock is pairing-based. An envelope stored today could be opened by a future quantum computer |
 | "Guaranteed to open" | Depends on A2 and A6 |
 | "The amount is proven to be in range before opening" | Range proofs are deferred. Without a proof linking them to the ciphertext they would not mean what they appear to mean |

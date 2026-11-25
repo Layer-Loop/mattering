@@ -17,6 +17,7 @@ import { canonicalEquals, hashCanonical } from "./canonical.ts";
 import { isRecipient, isRecipientEnvelope, type Context, type Envelope } from "./envelope.ts";
 import { MatteringError } from "./errors.ts";
 import { assertTerms, type PolicyTerms } from "./evidence.ts";
+import { closeTime, mandateProblem, type Mandate } from "./mandate.ts";
 import { verifyEnvelope, type Check, type VerifierPolicy } from "./seal.ts";
 import { verifySubmissionSignature, type Submission } from "./witness.ts";
 
@@ -33,6 +34,12 @@ export interface Party {
   signer: string;
   /** age X25519 recipient (`age1…`). Every offer in the negotiation opens to both parties' recipients. */
   recipient: string;
+  /**
+   * Optional: the organisation's mandate for this side's agent. Public, so the
+   * other side can see who the agent acts for before negotiating; its limit is
+   * a commitment, so it cannot see how far the agent may go.
+   */
+  mandate?: Mandate;
 }
 
 export interface NegotiationPolicy extends PolicyTerms {
@@ -58,8 +65,10 @@ export interface NegotiationPolicy extends PolicyTerms {
 const POLICY_KEYS = "beacon,buyer,closeRound,cosignerThreshold,cosigners,format,item,logFrom,maxPrice,minPrice,negotiationId,origin,previous,releaseRound,rule,seller,step,unit,witness";
 
 function assertParty(party: unknown, field: string): asserts party is Party {
-  const p = party as Partial<Party> | null;
-  if (p === null || typeof p !== "object" || Object.keys(p).sort().join(",") !== "recipient,signer") throw new MatteringError("MALFORMED", `${field}: want { signer, recipient }`);
+  if (party === null || typeof party !== "object") throw new MatteringError("MALFORMED", `${field}: want { signer, recipient, mandate? }`);
+  const p = party as Partial<Party>;
+  const keys = Object.keys(p).sort().join(",");
+  if (keys !== "recipient,signer" && keys !== "mandate,recipient,signer") throw new MatteringError("MALFORMED", `${field}: want { signer, recipient, mandate? }`);
   if (!isLowerHex(p.signer, 32)) throw new MatteringError("MALFORMED", `${field}.signer: want an Ed25519 public key`);
   if (!isRecipient(p.recipient)) throw new MatteringError("MALFORMED", `${field}.recipient: want an age X25519 recipient`);
 }
@@ -85,6 +94,12 @@ export function assertNegotiationPolicy(policy: NegotiationPolicy): void {
   }
   if (policy.rule !== "midpoint-if-crossed") throw new MatteringError("MALFORMED", "policy: unsupported rule");
   assertTerms(policy);
+  for (const side of SIDES) {
+    const mandate = policy[side].mandate;
+    if (mandate === undefined) continue;
+    const problem = mandateProblem(mandate, { agent: policy[side].signer, side, unit: policy.unit, at: closeTime(policy.beacon, policy.closeRound) });
+    if (problem) throw new MatteringError("MALFORMED", `policy.${side}.mandate: ${problem}`);
+  }
 }
 
 export function negotiationPolicyHash(policy: NegotiationPolicy): string {

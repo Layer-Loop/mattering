@@ -287,7 +287,23 @@ An offer the judge cannot open is **unresolved**, not invalid. A dishonest party
 
 What the log and cosigners add here is that both offers were in before the close and that neither can be swapped after the other is seen. What a negotiation does not give: an outsider cannot learn the outcome without a party's disclosure, and nothing stops a party from refusing to disclose.
 
-## 10. Things this design does not do
+## 10. Agent mandates
+
+A **mandate** is an organisation's signed statement that an agent's key may negotiate for it, on one side, in one unit, up to a limit, until a time (label `mattering/mandate/v1`, signed with the organisation's Ed25519 key):
+
+```text
+{ format: "mattering.mandate/1", organisation, organisationName, agent, side, unit, limit, expires, signature }
+```
+
+`limit` is not the limit: it is a Pedersen commitment to it, as in section 7. The limit is the agent's walk-away price, which the other side must not learn. The commitment hides it and fixes it. The organisation keeps the **opening** (`limit` and the blinding) and gives it to its agent privately.
+
+A negotiation party may carry its mandate in the policy: `buyer: { signer, recipient, mandate }`. It is public, so the other side sees, before negotiating, which organisation key stands behind the agent. A policy is malformed, and a witness refuses it, if a mandate is not signed by the organisation key it names, is for another agent, side or unit, or expires before the close round's scheduled time.
+
+**Judging with mandates.** For each valid offer from a side with a mandate, the step result says whether the price was **within** the mandate (a buyer's agent at or below the limit, a seller's at or above), **beyond** it, **undisclosed** (no opening given), or that the opening given does not match the commitment. This does not change the outcome: two judges, one with an opening and one without, must reach the same deal. An offer beyond its mandate still counts, and shows that the agent exceeded its authority, which is a matter between the agent and its organisation. An agent's software can refuse to seal an offer beyond its own mandate (`prepareOffer` given the opening), but a dishonest agent can skip that.
+
+What this gives: the other side knows who stands behind the agent and cannot learn its limit; the organisation cannot later claim a different limit, because the commitment fixes it; and anyone shown the opening can tell whether a deal was within authority. What it does not give: proof that an offer was within the mandate without revealing the limit. That needs a range proof (research question 9), which the commitment's generators were chosen to allow later. Nor does it show that the organisation key belongs to the organisation named.
+
+## 11. Things this design does not do
 
 - Keep anything secret after the release round.
 - Prove a range, or anything else, about a sealed value before it opens.
