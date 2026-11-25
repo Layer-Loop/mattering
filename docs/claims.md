@@ -22,6 +22,7 @@ Every statement about what Mattering guarantees should trace to a row here. If a
 | A6 | **The envelope is available.** Someone still has the envelope file when it is to be opened. |
 | A7 | **Witness honesty.** The witness does not refuse submissions. For a policy with no cosigners, it also does not rewrite the log after release. Dropping a receipted entry and forking the log are detectable; these are not. |
 | A8 | **Cosigner independence.** Fewer than the policy's threshold of cosigners collude with the witness, and an honest cosigner's clock is roughly right: the time it puts on a cosignature is when it signed. |
+| A9 | **age is sound.** age's X25519 recipient stanzas, header MAC and payload encryption, as implemented in `age-encryption` 0.3.1, are correct. |
 
 ## Phase 1: sealing
 
@@ -37,6 +38,18 @@ Every statement about what Mattering guarantees should trace to a row here. If a
 | 8 | An envelope has one identifier | Canonical JSON, one accepted armor layout, strict field set | A4 | "file round trip", "non-canonical encodings" | Shown |
 | 9 | A seal to a beacon the sender controls is rejected | Verifier policy lists accepted beacons; default is quicknet only | A5 | "a beacon the verifier did not choose" | Shown |
 | 10 | If release material cannot be obtained, the envelope stays sealed and says why | No fallback path exists | none | `tests/cli.test.ts` "beacon outage" | Shown |
+
+## Sealing to recipients
+
+Tests are in `tests/recipients.test.ts` and `tests/cli.test.ts`, against a local test beacon.
+
+| # | Claim | Rests on | Assumes | Test | Status |
+| --- | --- | --- | --- | --- | --- |
+| 40 | A version 2 envelope cannot be read before its round, by its recipients or anyone else | The age file is inside the time lock | A1, A3, A4, A5 | "only the named recipients can read it, and only after the round" | Shown, against a local test beacon. Against live drand quicknet, run by hand on 2026-11-25: no release existed before the round, the recipient opened it after, and a disclosed file key verified |
+| 41 | After the round only the named recipients can read it | age X25519 encryption inside the time lock | A1, A4, A9 | same; `tests/cli.test.ts` "sealed to a recipient" | Shown. An outsider's identity and no identity both fail |
+| 42 | Who an envelope is for cannot be changed | The recipients are in the header, which the frame binds to the age file | A3, A4 | "who an envelope is for cannot be changed" | Shown |
+| 43 | Every recipient who can open an envelope reads the same payload, and a disclosed file key lets anyone check it | age authenticates the whole header under the one file key | A4, A9 | "a recipient can disclose the file key"; "a dishonest sender can shut out a named recipient, but not show recipients different contents" | Shown for the tested attack (one stanza spliced from another file). The general argument is **unreviewed**: research question 16 |
+| 44 | A named recipient cannot be shut out | Nothing | none | "a dishonest sender can shut out a named recipient" | **Not provided.** A sender can give a named recipient a stanza that does not open; it shows only at the round, and only to that recipient |
 
 ## Phase 2 and 3: witness, commitments, auction
 
@@ -98,7 +111,8 @@ Tests are in `tests/service.test.ts`, over HTTP on localhost with a simulated be
 | "Proves when something was sealed" | An envelope carries no trustworthy time. The witness log says a submission was on time, and that is only as good as the witness (A7) |
 | "The witness cannot censor" | A witness can refuse to issue a receipt, and nobody can prove it |
 | "The sender cannot leak the payload early" | The sender knows it |
-| "Only the recipient can open it" | Opening is public after the round. Recipient encryption is not built |
+| "Only the recipient can open it", for version 1 envelopes | Version 1 opens to everyone after the round. Version 2 opens to named recipients only (claims 40 to 44) |
+| "A recipient key identifies an organisation" | A recipient is an age key. What it stands for is outside Mattering |
 | "Quantum-safe" or "safe for decades" | tlock is pairing-based. An envelope stored today could be opened by a future quantum computer |
 | "Guaranteed to open" | Depends on A2 and A6 |
 | "The amount is proven to be in range before opening" | Range proofs are deferred. Without a proof linking them to the ciphertext they would not mean what they appear to mean |
