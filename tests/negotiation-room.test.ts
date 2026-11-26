@@ -4,11 +4,15 @@
  * verdict.
  */
 import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import type { BeaconInfo, MandateOpening, Side } from "@mattering/core";
 import { verifyNegotiation, verifyNegotiationStep, withFileKeys, type StepInputs } from "@mattering/core/negotiation";
 import { scriptedOffer } from "../apps/showcase/src/negotiation-room.ts";
 import { startShowcase } from "../apps/showcase/src/server.ts";
+import { checkDemo } from "./check-demo.ts";
 
 type State = { beacon: BeaconInfo; decider: string | null; run: { id: number; done: boolean; startedAt: number; steps: { step: number; phase: string; sealedAt: Partial<Record<Side, number>>; logIndex: Partial<Record<Side, number>> }[] } | null };
 type Disclosure = { evidence: StepInputs; fileKeys: Record<string, string>; openings: Record<Side, MandateOpening> };
@@ -20,8 +24,8 @@ async function negotiate(rogue: boolean) {
     return { status: r.status, json: (await r.json()) as T };
   };
   try {
-    assert.match(await (await fetch(url + "/negotiation")).text(), /The Negotiation Room/);
-    assert.ok((await (await fetch(url + "/negotiation.js")).text()).length > 50_000, "the page's script is served");
+    assert.match(await (await fetch(url + "/demo/negotiation")).text(), /The Negotiation Room/);
+    assert.ok((await (await fetch(url + "/rooms.js")).text()).length > 50_000, "the page's script is served");
     const before = (await get<State>("/negotiation/state")).json;
     assert.equal(before.run, null);
     assert.equal(before.decider, null, "without a model the page is told the scripts decide");
@@ -59,14 +63,23 @@ async function negotiate(rogue: boolean) {
     const revise = (await get<{ accepted: boolean; reason: string }>("/negotiation/revise", {})).json;
     assert.equal(revise.accepted, false);
     assert.match(revise.reason, /late/);
-    return { results, chain, openings: disclosures[0]!.openings };
+
+    // The evidence the page lets you download, checked offline by the command line.
+    const dir = mkdtempSync(join(tmpdir(), "mattering-demo-"));
+    writeFileSync(join(dir, "beacon.json"), JSON.stringify(started.beacon));
+    writeFileSync(join(dir, "evidence.json"), JSON.stringify({ format: "mattering.demo-evidence/1", room: "negotiation", mode: "simulated", beacon: started.beacon, steps: disclosures }));
+    const offline = checkDemo(join(dir, "evidence.json"), "--allow-beacon", join(dir, "beacon.json"));
+    return { results, chain, openings: disclosures[0]!.openings, offline };
   } finally {
     stop();
   }
 }
 
 test("negotiation room: three sealed steps, a deal within both mandates, checked from the disclosures", async () => {
-  const { results, chain, openings } = await negotiate(false);
+  const { results, chain, openings, offline } = await negotiate(false);
+  assert.equal(offline.status, 0, offline.stdout + offline.stderr);
+  assert.match(offline.stdout, /PASS  every offer within its mandate/);
+  assert.match(offline.stdout, /deal in round 3 at £/);
   assert.equal(results.length, 3);
   assert.deepEqual(results.slice(0, 2).map((r) => r.outcome?.deal), [false, false]);
   const buyer = scriptedOffer("buyer", 3, openings.buyer.limit, false);
@@ -76,7 +89,9 @@ test("negotiation room: three sealed steps, a deal within both mandates, checked
 });
 
 test("negotiation room: a rogue agent's offer beyond its mandate is shown as such", async () => {
-  const { results, openings } = await negotiate(true);
+  const { results, openings, offline } = await negotiate(true);
+  assert.equal(offline.status, 1, "offline, an agent beyond its mandate is a failure too");
+  assert.match(offline.stdout, /FAIL  every offer within its mandate/);
   const last = results.at(-1)!;
   assert.equal(last.outcome?.deal, true);
   const acme = last.offers.find((o) => o.side === "buyer")!;

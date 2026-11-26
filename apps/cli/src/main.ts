@@ -17,9 +17,16 @@ import {
   seal,
   serializeEnvelope,
   timeOfRound,
+  verifyAuction,
   verifyEnvelope,
   verifyOpen,
+  verifyStatements,
+  type AuctionInputs,
   type BeaconInfo,
+  type Check,
+  type MandateOpening,
+  type Side,
+  type StatementInputs,
   type Context,
   type Envelope,
   type Release,
@@ -27,6 +34,7 @@ import {
   type VerifierPolicy,
 } from "@mattering/core";
 import { DEFAULT_RELAYS, fetchRelease } from "@mattering/core/drand-http";
+import { verifyNegotiation, verifyNegotiationStep, withFileKeys, type StepInputs } from "@mattering/core/negotiation";
 import { fileKeyOf, generateRecipientKeys, openAs, openWithFileKey, recipientOf, sealTo, verifyDisclosure } from "@mattering/core/recipients";
 import { TestBeacon } from "@mattering/core/testing";
 
@@ -47,6 +55,10 @@ const USAGE = `mattering <command> [options]
   keygen       --out <key.txt>       writes an age X25519 identity, prints its recipient
   file-key     <envelope.json> --identity <key.txt> [--signature <hex> | --relay <url> ...]
                prints the file key, which lets anyone read this one envelope
+
+  Demos (the evidence a demo room's page lets you download):
+  check-demo   <evidence.json> [--allow-beacon <info.json> ...]
+               works out the auction or negotiation again from the evidence alone
 
   Test beacons (offline testing only; the key holder can open everything):
   test-beacon new      --out <secret.json>
@@ -113,6 +125,54 @@ function printResult(result: VerificationResult): void {
   if (result.envelopeId) process.stdout.write(`envelope id: ${result.envelopeId}\n`);
   process.stdout.write(result.ok ? "OK\n" : "NOT OK\n");
   if (!result.ok) process.exitCode = 1;
+}
+
+function printChecks(label: string, checks: readonly Check[]): boolean {
+  for (const check of checks) process.stdout.write(`${check.ok ? "PASS" : "FAIL"}  ${label}${check.name}${check.detail ? `  (${check.detail})` : ""}\n`);
+  return checks.every((c) => c.ok);
+}
+const pounds = (n: number): string => "£" + n.toLocaleString("en-GB");
+
+/**
+ * Work out a demo room's result again from the evidence its page downloads.
+ * The clock is never taken from the file: drand quicknet is accepted, and any
+ * other beacon only if given with --allow-beacon.
+ */
+async function checkDemo(path: string | undefined, policy: VerifierPolicy): Promise<boolean> {
+  if (!path) fail("check-demo needs the evidence file");
+  const file = readJson(path) as { format?: unknown; room?: unknown; auction?: AuctionInputs; statements?: StatementInputs; steps?: { evidence: StepInputs; fileKeys: Record<string, string>; openings: Record<Side, MandateOpening> }[] };
+  if (file.format !== "mattering.demo-evidence/1") fail(`${path}: not demo evidence (mattering.demo-evidence/1)`);
+  if (file.room === "auction" && file.auction) {
+    const result = await verifyAuction(file.auction, policy);
+    let ok = printChecks("", result.checks);
+    for (const bid of result.bids) process.stdout.write(`bid   ${bid.submitter.slice(0, 16)}…  ${bid.amount !== undefined ? pounds(bid.amount) : "-"}  ${bid.status}${bid.reason ? ` (${bid.reason})` : ""}\n`);
+    if (file.statements) {
+      const statements = await verifyStatements(file.statements, policy);
+      ok = printChecks("statements: ", statements.checks) && ok;
+    }
+    process.stdout.write(result.winner ? `winner: ${result.winner.submitter.slice(0, 16)}… at ${pounds(result.winner.amount)}\n` : "no winner\n");
+    return ok && result.ok;
+  }
+  if (file.room === "negotiation" && Array.isArray(file.steps)) {
+    let ok = true;
+    let within = true;
+    for (const [i, step] of file.steps.entries()) {
+      const result = await verifyNegotiationStep(step.evidence, withFileKeys(step.fileKeys), policy, step.openings);
+      ok = printChecks(`round ${i + 1}: `, result.checks) && result.ok && ok;
+      for (const offer of result.offers.filter((o) => o.side)) {
+        process.stdout.write(`offer round ${i + 1}  ${offer.side}  ${offer.price !== undefined ? pounds(offer.price) : "-"}  ${offer.status}${offer.mandate ? `, ${offer.mandate} its mandate (limit ${pounds(step.openings[offer.side!].limit)})` : ""}\n`);
+        if (offer.mandate && offer.mandate !== "within") within = false;
+      }
+    }
+    process.stdout.write(`${within ? "PASS" : "FAIL"}  every offer within its mandate\n`);
+    const keys = Object.assign({}, ...file.steps.map((s) => s.fileKeys)) as Record<string, string>;
+    const chain = await verifyNegotiation(file.steps.map((s) => s.evidence), withFileKeys(keys), policy);
+    process.stdout.write(`${chain.ok ? "PASS" : "FAIL"}  the rounds form one negotiation${chain.problem ? `  (${chain.problem})` : ""}\n`);
+    const o = chain.outcome;
+    process.stdout.write(!o ? "no result\n" : o.deal ? `deal in round ${o.step} at ${pounds(o.price)} (buyer ${pounds(o.buyerOffer)}, seller ${pounds(o.sellerOffer)})\n` : `no deal: ${o.reason}\n`);
+    return ok && within && chain.ok;
+  }
+  return fail(`${path}: unknown demo room`);
 }
 
 const common = {
@@ -229,6 +289,12 @@ async function main(): Promise<void> {
       const identity = readIdentity(values.identity);
       await recipientOf(identity);
       process.stdout.write(`${await fileKeyOf(envelope, release, identity, policyFrom(values["allow-beacon"]))}\n`);
+      return;
+    }
+    case "check-demo": {
+      const ok = await checkDemo(rest[0], policyFrom(values["allow-beacon"]));
+      process.stdout.write(ok ? "OK\n" : "NOT OK\n");
+      if (!ok) process.exitCode = 1;
       return;
     }
     case "test-beacon": {

@@ -2,9 +2,7 @@
 
 A web page for showing Mattering to people who do not read code. Three software agents, each acting for a company, bid for an advertising package, the visitor can bid too, every bid opens at once when the clock runs out, and the visitor is invited to cheat.
 
-![The Sealed Room after the bids have opened](showcase.png)
-
-**Status:** runs on a laptop, and is live at [mattering.ai/demo](https://mattering.ai/demo). It is a demonstration, and the service behind it is not hardened ([service.md](service.md)).
+**Status:** runs on a laptop, and is live at [mattering.ai/demo/auction](https://mattering.ai/demo/auction). It is a demonstration, and the service behind it is not hardened ([service.md](service.md)).
 
 ## Running it
 
@@ -20,14 +18,28 @@ Against a simulated clock, for a room with no connection:
 npm run showcase:offline
 ```
 
-Then open http://127.0.0.1:8790. Set `PORT` to change the port. An auction takes about 45 seconds: 30 until bidding closes, then 15 until the bids open.
+Then open http://127.0.0.1:8790/demo, the way into both demonstrations, or go straight to http://127.0.0.1:8790/demo/auction. Set `PORT` to change the port. An auction takes about 45 seconds: 30 until bidding closes, then 15 until the bids open.
 
 ## What happens on the page
 
 1. **Start the auction.** Three agents decide what to bid and seal their bids, one after another. Each also seals a sentence explaining its bid.
 2. **Place your own bid.** It is sealed in the browser before it is sent, so the server never sees the amount.
-3. **Bidding closes.** The auctioneer signs the list of bids and an independent cosigner countersigns it, while nobody can read it.
+3. **Bidding closes.** The auctioneer signs the list of bids and a cosigner countersigns it, while nobody can read it.
 4. **The bids open.** The key is published and every envelope opens at the same moment. The browser works out the winner itself.
+5. **Check it yourself.** The visitor runs the checks in the browser, and can download the evidence and check it again offline with the command line (`mattering check-demo evidence.json`, which accepts only drand quicknet unless told otherwise with `--allow-beacon`).
+
+## The pages
+
+Both demonstrations share one design, made in Claude Design and ported to plain TypeScript and CSS without a framework (`apps/showcase/web/rooms/`, with the HTML in `apps/showcase/src/pages.ts`). `/demo` is the way in; `/demo/auction` and `/demo/negotiation` are the rooms. Each room page has a short description with more detail on request, a Start button, and a dark band holding the live room:
+
+- **The clock,** counting down to the close and then to the opening, with the public log's entries as they are written.
+- **A chart of sealed tracks.** Each bid (or offer) is a bar from the moment it was sealed to the moment it opened, against seconds from the start, with the wait between the close and the opening hatched. Once open, each lands on a price scale and the result is shown beside it, worked out in the browser. Below are the agents' notes, shown only after opening.
+- **Try to cheat,** four buttons, each a real attempt; what comes back is shown as it came.
+- **Your bid** (the auction), sealed in the browser.
+
+Below the band, **Don't trust this page** runs the checks in the browser, grouped into five for the auction and six for the negotiation, and offers the evidence as a download. On a phone the chart drops the price scale; the negotiation shows a table of rounds instead.
+
+The pages carry no list of caveats: the general limits are on the home page and in these documents, and the header says the code has had no security review. Facts particular to the demonstration are said in its scenario: the companies are invented, we run the log and, until independent witnesses join, its cosigner.
 
 ## The cheat buttons
 
@@ -48,8 +60,8 @@ Each makes a real attempt against the running system.
 
 - The companies and the lot are invented.
 - Each agent is given a private ceiling, drawn at random for each auction, and decides what to bid. A language model decides if one is configured (next section); otherwise a short script does. The page says which, agent by agent.
-- Until public witnesses cosign the log, the "independent" cosigner is run by the same operator as the auctioneer. The page says so.
-- In offline mode the clock is simulated by the machine running the demo, which could therefore open bids early. The page shows a "Simulated clock" badge and says so.
+- Until public witnesses cosign the log, the cosigner is run by the same operator as the auctioneer. The page's scenario says so, and never calls it independent.
+- In offline mode the clock is simulated by the machine running the demo, which could therefore open bids early. The page shows a "Simulated clock · offline" badge and names the simulated clock wherever it would otherwise name drand.
 
 ## The agents and the language model
 
@@ -65,20 +77,20 @@ What the model can and cannot do:
 
 - **It supplies two things:** a whole number of pounds and a short piece of text. Both are treated as untrusted input. An amount outside the auction's range, or anything that is not a number and a sentence, is thrown away and the script decides for that agent.
 - **It has no part in any check.** Sealing, the deadline, the log, the cosignature and the verification never call a model. A model that bid foolishly would lose the auction; it could not break it.
-- **If it is slow, fails or declines**, the script decides for that agent, and the page says "Bid chosen by a script".
+- **If it is slow, fails or declines**, the script decides for that agent, and the chart says "chosen by a script" for that agent.
 - **Its decisions are held in memory only** until they are sealed, and are not stored.
 
 The request to the model is covered by a test against a stand-in for the API (`tests/showcase.test.ts`). It was run by hand against the real API on 2026-11-24, with `claude-opus-5-5` and then with the current default, and worked. Nothing checks the real API automatically.
 
 ## On the website
 
-The same room runs on Cloudflare for mattering.ai, as a Durable Object behind the site's Worker (`apps/cloudflare`). The website is a separate repository and commits two files built from this one:
+The same room runs on Cloudflare for mattering.ai, as a Durable Object behind the site's Worker (`apps/cloudflare`). The website is a separate repository and commits the files built from this one:
 
 ```bash
 npm run build:site -- ../mattering
 ```
 
-That writes the Worker to `src/worker.js` and the page's script to `public/assets/sealed-room.js` in the site repository. Rebuild and commit there whenever this repository changes.
+That writes the Worker to `src/worker.js`, the three pages to `public/demo.html` and `public/demo/{auction,negotiation}.html`, and their script and styles to `public/assets/rooms.<hash>.js` and `.css`, named by their content so that browsers never keep an old copy. Files from earlier builds are removed. Rebuild and commit there whenever this repository changes. The old address `/negotiate` is redirected by the site's `_redirects`.
 
 How the hosted version differs from the laptop one:
 
@@ -102,6 +114,8 @@ Every new auction names all of the log's cosigners and requires a majority of th
 
 ## Not covered by automated tests
 
-`tests/showcase.test.ts` runs an auction through the room and verifies it as the page does; `tests/shared-log.test.ts` covers the shared log: auctions interleaved on it, restarts, released auctions leaving memory, cosigners asked once per checkpoint, and at most once every 3 seconds each. The page itself was checked by driving it in a headless browser by hand; there is no browser test in the suite. On a laptop, online mode against live drand was run by hand on 2026-11-23 and behaved as described. It was run again on 2026-11-24 after cosigners moved to the C2SP witness protocol: a visitor's bid, all four cheats refused or exposed, and every check passing in the browser. That run found the "Simulated clock" badge showing in live mode, a styling bug, now fixed. The Cloudflare version has not been run since that change.
+`tests/showcase.test.ts` runs an auction through the room and verifies it as the page does, then checks the evidence the page would download with `mattering check-demo`; `tests/shared-log.test.ts` covers the shared log: auctions interleaved on it, restarts, released auctions leaving memory, cosigners asked once per checkpoint, and at most once every 3 seconds each. The page itself was checked by driving it in a headless browser by hand; there is no browser test in the suite. On a laptop, online mode against live drand was run by hand on 2026-11-23 and behaved as described. It was run again on 2026-11-24 after cosigners moved to the C2SP witness protocol: a visitor's bid, all four cheats refused or exposed, and every check passing in the browser. That run found the "Simulated clock" badge showing in live mode, a styling bug, now fixed. The Cloudflare version has not been run since that change.
 
 The Cloudflare version was run by hand in Cloudflare's local runtime with the simulated clock: a full auction in the real site page, with all four cheats refused. It was deployed to mattering.ai on 2026-11-23 and run there by hand against live drand, and worked. On 2026-11-24, after rooms moved to one shared log, it was run again in the local runtime with the simulated clock: two rooms' auctions interleaved on the log, both verified from `/log/` (the second with a prefix standing for the first's entries), a visitor's bid in the real site page, all four cheats refused or exposed, every check passing in the browser, and both auctions retired from memory after release. That version has not been deployed or run against live drand. Nothing checks the deployed version automatically.
+
+The redesigned pages were driven by hand in a browser on 2026-11-26: on a laptop with the simulated clock (a visitor's bid, all four cheats, all five checks passing, the phone layout at 375 pixels wide), on a laptop against live drand (cosignature time read from the evidence, all five checks passing), and in Cloudflare's local runtime with the simulated clock (the way in, the `/negotiate` redirect, a visitor's room created only on Start, all five checks passing). They have not yet been deployed.
