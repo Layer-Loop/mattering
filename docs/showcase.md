@@ -26,20 +26,17 @@ Then open http://127.0.0.1:8790/demo, the way into both demonstrations, or go st
 2. **Place your own bid.** It is sealed in the browser before it is sent, so the server never sees the amount.
 3. **Bidding closes.** The auctioneer signs the list of bids and a cosigner countersigns it, while nobody can read it.
 4. **The bids open.** The key is published and every envelope opens at the same moment. The browser works out the winner itself.
-5. **Check it yourself.** The visitor runs the checks in the browser, and can download the evidence and check it again offline with the command line (`mattering check-demo evidence.json`, which accepts only drand quicknet unless told otherwise with `--allow-beacon`).
+5. **Check it yourself.** The checks run in the browser as soon as the result is in, and can download the evidence and check it again offline with the command line (`mattering check-demo evidence.json`, which accepts only drand quicknet unless told otherwise with `--allow-beacon`).
 
 ## The pages
 
-Both demonstrations share one design, made in Claude Design and ported to plain TypeScript and CSS without a framework (`apps/showcase/web/rooms/`, with the HTML in `apps/showcase/src/pages.ts`). `/demo` is the way in; `/demo/auction` and `/demo/negotiation` are the rooms. Each room page has a short description with more detail on request, a Start button, and a dark band holding the live room:
+Both demonstrations share one page design (`apps/showcase/web/rooms/`, with the HTML in `apps/showcase/src/pages.ts`), in plain TypeScript and CSS without a framework. `/demo` is the way in; `/demo/auction` and `/demo/negotiation` are the rooms. Each room is one card that shows one screen at a time:
 
-- **The clock,** counting down to the close and then to the opening, with the public log's entries as they are written.
-- **A chart of sealed tracks.** Each bid (or offer) is a bar from the moment it was sealed to the moment it opened, against seconds from the start, with the wait between the close and the opening hatched. Once open, each lands on a price scale and the result is shown beside it, worked out in the browser. Below are the agents' notes, shown only after opening.
-- **Try to cheat,** four buttons, each a real attempt; what comes back is shown as it came.
-- **Your bid** (the auction), sealed in the browser.
+1. **The intro:** what the room shows, the scenario in a sentence or two, and Start.
+2. **The conversation,** while it runs. Each agent's bid (or offer) appears as a sealed bubble the moment it is sealed, and all of them flip open together when the clock releases the key. A thin bar and a countdown sit above. The visitor's own bid is typed into the composer at the bottom, and "Try to peek" is offered while anything is sealed; its answer appears in the thread.
+3. **The result:** the outcome in one line, a ranking or the disclosed limits, and "Checked in your browser", which runs the checks by itself and opens to show them, with the evidence to download. The conversation and the other cheats fold away underneath.
 
-Below the band, **Don't trust this page** runs the checks in the browser, grouped into five for the auction and six for the negotiation, and offers the evidence as a download. On a phone the chart drops the price scale; the negotiation shows a table of rounds instead.
-
-The pages carry no list of caveats: the general limits are on the home page and in these documents, and the header says the code has had no security review. Facts particular to the demonstration are said in its scenario: the companies are invented, we run the log and, until independent witnesses join, its cosigner.
+The design deliberately leaves out what a visitor does not need to follow the room: beacon round numbers, the log's entries, key fingerprints and commitments appear only inside the checks, the evidence and these documents. The pages carry no list of caveats: the general limits are on the home page and in these documents, and the header says the code has had no security review. Facts particular to the demonstration are said on the intro screen: the companies are invented, and we run the log and, until independent witnesses join, its cosigner.
 
 ## The cheat buttons
 
@@ -77,7 +74,7 @@ What the model can and cannot do:
 
 - **It supplies two things:** a whole number of pounds and a short piece of text. Both are treated as untrusted input. An amount outside the auction's range, or anything that is not a number and a sentence, is thrown away and the script decides for that agent.
 - **It has no part in any check.** Sealing, the deadline, the log, the cosignature and the verification never call a model. A model that bid foolishly would lose the auction; it could not break it.
-- **If it is slow, fails or declines**, the script decides for that agent, and the chart says "chosen by a script" for that agent.
+- **If it is slow, fails or declines**, the script decides for that agent, and that agent's bubble says "chosen by a script".
 - **Its decisions are held in memory only** until they are sealed, and are not stored.
 
 The request to the model is covered by a test against a stand-in for the API (`tests/showcase.test.ts`). It was run by hand against the real API on 2026-11-24, with `claude-opus-5-5` and then with the current default, and worked. Nothing checks the real API automatically.
@@ -118,4 +115,6 @@ Every new auction names all of the log's cosigners and requires a majority of th
 
 The Cloudflare version was run by hand in Cloudflare's local runtime with the simulated clock: a full auction in the real site page, with all four cheats refused. It was deployed to mattering.ai on 2026-11-23 and run there by hand against live drand, and worked. On 2026-11-24, after rooms moved to one shared log, it was run again in the local runtime with the simulated clock: two rooms' auctions interleaved on the log, both verified from `/log/` (the second with a prefix standing for the first's entries), a visitor's bid in the real site page, all four cheats refused or exposed, every check passing in the browser, and both auctions retired from memory after release. That version has not been deployed or run against live drand. Nothing checks the deployed version automatically.
 
-The redesigned pages were driven by hand in a browser on 2026-11-26: on a laptop with the simulated clock (a visitor's bid, all four cheats, all five checks passing, the phone layout at 375 pixels wide), on a laptop against live drand (cosignature time read from the evidence, all five checks passing), and in Cloudflare's local runtime with the simulated clock (the way in, the `/negotiate` redirect, a visitor's room created only on Start, all five checks passing). They have not yet been deployed.
+The first redesign was driven by hand in a browser on 2026-11-26: on a laptop with the simulated clock (a visitor's bid, all four cheats, all five checks passing, the phone layout at 375 pixels wide), on a laptop against live drand (cosignature time read from the evidence, all five checks passing), and in Cloudflare's local runtime with the simulated clock (the way in, the `/negotiate` redirect, a visitor's room created only on Start, all five checks passing). They have not yet been deployed.
+
+The conversation version of the pages was driven by hand on 2026-11-26 on a laptop with the simulated clock: both rooms through to the result, a visitor's bid, every cheat, the checks passing (and failing on the limit in a rogue negotiation), and the phone layout at 375 pixels wide.

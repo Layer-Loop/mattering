@@ -86,70 +86,60 @@ ${siteHeader(o, true)}
 ${siteFooter(o)}`;
 }
 
-const ROOMS: Record<RoomName, { title: string; description: string; h1: string; intro: [string, string][]; more: string[]; start: string; hint: string; option?: string }> = {
+const ROOMS: Record<RoomName, { title: string; description: string; eyebrow: string; h1: string; scenario: string; how: string; staged: string; start: string; hint: string; option?: string; doc: string }> = {
   auction: {
     title: "The Sealed Room: a sealed-bid auction · Mattering",
     description: "Watch three software agents bid in a sealed auction where nobody, including us, can read a bid until a public clock publishes the key. Bid yourself, try to cheat, and check the result in your own browser.",
-    h1: "The Sealed Room: a sealed-bid auction",
-    intro: [
-      ["Purpose", "Three agents bid for an ad package. Every bid stays sealed until the clock runs out."],
-      ["Scenario", "Invented advertisers bid £400k–£800k for spring airtime. You can bid too. We run the auction log and, until independent witnesses join, its cosigner."],
-      ["How it works", "Bids open only when drand publishes the key; your browser counts them."],
-    ],
-    more: [
-      "The lot is a 12-week spring package of TV, streaming and outdoor advertising. Bids run from £400,000 to £800,000, and the highest wins.",
-      "Each bid is sealed the moment it is sent and written to a public log. Nobody, including us, can read a bid until drand, a public clock run by independent organisations, publishes the key. Then every bid opens at once and your browser counts them.",
-      'The agents’ bids are chosen by <span data-decider>a language model</span>. Yours is chosen by you.',
-    ],
+    eyebrow: "The Sealed Room · an auction",
+    h1: "Three agents bid for an advertising package. Nobody can see a bid until the clock runs out.",
+    scenario: "Invented advertisers bid £400,000 to £800,000 for 12 weeks of spring airtime. The highest bid wins. You can bid too.",
+    how: "Each bid is locked to a public clock, so not even we can open it early. When the time comes, every bid opens at once and your browser counts them.",
+    staged: "The companies are invented. We run the auction’s log and, until independent witnesses join, its cosigner.",
     start: "Start the auction",
     hint: 'About 45 seconds. Bids are chosen by <span data-decider>a language model</span>.',
+    doc: "showcase",
   },
   negotiation: {
     title: "The Negotiation Room: an early-payment negotiation · Mattering",
     description: "Watch two firms' software agents agree a price for paying an invoice early. Each round both offers stay sealed until they open together, each agent under a limit the other cannot see. Try to cheat, and check every round in your own browser.",
-    h1: "The Negotiation Room: an early-payment negotiation",
-    intro: [
-      ["Purpose", "Two firms’ agents agree a price for paying an invoice early."],
-      ["Scenario", "Acme settles Bolt’s £10,000 invoice today. Each agent has a hidden limit. Both firms’ agents run on our server for this demo, so we hold both keys."],
-      ["How it works", "Each round, both offers open together. If they cross, they meet in the middle."],
-    ],
-    more: [
-      "The invoice is due in 60 days. Offers run from £9,000 to £10,000. Each firm gives its agent a public mandate, signed with the firm’s key, with a hidden limit: what Acme may pay at most, and what Bolt may accept at least.",
-      "Each round, both agents seal an offer, and it is written to a public log. The offers are sealed to Acme and Bolt, and open when drand publishes the key. If Acme’s offer is at least Bolt’s price, the deal is at the midpoint. If not, they go again, up to three rounds.",
-      'Offers are chosen by <span data-decider>a language model</span>.',
-    ],
+    eyebrow: "The Negotiation Room · a negotiation",
+    h1: "Two firms’ agents agree a price for paying an invoice early. Each round, both offers stay sealed until they open together.",
+    scenario: "Acme pays Bolt’s £10,000 invoice today instead of in 60 days, at a discount. Each agent has a limit, set by its firm, that the other can’t see. If the offers cross, they meet in the middle. Up to three rounds.",
+    how: "Each offer is locked to a public clock, so neither agent can see the other’s before making its own. Your browser checks every round.",
+    staged: "The firms are invented. Both agents run on our server, so we hold both firms’ keys.",
     start: "Start the negotiation",
     hint: 'Up to 75 seconds. Offers are chosen by <span data-decider>a language model</span>.',
     option: "Let Acme’s agent ignore its limit in the last round",
+    doc: "negotiation-room",
   },
 };
 
-/** One room. The script fills in the live band, the checks and the start row's state. */
+/** One room: a card that shows the intro, then the live conversation, then the result. The script fills in the last two. */
 export function roomPage(room: RoomName, o: PageOptions): string {
   const r = ROOMS[room];
   const attrs = ` data-room="${room}"${o.roomBase ? ` data-room-base="${o.roomBase}"` : ""}`;
   const tab = (name: RoomName, label: string) => `<li><a href="${o.paths[name]}"${name === room ? ' aria-current="page"' : ""}>${label}</a></li>`;
   return `${head(o, r.title, r.description, attrs)}
 ${siteHeader(o, true)}
-<main class="page">
-<section class="about" aria-label="About this demo">
+<main class="page room">
 <nav class="tabs" aria-label="Demos"><ul>${tab("auction", "Auction")}${tab("negotiation", "Negotiation")}</ul></nav>
-<h1 class="sr">${r.h1}</h1>
-<dl class="intro">${r.intro.map(([label, text]) => `<div><dt>${label}</dt><dd>${text}</dd></div>`).join("")}</dl>
-<details class="more"><summary>More detail</summary><div class="body">${r.more.map((p) => `<p>${p}</p>`).join("")}</div></details>
+<div class="card">
+<section id="s-intro" class="screen" aria-labelledby="intro-h">
+<p class="eyebrow">${r.eyebrow}</p>
+<h1 id="intro-h">${r.h1}</h1>
+<p class="lead">${r.scenario}</p>
+<p class="how">${r.how}</p>
 <div class="start-row">
 <button id="start" class="primary" type="button" data-action="start">${r.start}</button>
 <p id="start-hint" class="hint">${r.hint}</p>
-${r.option ? `<label class="option"><input id="rogue" type="checkbox"><span>${r.option}</span></label>` : ""}
-<p id="start-error" class="start-error" role="alert" hidden></p>
 </div>
+${r.option ? `<details class="options"><summary>Options</summary><label class="option"><input id="rogue" type="checkbox"><span>${r.option}</span></label></details>` : ""}
+<p id="start-error" class="start-error" role="alert" hidden></p>
+<p class="small">${r.staged} <a href="${GITHUB}/blob/main/docs/${r.doc}.md">How it works, in full</a></p>
 </section>
-<section id="band" class="band" aria-label="${room === "auction" ? "The Sealed Room" : "The Negotiation Room"}, live"></section>
-<div id="checks"></div>
-<section class="full" aria-labelledby="full-h">
-<div><h2 id="full-h">How it works, in full</h2><p>The documentation explains the design in full, and the code is open.</p></div>
-<div class="links"><a class="solid" href="${GITHUB}/blob/main/docs/${room === "auction" ? "showcase" : "negotiation-room"}.md">Read the documentation</a><a href="${GITHUB}">See the code on GitHub</a></div>
-</section>
+<section id="s-live" class="screen" aria-label="Live" hidden></section>
+<section id="s-result" class="screen" aria-label="Result" hidden></section>
+</div>
 </main>
 <script type="module" src="${o.script}"></script>
 ${siteFooter(o)}`;
