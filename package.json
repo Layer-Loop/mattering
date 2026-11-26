@@ -28,6 +28,7 @@
     "pack:core": "tsx scripts/pack-core.ts"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@types/node": "^22.0.0",
     "esbuild": "^0.28.2",
     "tsx": "^4.19.0",

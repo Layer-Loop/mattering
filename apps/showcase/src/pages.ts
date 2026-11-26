@@ -16,6 +16,8 @@ export interface PageOptions {
   site: string;
   /** The rooms' own paths. */
   paths: { demos: string; auction: string; negotiation: string };
+  /** Watching a negotiation table run by two parties' own assistants: no Start, and the room base is the table. */
+  watch?: boolean;
 }
 
 const GITHUB = "https://github.com/Layer-Loop/mattering";
@@ -118,6 +120,7 @@ const ROOMS: Record<RoomName, { title: string; description: string; eyebrow: str
 
 /** One room: a card that shows the intro, then the live conversation, then the result. The script fills in the last two. */
 export function roomPage(room: RoomName, o: PageOptions): string {
+  if (o.watch) return watchPage(o);
   const r = ROOMS[room];
   const attrs = ` data-room="${room}"${o.roomBase ? ` data-room-base="${o.roomBase}"` : ""}`;
   const tab = (name: RoomName, label: string) => `<li><a href="${o.paths[name]}"${name === room ? ' aria-current="page"' : ""}>${label}</a></li>`;
@@ -137,6 +140,31 @@ ${siteHeader(o, true)}
 ${r.option ? `<details class="options"><summary>Options</summary><label class="option"><input id="rogue" type="checkbox"><span>${r.option}</span></label></details>` : ""}
 <p id="start-error" class="start-error" role="alert" hidden></p>
 <p class="small">${r.staged} <a href="${GITHUB}/blob/main/docs/${r.doc}.md">How it works, in full</a></p>
+</section>
+<section id="s-live" class="screen" aria-label="Live" hidden></section>
+<section id="s-result" class="screen" aria-label="Result" hidden></section>
+</div>
+</main>
+<script type="module" src="${o.script}"></script>
+${siteFooter(o)}`;
+}
+
+/**
+ * Watching a negotiation table, where two parties' own AI assistants make the
+ * offers through Mattering's MCP server. The same card as the Negotiation
+ * Room, without Start or the cheats: the page polls the table from the start.
+ */
+function watchPage(o: PageOptions): string {
+  const attrs = ` data-room="negotiation" data-watch="1"${o.roomBase ? ` data-room-base="${o.roomBase}"` : ""}`;
+  return `${head(o, "A negotiation table · Mattering", "Watch two parties' AI assistants negotiate through Mattering's MCP server: each round both offers stay sealed until a public clock opens them together, and your browser checks every round.", attrs)}
+${siteHeader(o, true)}
+<main class="page room">
+<header class="reminder"><p class="eyebrow">A negotiation table · watching</p><h1>Two parties’ AI assistants negotiate a price.</h1><p>Each round, both offers are sealed until a public clock opens them together. If they cross, they meet in the middle.</p></header>
+<div class="card">
+<section id="s-intro" class="screen" aria-label="Waiting">
+<p class="lead">Waiting for both sides to join the table.</p>
+<p class="how">Each party’s own AI assistant opens or joins the table, and makes its offers, through Mattering’s MCP server. This page follows along and checks each round in your browser once it opens.</p>
+<p class="small">In this demonstration Mattering’s server holds both parties’ keys and seals their offers for them. Anyone with this page’s address sees each round’s offers, notes and both limits once the round opens. <a href="${GITHUB}/blob/main/docs/mcp.md">How it works, in full</a></p>
 </section>
 <section id="s-live" class="screen" aria-label="Live" hidden></section>
 <section id="s-result" class="screen" aria-label="Result" hidden></section>

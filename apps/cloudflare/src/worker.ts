@@ -20,6 +20,8 @@ import { DEFAULT_MODEL, claudeDecider, claudeNegotiator, modelLabel } from "../.
 import { LocalLogHost, RemoteLogHost, handleLogHost } from "../../showcase/src/log-host.ts";
 import { Room, type RoomState } from "../../showcase/src/room.ts";
 import { NegotiationRoom, type NegotiationRoomState } from "../../showcase/src/negotiation-room.ts";
+import { handleMcpHttp, type TableDirectory } from "../../showcase/src/mcp.ts";
+import { Table, type TableState } from "../../showcase/src/table.ts";
 
 interface Env {
   ROOMS: { idFromName(name: string): unknown; get(id: unknown): { fetch(request: Request): Promise<Response> } };
@@ -52,12 +54,17 @@ interface Env {
    * Default: on when no public witnesses are configured.
    */
   MATTERING_OWN_COSIGNER?: string;
+  /** The most negotiation tables MCP clients may open per day, across everyone. Default 100. */
+  TABLES_PER_DAY?: string;
 }
 
 /** Reserved object names. Not room ids, so visitors cannot reach them as rooms. */
 const BUDGET_NAME = "model-budget";
 const LOG_NAME = "log";
 const DEFAULT_MODEL_AUCTIONS_PER_DAY = 300;
+const DEFAULT_TABLES_PER_DAY = 100;
+/** A negotiation table is deleted this long after anyone last acted at it. */
+const TABLE_LIFETIME_MS = 24 * 60 * 60 * 1000;
 /** What the cosigner beside the log calls itself. Not a real address: it is not independent. */
 const OWN_COSIGNER_NAME = "cosigner.sealed-room.invalid";
 
@@ -149,6 +156,7 @@ function wallClock(params: TestClockParams): WallTestClock {
 export class SealedRoom extends DurableObject<Env> {
   private room: Promise<Room> | undefined;
   private negotiation: Promise<NegotiationRoom> | undefined;
+  private table: Promise<Table> | undefined;
   private log: Promise<LocalLogHost> | undefined;
   private markedAsLog = false;
 
@@ -281,6 +289,25 @@ export class SealedRoom extends DurableObject<Env> {
     return this.negotiation;
   }
 
+  /** A negotiation table, for two parties' own assistants through MCP. Its object holds nothing else. */
+  private openTable(): Promise<Table> {
+    this.table ??= (async () => {
+      const storage = this.ctx.storage;
+      const context = await this.roomContext();
+      return Table.open({
+        mode: context.mode,
+        sourceFor: context.sourceFor,
+        timeOfRound: context.timeOfRound,
+        log: context.log,
+        loadState: () => storage.get<TableState>("table"),
+        saveState: (state) => storage.put("table", state),
+        roundMs: context.simulated ? ROUND_MS_SIMULATED : QUICKNET.period * 1000,
+        releaseAfter: context.simulated ? 6 : 3,
+      });
+    })();
+    return this.table;
+  }
+
   private openRoom(): Promise<Room> {
     this.room ??= (async () => {
       const storage = this.ctx.storage;
@@ -314,13 +341,16 @@ export class SealedRoom extends DurableObject<Env> {
    * worth (a negotiation is two), and says no once the day's allowance is spent.
    */
   private async takeFromBudget(url: URL): Promise<Response> {
-    const limit = Number(this.env.MODEL_AUCTIONS_PER_DAY ?? DEFAULT_MODEL_AUCTIONS_PER_DAY);
+    // Two allowances in one object: model use (in auctions' worth), and new negotiation tables.
+    const tables = url.searchParams.get("kind") === "tables";
+    const limit = Number(tables ? (this.env.TABLES_PER_DAY ?? DEFAULT_TABLES_PER_DAY) : (this.env.MODEL_AUCTIONS_PER_DAY ?? DEFAULT_MODEL_AUCTIONS_PER_DAY));
+    const key = tables ? "budget:tables" : "budget";
     const units = Math.max(1, Math.min(10, Number(url.searchParams.get("units") ?? 1) || 1));
     const today = new Date().toISOString().slice(0, 10);
-    const saved = (await this.ctx.storage.get<{ day: string; used: number }>("budget")) ?? { day: today, used: 0 };
+    const saved = (await this.ctx.storage.get<{ day: string; used: number }>(key)) ?? { day: today, used: 0 };
     const used = saved.day === today ? saved.used : 0;
     const allowed = Number.isFinite(limit) && used + units <= limit;
-    if (allowed) await this.ctx.storage.put("budget", { day: today, used: used + units });
+    if (allowed) await this.ctx.storage.put(key, { day: today, used: used + units });
     return json(200, { allowed, used: allowed ? used + units : used, limit });
   }
 
@@ -334,6 +364,15 @@ export class SealedRoom extends DurableObject<Env> {
           this.markedAsLog = true;
         }
         return await this.logFetch(url, request, url.hostname === LOG_NAME);
+      }
+      // A negotiation table lives in an object of its own, named for it, and lasts a day after its last use.
+      if (url.hostname === "table") {
+        const reply = await (await this.openTable()).handle(request.method, url.pathname, () => readBody(request));
+        if (request.method === "POST") {
+          await this.ctx.storage.put("expires", Date.now() + TABLE_LIFETIME_MS);
+          await this.ctx.storage.setAlarm(Date.now() + 100);
+        }
+        return respond(reply);
       }
       // One room per visitor holds both demonstrations: the auction, and the negotiation under /negotiation/.
       const target = url.pathname.startsWith("/negotiation/") ? await this.openNegotiation() : await this.openRoom();
@@ -362,12 +401,17 @@ export class SealedRoom extends DurableObject<Env> {
       const wait = await (await this.openNegotiation()).work();
       if (wait !== undefined) waits.push(wait);
     }
+    if (await this.ctx.storage.get("table")) {
+      const wait = await (await this.openTable()).work();
+      if (wait !== undefined) waits.push(wait);
+    }
     if (waits.length > 0) return this.ctx.storage.setAlarm(Date.now() + Math.min(...waits));
     const expires = (await this.ctx.storage.get<number>("expires")) ?? 0;
     if (Date.now() >= expires) {
       await this.ctx.storage.deleteAll();
       this.room = undefined;
       this.negotiation = undefined;
+      this.table = undefined;
       return;
     }
     await this.ctx.storage.setAlarm(expires);
@@ -375,6 +419,24 @@ export class SealedRoom extends DurableObject<Env> {
 }
 
 const ROOM_PATH = /^\/room\/([0-9a-f-]{36})(\/.*)$/;
+const TABLE_PATH = /^\/table\/([0-9a-f]{24})(\/negotiation\/.*)$/;
+
+/** Negotiation tables, each in a Durable Object named for it. Opening one draws on a daily allowance. */
+function tableDirectory(env: Env, origin: string): TableDirectory {
+  const stub = (id: string) => env.ROOMS.get(env.ROOMS.idFromName(`table:${id}`));
+  return {
+    async call(id, method, path, body) {
+      if (path === "/create") {
+        const budget = env.ROOMS.get(env.ROOMS.idFromName(BUDGET_NAME));
+        const taken = await budget.fetch(new Request("https://budget/take?kind=tables", { method: "POST" }));
+        if (!taken.ok || ((await taken.json()) as { allowed?: boolean }).allowed !== true) return { status: 429, body: { error: "today's allowance of new negotiation tables is used up; try again tomorrow" } };
+      }
+      const reply = await stub(id).fetch(new Request(`https://table${path}`, { method, ...(body === undefined ? {} : { body: JSON.stringify(body), headers: { "content-type": "application/json" } }) }));
+      return { status: reply.status, body: await reply.json() };
+    },
+    watchUrl: (id) => `${origin}/demo/table?id=${id}`,
+  };
+}
 const LOG_PATH = /^\/log(\/.*)?$/;
 
 export default {
@@ -384,6 +446,20 @@ export default {
     if (room) {
       const stub = env.ROOMS.get(env.ROOMS.idFromName(room[1]!));
       return stub.fetch(new Request(new URL(room[2]! + url.search, url.origin), request));
+    }
+    // Mattering as an MCP server, for AI assistants to negotiate at tables.
+    if (url.pathname === "/mcp") {
+      const reply = await handleMcpHttp(request.method, request.headers, async () => {
+        const text = await request.text();
+        if (text.length > MAX_BODY) throw new Error("request body too large");
+        return text;
+      }, tableDirectory(env, url.origin));
+      return new Response(reply.body || null, { status: reply.status, headers: reply.headers });
+    }
+    // Watching a table: the read-only routes its page polls.
+    const table = TABLE_PATH.exec(url.pathname);
+    if (table && request.method === "GET") {
+      return env.ROOMS.get(env.ROOMS.idFromName(`table:${table[1]}`)).fetch(new Request(`https://table${table[2]}`));
     }
     // What a demonstration page needs to know before any room exists: which model, if any, chooses for the agents.
     if (url.pathname === "/demo-info") {

@@ -38,6 +38,8 @@ import { verifyNegotiation, verifyNegotiationStep, withFileKeys, type Negotiatio
 
 const ROOM = document.documentElement.dataset.room === "negotiation" ? "negotiation" : "auction";
 const AUCTION = ROOM === "auction";
+/** Watching a negotiation table run by two parties' own assistants: no Start and no cheats. */
+const WATCH = document.documentElement.dataset.watch === "1";
 
 /**
  * Where the room lives. On a laptop the page and the room share an origin and
@@ -48,6 +50,11 @@ const template = document.documentElement.dataset.roomBase;
 const HAD_ROOM = template !== undefined && sessionStorage.getItem("mattering-room") !== null;
 function roomBase(): string {
   if (!template) return "";
+  // A watched table is named in the page's address: /demo/table?id=<table>.
+  if (WATCH) {
+    const table = new URLSearchParams(location.search).get("id") ?? "";
+    return template.replace("{table}", /^[0-9a-f]{24}$/.test(table) ? table : "none");
+  }
   let id = sessionStorage.getItem("mattering-room");
   if (!id) {
     id = crypto.randomUUID();
@@ -57,7 +64,7 @@ function roomBase(): string {
 }
 /** Hosted: no room is created until the visitor presses Start (or had one already). */
 const LAZY = template !== undefined;
-let base: string | undefined = LAZY && !HAD_ROOM ? undefined : roomBase();
+let base: string | undefined = LAZY && !HAD_ROOM && !WATCH ? undefined : roomBase();
 
 async function getJson<T>(path: string, body?: unknown): Promise<{ ok: boolean; status: number; json: T }> {
   base ??= roomBase();
@@ -217,8 +224,8 @@ function layOut(): void {
   document.getElementById("s-result")!.innerHTML = `<div id="r-main"></div>
 <details id="r-trust" class="trust"><summary id="r-trust-sum"></summary><div id="r-trust-body"></div></details>
 <details class="fold"><summary>Show the conversation</summary><ol id="r-thread" class="thread full"></ol></details>
-<details class="fold"><summary>Try to cheat</summary><div id="r-cheats"></div></details>
-<div class="again"><button type="button" class="primary" data-action="start">Run it again</button></div>`;
+${WATCH ? "" : `<details class="fold"><summary>Try to cheat</summary><div id="r-cheats"></div></details>
+<div class="again"><button type="button" class="primary" data-action="start">Run it again</button></div>`}`;
 }
 
 function show(screen: "intro" | "live" | "result"): void {
@@ -265,7 +272,8 @@ function cheatList(cheats: Cheat[]): string {
 }
 
 function setStart(label: string, disabled: boolean): void {
-  const button = document.getElementById("start") as HTMLButtonElement;
+  const button = document.getElementById("start") as HTMLButtonElement | null;
+  if (!button) return;
   button.textContent = label;
   button.disabled = disabled;
 }
@@ -597,18 +605,32 @@ namespace Negotiation {
     notes?: Partial<Record<Side, string>>;
     withheld?: Side[];
   }
-  interface Run { id: number; rogue: boolean; useModel: boolean; done: boolean; startedAt?: number; negotiationId: string; mandates: Record<Side, Mandate>; steps: StepView[] }
-  interface State { mode: "live" | "simulated"; beacon: BeaconInfo; decider: string | null; serverTime: number; run: Run | null }
+  interface Run { id: number; rogue: boolean; useModel: boolean; done: boolean; startedAt?: number; negotiationId: string; mandates: Record<Side, Mandate>; steps: StepView[]; maxSteps?: number }
+  interface State {
+    mode: "live" | "simulated";
+    beacon: BeaconInfo;
+    decider: string | null;
+    serverTime: number;
+    run: Run | null;
+    /** Present when watching a negotiation table run by two parties' own assistants. */
+    table?: { id: string; terms: { item: string; unit: string; minPrice: number; maxPrice: number; rounds: number }; waiting: boolean } | null;
+    firms?: Record<Side, { organisation: string; agent: string }>;
+  }
   interface Disclosure { evidence: StepInputs; fileKeys: Record<string, string>; openings: Record<Side, MandateOpening> }
   interface Judged { disclosure: Disclosure; result: StepResult }
 
-  const MAX_STEPS = 3;
+  let MAX_STEPS = 3;
+  /** The unit prices are in: pounds in the demo; a table's own unit when watching one. */
+  let unit = "GBP";
+  const money = (n: number): string => (unit === "GBP" ? pounds(n) : `${num(n)} ${unit}`);
   const SIDES: Side[] = ["buyer", "seller"];
   const WHO = {
     buyer: { agent: "Acme’s agent", short: "Acme", avatar: "A", tone: "t1", side: "left" as const },
     seller: { agent: "Bolt’s agent", short: "Bolt", avatar: "B", tone: "t2", side: "right" as const },
   };
   let state: State | undefined;
+  let table: State["table"];
+  export const waiting = (): boolean => !!state?.table && !state.run;
   const judged = new Map<string, Judged>();
   let judging = false;
   let chain: { runId: number; result: NegotiationResult } | undefined;
@@ -652,6 +674,17 @@ namespace Negotiation {
       mode = json.mode;
       beacon = json.beacon;
       decider = json.decider;
+      if (json.table && json.firms) {
+        WHO.buyer.agent = json.firms.buyer.agent;
+        WHO.buyer.short = json.firms.buyer.organisation;
+        WHO.buyer.avatar = json.firms.buyer.organisation.replace(/^the /i, "")[0]?.toUpperCase() ?? "B";
+        WHO.seller.agent = json.firms.seller.agent;
+        WHO.seller.short = json.firms.seller.organisation;
+        WHO.seller.avatar = json.firms.seller.organisation.replace(/^the /i, "")[0]?.toUpperCase() ?? "S";
+        unit = json.table.terms.unit;
+        table = json.table;
+      }
+      MAX_STEPS = json.run?.maxSteps ?? json.table?.terms.rounds ?? 3;
       if (json.run && json.run.id !== shownRun) {
         shownRun = json.run.id;
         cheatOut.clear();
@@ -771,14 +804,14 @@ namespace Negotiation {
         if (!offer || offer.price === undefined) out.push({ at, html: bubble({ ...b, sealed: true, ...(s.phase === "released" ? { text: "Opening…" } : {}) }) });
         else {
           const said = words(run, s, side);
-          out.push({ at, html: bubble({ ...b, sealed: false, fresh, amount: pounds(offer.price), ...(offer.mandate === "beyond" ? { tag: { text: "Beyond its limit", kind: "bad" as const } } : {}), ...(said ? { text: said } : {}) }) });
+          out.push({ at, html: bubble({ ...b, sealed: false, fresh, amount: money(offer.price), ...(offer.mandate === "beyond" ? { tag: { text: "Beyond its limit", kind: "bad" as const } } : {}), ...(said ? { text: said } : {}) }) });
         }
       }
       if (s.phase === "released") {
         const j = judgedOf(run, s.step);
         const o = j?.result.outcome;
         const a = offerOf(run, s.step, "buyer")?.price, b = offerOf(run, s.step, "seller")?.price;
-        const text = !j ? "Both offers open…" : !o ? "This round could not be checked." : o.deal ? `<b>The offers crossed.</b> Acme offered ${pounds(o.buyerOffer)} and Bolt asked ${pounds(o.sellerOffer)}, so they meet in the middle: <b>${pounds(o.price)}</b>.` : a !== undefined && b !== undefined ? `<b>No deal yet:</b> ${pounds(b - a)} apart.${s.step === MAX_STEPS ? " That was the last round." : ""}` : "No deal yet.";
+        const text = !j ? "Both offers open…" : !o ? "This round could not be checked." : o.deal ? `<b>The offers crossed.</b> ${WHO.buyer.short} offered ${money(o.buyerOffer)} and ${WHO.seller.short} asked ${money(o.sellerOffer)}, so they meet in the middle: <b>${money(o.price)}</b>.` : a !== undefined && b !== undefined ? `<b>No deal yet:</b> ${money(b - a)} apart.${s.step === MAX_STEPS ? " That was the last round." : ""}` : "No deal yet.";
         out.push(system(s.releaseAt, text, o?.deal ? "deal" : "key"));
       }
       stepStart = s.releaseAt + 1;
@@ -805,7 +838,7 @@ namespace Negotiation {
 
   function foot(run: Run): string {
     const cur = run.steps.at(-1);
-    if (!cur || cur.phase === "released" || !cur.submitted?.buyer) return "";
+    if (WATCH || !cur || cur.phase === "released" || !cur.submitted?.buyer) return "";
     const busy = cheatBusy.has("peek");
     return `<div class="peek"><button type="button" class="ghost small-button" data-action="cheat" data-cheat="peek"${busy ? " disabled" : ""}>${busy ? "Trying…" : "Try to peek at Acme’s offer as Bolt"}</button></div>`;
   }
@@ -820,14 +853,14 @@ namespace Negotiation {
       head = "The negotiation could not be checked";
       line = c?.problem ?? "";
     } else if (o?.deal) {
-      head = beyond ? `A deal at ${pounds(o.price)}, but ${beyond === "buyer" ? "Acme" : "Bolt"}’s agent broke its limit` : `Acme pays ${pounds(o.price)} today`;
-      line = `For the ${pounds(10_000)} invoice due in 60 days. In round ${o.step}, Acme offered ${pounds(o.buyerOffer)} and Bolt asked ${pounds(o.sellerOffer)}, so they met in the middle.${beyond === "buyer" ? " Acme’s offer was above what its firm allowed." : beyond === "seller" ? " Bolt’s price was below what its firm allowed." : " Both agents stayed within their limits."}`;
+      head = beyond ? `A deal at ${money(o.price)}, but ${WHO[beyond].short}’s agent broke its limit` : table ? `A deal at ${money(o.price)}` : `Acme pays ${money(o.price)} today`;
+      line = `${table ? `${table.terms.item}.` : `For the ${money(10_000)} invoice due in 60 days.`} In round ${o.step}, ${WHO.buyer.short} offered ${money(o.buyerOffer)} and ${WHO.seller.short} asked ${money(o.sellerOffer)}, so they met in the middle.${beyond === "buyer" ? ` ${WHO.buyer.short}’s offer was above what its firm allowed.` : beyond === "seller" ? ` ${WHO.seller.short}’s price was below what its firm allowed.` : " Both agents stayed within their limits."}`;
     } else {
       head = "No deal";
-      line = `The offers didn’t cross in ${run.steps.length} rounds, so Acme pays the full ${pounds(10_000)} when the invoice is due.`;
+      line = table ? `The offers didn’t cross in ${run.steps.length} rounds.` : `The offers didn’t cross in ${run.steps.length} rounds, so Acme pays the full ${money(10_000)} when the invoice is due.`;
     }
     return `<p class="eyebrow">Result</p><h2 class="result-h${beyond ? " bad" : ""}">${esc(head)}</h2><p class="lead">${esc(line)}</p>
-${open ? `<p class="limits">The limits, disclosed to you afterwards: Acme could pay at most <b>${pounds(open.buyer.limit)}</b>; Bolt could accept no less than <b>${pounds(open.seller.limit)}</b>. Neither agent saw the other’s.</p>` : ""}`;
+${open ? `<p class="limits">The limits, disclosed to you afterwards: ${esc(WHO.buyer.short)} could pay at most <b>${money(open.buyer.limit)}</b>; ${esc(WHO.seller.short)} could accept no less than <b>${money(open.seller.limit)}</b>. Neither agent saw the other’s.</p>` : ""}`;
   }
 
   export function draw(): "intro" | "live" | "result" {
@@ -873,9 +906,9 @@ ${open ? `<p class="limits">The limits, disclosed to you afterwards: Acme could 
       { ok: allOk(g.intact!), text: "Nothing in the log was changed or removed", detail: allOk(g.intact!) ? "The log’s Merkle root matches the one the cosigner signed." : failures(g.intact!) },
       { ok: allOk(g.opens!) && valid === offers.length && limitsOk, text: "Every offer opens and matches its entry, and the disclosed limits match the firms’ mandates", detail: `${valid} of ${offers.length} offers. ${limitsOk ? "Both" : "Not all"} limits.` },
       beyond.length === 0
-        ? { ok: true, text: "Both agents stayed within their limits", detail: open ? `Acme never offered more than ${pounds(open.buyer.limit)}. Bolt never asked less than ${pounds(open.seller.limit)}.` : "Every offer was within its mandate." }
-        : { ok: false, text: beyond.every((b) => b.side === "buyer") ? "Acme’s agent stayed within its limit" : beyond.every((b) => b.side === "seller") ? "Bolt’s agent stayed within its limit" : "Both agents stayed within their limits", detail: beyond.map((b) => `Round ${stepOf(b)}: ${b.side === "buyer" ? "Acme offered" : "Bolt asked"} ${pounds(b.price!)}; its limit was ${pounds(open![b.side!].limit)}.`).join(" ") },
-      { ok: c?.ok === true && allOk(g.rules!), text: o?.deal ? "The price, worked out again here" : "The result, worked out again here", detail: !c ? "Could not be worked out." : !c.ok ? (c.problem ?? "The rounds do not form one negotiation.") : o?.deal ? `(${pounds(o.buyerOffer)} + ${pounds(o.sellerOffer)}) ÷ 2 = ${pounds(o.price)}${(o.buyerOffer + o.sellerOffer) % 2 ? ", rounded down to whole pounds" : ""}.` : `No deal: the offers did not cross in ${steps.length} rounds.` },
+        ? { ok: true, text: "Both agents stayed within their limits", detail: open ? `${WHO.buyer.short} never offered more than ${money(open.buyer.limit)}. ${WHO.seller.short} never asked less than ${money(open.seller.limit)}.` : "Every offer was within its mandate." }
+        : { ok: false, text: beyond.every((b) => b.side === "buyer") ? `${WHO.buyer.short}’s agent stayed within its limit` : beyond.every((b) => b.side === "seller") ? `${WHO.seller.short}’s agent stayed within its limit` : "Both agents stayed within their limits", detail: beyond.map((b) => `Round ${stepOf(b)}: ${b.side === "buyer" ? `${WHO.buyer.short} offered` : `${WHO.seller.short} asked`} ${money(b.price!)}; its limit was ${money(open![b.side!].limit)}.`).join(" ") },
+      { ok: c?.ok === true && allOk(g.rules!), text: o?.deal ? "The price, worked out again here" : "The result, worked out again here", detail: !c ? "Could not be worked out." : !c.ok ? (c.problem ?? "The rounds do not form one negotiation.") : o?.deal ? `(${money(o.buyerOffer)} + ${money(o.sellerOffer)}) ÷ 2 = ${money(o.price)}${(o.buyerOffer + o.sellerOffer) % 2 ? ", rounded down to a whole number" : ""}.` : `No deal: the offers did not cross in ${steps.length} rounds.` },
     ];
     checks = { status: "done", runId: run.id, at: now(), items };
   }
@@ -1012,7 +1045,8 @@ draw();
 if (base !== undefined) {
   void room.poll().then(() => {
     draw();
-    if (room.running()) startPolling();
+    // A watched table may not have started yet: keep asking until it finishes.
+    if (room.running() || (WATCH && !room.finished())) startPolling();
   });
 }
 // The countdowns need redrawing more often than the server needs asking.

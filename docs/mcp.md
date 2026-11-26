@@ -1,0 +1,49 @@
+# Mattering as an MCP server
+
+Mattering offers its sealed negotiation to AI assistants through the [Model Context Protocol](https://modelcontextprotocol.io). Two people, or one person with two different assistants, connect their assistants to Mattering, and each negotiates for one side at a **table**. For example, Claude might act for the buyer and ChatGPT for the seller. Each round, both offers are sealed until a public clock opens them together; neither assistant can see the other's offer before making its own.
+
+**Status:** proof of concept, not security reviewed. In this version Mattering's server holds both parties' keys and seals their offers for them, as in the [Negotiation Room](negotiation-room.md). In practice each party would seal on its own machine, so that no one else ever holds its keys.
+
+## Connecting an assistant
+
+The server is at `https://mattering.ai/mcp`. It uses MCP's Streamable HTTP transport, needs no sign-in, and offers four tools.
+
+- **Claude** (claude.ai, the Claude apps, Claude Code): add a custom connector with that URL. In Claude Code: `claude mcp add --transport http mattering https://mattering.ai/mcp`.
+- **ChatGPT**: in a plan and mode that allow custom connectors to MCP servers, add a connector with that URL and no authentication.
+- **Any MCP client** that speaks Streamable HTTP works the same way.
+
+On a laptop, `npm run showcase` serves the same endpoint at `http://127.0.0.1:8790/mcp`, for clients on the same machine; it refuses requests that a web page on any other site makes through the browser.
+
+## The tools
+
+| Tool | What it does |
+| --- | --- |
+| `start_negotiation` | Opens a table: what is negotiated, the price range, the unit, how many rounds (1 to 5, default 3) and how long each stays open (30 to 600 seconds, default 120). The caller takes a side and sets its private limit. Returns a token for the caller and an invite code for the other side |
+| `join_negotiation` | Takes the other side with the invite code, setting its own private limit. Round 1 begins at once |
+| `negotiation_status` | Everything the caller's side may know: the terms, its own limit, the current round and its timing, whether each side has sealed, every opened round's two offers, and the result |
+| `make_offer` | Seals the caller's offer for the current round, with an optional note to its own organisation. Only the first offer in a round counts. An offer beyond the caller's own limit is refused |
+
+A conversation goes like this. Tell your assistant something like "open a Mattering negotiation to sell early payment of a £10,000 invoice, between £9,000 and £10,000; we accept no less than £9,600", and pass the invite it returns to the other side. Then ask each assistant, round by round, to make its offer, and to check the status once the round opens.
+
+## How a table runs
+
+- Each party's limit becomes its organisation's mandate, committed so the other side cannot read it ([protocol.md](protocol.md), section 10).
+- Each round is a step of a sealed negotiation on the shared log, with a fixed window. Offers are sealed to both parties and to the round's release, a few drand rounds after the window closes. The log closes and is cosigned before they open.
+- If the buyer's offer is at least the seller's, the deal is at the midpoint. Otherwise the next round begins, up to the agreed number. A side that misses a round's window makes no offer in it, and that round ends without a deal.
+- Rounds have fixed windows rather than closing as soon as both sides have sealed. An early close would change when a round's offers open after they were sealed, which needs more design and review.
+
+## Watching a table
+
+Every tool reply carries a watch link, `https://mattering.ai/demo/table?id=<table>`. The page shows the negotiation as a conversation, round by round, and once it ends works every round out in the browser from the evidence and the two parties' disclosures, as the Negotiation Room does. Anyone with the link sees each round's offers, notes and both limits once the round opens.
+
+## Tokens and invites
+
+A token acts for one side, and an invite lets one party join; each starts with the table's id. They are random and unguessable, but they pass through the assistants' conversations, so anyone who can read those conversations can act for that side. Keep them as you would a password for a demonstration account.
+
+## Limits
+
+On mattering.ai, tables open at most `TABLES_PER_DAY` times a day across everyone (default 100), and a table is deleted a day after anyone last acted at it.
+
+## Not covered by automated tests
+
+`tests/mcp.test.ts` drives two tables through the laptop server with the official MCP TypeScript client: two assistants open and join, an offer beyond a limit and a second offer in a round are refused, the rounds run to a deal, and the result is worked out again from the evidence. It also checks the endpoint's answers to other methods and other origins. The Cloudflare version was run by hand in Cloudflare's local runtime with the simulated clock on 2026-11-26, driven by the same client, and the watch page reached the deal with every check passing. Neither has been run from Claude or ChatGPT themselves, or against live drand on Cloudflare.
