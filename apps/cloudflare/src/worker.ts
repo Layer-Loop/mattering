@@ -436,6 +436,7 @@ function tableDirectory(env: Env, origin: string): TableDirectory {
     },
     watchUrl: (id) => `${origin}/demo/table?id=${id}`,
     clock: env.SIMULATED === "1" ? "simulated" : "live",
+    evidenceUrl: (hash) => `${origin}/log/policies/${hash}/evidence`,
   };
 }
 const LOG_PATH = /^\/log(\/.*)?$/;
