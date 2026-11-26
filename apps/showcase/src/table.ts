@@ -68,6 +68,12 @@ interface PartyState {
   recipient: string;
   mandate: Mandate;
   opening: MandateOpening;
+  /**
+   * True: the assistant makes this side's offers by itself. False: it proposes
+   * each offer to its user and seals it only once the user has approved that
+   * price. Absent in tables opened before the choice existed: autonomous.
+   */
+  autonomous?: boolean;
 }
 
 interface RoundState {
@@ -141,6 +147,10 @@ function whole(value: unknown, field: string, min: number, max: number, fallback
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < min || value > max) fail(`${field}: want a whole number from ${min} to ${max}`);
   return value;
 }
+function flag(value: unknown, field: string): boolean {
+  if (typeof value !== "boolean") fail(`${field}: want true or false`);
+  return value;
+}
 function side(value: unknown): Side {
   if (value !== "buyer" && value !== "seller") fail('side: want "buyer" or "seller"');
   return value;
@@ -148,11 +158,16 @@ function side(value: unknown): Side {
 
 /** What the side should do now, in a sentence an assistant can act on. */
 function nextStep(st: TableState, s: Side, current: RoundState | undefined, now: number): string {
+  const autonomous = st.parties[s]?.autonomous !== false;
   if (!st.parties[other(s)]) return st.host === s ? "Share the invite with the other party, then call wait_for_next_round until they join." : "Wait for the other side to join: call wait_for_next_round.";
   if (st.done) return "The negotiation is over. Report the result.";
   if (!current) return "Call wait_for_next_round until the next round begins.";
   const left = Math.max(0, Math.ceil((current.closeAt - now) / 1000));
-  if (!current.submitted[s] && now < current.closeAt) return `Make your offer for round ${current.policy.step} with make_offer within ${left} seconds. Then call wait_for_next_round.`;
+  if (!current.submitted[s] && now < current.closeAt) {
+    return autonomous
+      ? `Make your offer for round ${current.policy.step} with make_offer within ${left} seconds. Then call wait_for_next_round.`
+      : `Propose an offer for round ${current.policy.step} to your user and ask them to approve that exact price; the window closes in ${left} seconds. Once they approve, call make_offer with approvedByUser: true, then wait_for_next_round.`;
+  }
   if (!current.submitted[s]) return `Round ${current.policy.step} closed without an offer from you. Call wait_for_next_round until the next round begins.`;
   return `Your offer for round ${current.policy.step} is sealed. Call wait_for_next_round until the round opens.`;
 }
@@ -189,12 +204,12 @@ export class Table {
   }
 
   /** One party takes a side and sets its limit. Its firm's mandate is issued here. */
-  private async seat(organisation: string, s: Side, limit: number, expires: number): Promise<PartyState> {
+  private async seat(organisation: string, s: Side, limit: number, autonomous: boolean, expires: number): Promise<PartyState> {
     const org = generateKeyPair();
     const signer = generateKeyPair();
     const box = await generateRecipientKeys();
     const { mandate, opening } = issueMandate(org, { organisationName: organisation, agent: signer.publicKey, side: s, unit: this.state!.terms.unit, limit, expires });
-    return { token: `${this.state!.id}.${secret()}`, organisation, orgSecret: org.secretKey, signerSecret: signer.secretKey, identity: box.identity, recipient: box.recipient, mandate, opening };
+    return { token: `${this.state!.id}.${secret()}`, organisation, orgSecret: org.secretKey, signerSecret: signer.secretKey, identity: box.identity, recipient: box.recipient, mandate, opening, autonomous };
   }
 
   private async expiry(): Promise<number> {
@@ -222,9 +237,10 @@ export class Table {
       const now = Date.now();
       this.state = { version: 1, id, invite: `${id}.${secret()}`, createdAt: now, touchedAt: now, terms, host, parties: {}, rounds: [], done: false };
       const limit = whole(input.limit, "limit", minPrice, maxPrice);
-      this.state.parties[host] = await this.seat(text(input.organisation, "organisation", host === "buyer" ? "The buyer" : "The seller"), host, limit, await this.expiry());
+      const autonomous = flag(input.autonomous, "autonomous");
+      this.state.parties[host] = await this.seat(text(input.organisation, "organisation", host === "buyer" ? "The buyer" : "The seller"), host, limit, autonomous, await this.expiry());
       await this.options.saveState(this.state);
-      return { tableId: id, side: host, token: this.state.parties[host]!.token, invite: this.state.invite, terms };
+      return { tableId: id, side: host, token: this.state.parties[host]!.token, invite: this.state.invite, terms, yourLimit: limit, autonomous };
     });
   }
 
@@ -236,12 +252,13 @@ export class Table {
       const s = other(st.host);
       if (st.parties[s]) fail("both sides of this table are taken");
       const limit = whole(input.limit, "limit", st.terms.minPrice, st.terms.maxPrice);
-      st.parties[s] = await this.seat(text(input.organisation, "organisation", s === "buyer" ? "The buyer" : "The seller"), s, limit, await this.expiry());
+      const autonomous = flag(input.autonomous, "autonomous");
+      st.parties[s] = await this.seat(text(input.organisation, "organisation", s === "buyer" ? "The buyer" : "The seller"), s, limit, autonomous, await this.expiry());
       st.startedAt = Date.now();
       st.touchedAt = Date.now();
       await this.beginRound((await deadlineRound(this.viewer)).round);
       await this.options.saveState(st);
-      return { tableId: st.id, side: s, token: st.parties[s]!.token, terms: st.terms };
+      return { tableId: st.id, side: s, token: st.parties[s]!.token, terms: st.terms, otherOrganisation: st.parties[st.host]!.organisation, yourLimit: limit, autonomous };
     });
   }
 
@@ -297,6 +314,11 @@ export class Table {
       if (s === "buyer" ? price > party.opening.limit : price < party.opening.limit) {
         fail(`refused: your firm's mandate lets you ${s === "buyer" ? `pay at most ${party.opening.limit}` : `accept no less than ${party.opening.limit}`} ${st.terms.unit}`);
       }
+      // A side whose user approves each offer seals only what the user has approved. The server cannot see the
+      // conversation, so this rests on the assistant saying so; without it, the assistant is sent back to ask.
+      if (party.autonomous === false && input.approvedByUser !== true) {
+        fail(`your user chose to approve each offer: ask them to approve ${price} ${st.terms.unit} for round ${round.policy.step}, then call make_offer again with approvedByUser: true`);
+      }
       const note = typeof input.note === "string" ? input.note.replace(/\s+/g, " ").trim().slice(0, TABLE_LIMITS.maxNote) : "";
       const sealed = await prepareOffer(round.policy, s, price, generateKeyPair(party.signerSecret), party.opening);
       const receipt = await this.options.log.submit(sealed.submission, sealed.envelope);
@@ -327,6 +349,7 @@ export class Table {
         terms: st.terms,
         yourLimit: party.opening.limit,
         yourLimitMeans: s === "buyer" ? "the most you may offer" : "the least you may accept",
+        youBidAutonomously: party.autonomous !== false,
         state: !st.parties[other(s)] ? "waiting for the other side to join" : st.done ? "finished" : "running",
         ...(!st.parties[other(s)] && st.host === s ? { invite: st.invite } : {}),
         currentRound: current

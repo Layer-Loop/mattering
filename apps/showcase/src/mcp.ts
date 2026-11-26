@@ -45,6 +45,7 @@ const SERVER = { name: "mattering", title: "Mattering sealed negotiation", versi
 
 const INSTRUCTIONS =
   `${DEMONSTRATION} The organisations are whoever the parties name, and are not verified. ` +
+  "Before opening or joining a table, ask your user for each setting the tool needs, and never choose one yourself: the opener's item, price range, own limit, round length and whether to bid autonomously; the joiner's own limit and whether to bid autonomously. If your user chose not to bid autonomously, propose each offer to them and seal it only once they have approved that exact price. " +
   "Mattering runs sealed negotiations between two parties. One party opens a table and shares the invite; the other joins. " +
   "Each sets a private limit, which its firm's mandate fixes in advance: the buyer's most it may offer, the seller's least it may accept. " +
   "Then, round by round, each side seals one offer. Neither side can see the other's offer until both open together when a public clock (drand) releases the key. " +
@@ -67,7 +68,7 @@ const TOOLS = [
     title: "Open a negotiation table",
     description:
       `${DEMONSTRATION} ` +
-      "Open a sealed negotiation table and take one side of it. You set what is being negotiated, the price range, and your own private limit. " +
+      "Open a sealed negotiation table and take one side of it. Ask your user for each of these first, and never choose them yourself: what is being negotiated, the lowest and highest price, their own limit, how long each round stays open, and whether you should bid autonomously or ask them to approve each offer. " +
       "Returns your token (keep it secret; it acts for your side) and an invite code for the other party to pass to join_negotiation. " +
       "Rounds begin when the other side joins.",
     inputSchema: {
@@ -81,9 +82,10 @@ const TOOLS = [
         unit: str("The currency or unit of the prices. Default GBP."),
         organisation: str("The name of the organisation you act for. Default 'The buyer' or 'The seller'."),
         rounds: int("How many rounds at most. Default 3.", TABLE_LIMITS.minRounds, TABLE_LIMITS.maxRounds),
-        roundSeconds: int(`How long each round stays open for offers, in seconds. Default ${TABLE_LIMITS.defaultRoundSeconds}. Leave an assistant at least 20 seconds to check, decide and seal.`, TABLE_LIMITS.minRoundSeconds, TABLE_LIMITS.maxRoundSeconds),
+        roundSeconds: int(`How long each round stays open for offers, in seconds, as your user chooses: ${TABLE_LIMITS.defaultRoundSeconds} suits autonomous bidding; allow 180 or more if your user approves each offer.`, TABLE_LIMITS.minRoundSeconds, TABLE_LIMITS.maxRoundSeconds),
+        autonomous: { type: "boolean", description: "As your user chooses: true to make every offer yourself, false to propose each offer to your user and seal it only once they approve it." },
       },
-      required: ["side", "item", "minPrice", "maxPrice", "limit"],
+      required: ["side", "item", "minPrice", "maxPrice", "limit", "roundSeconds", "autonomous"],
       additionalProperties: false,
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
@@ -93,7 +95,7 @@ const TOOLS = [
     title: "Join a negotiation table",
     description:
       `${DEMONSTRATION} ` +
-      "Join a sealed negotiation table with the invite code the other party shared, taking the remaining side. You set your own private limit. " +
+      "Join a sealed negotiation table with the invite code the other party shared, taking the remaining side. Ask your user first, and never choose these yourself: their own limit, and whether you should bid autonomously or ask them to approve each offer. The reply gives the table's terms: read them back to your user. " +
       "Returns your token (keep it secret; it acts for your side) and the table's terms. Round 1 begins at once.",
     inputSchema: {
       type: "object",
@@ -101,8 +103,9 @@ const TOOLS = [
         invite: str("The invite code from the party that opened the table."),
         limit: int("Your private limit, in whole units: as buyer the most you may offer, as seller the least you may accept."),
         organisation: str("The name of the organisation you act for."),
+        autonomous: { type: "boolean", description: "As your user chooses: true to make every offer yourself, false to propose each offer to your user and seal it only once they approve it." },
       },
-      required: ["invite", "limit"],
+      required: ["invite", "limit", "autonomous"],
       additionalProperties: false,
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
@@ -147,7 +150,7 @@ const TOOLS = [
     description:
       `${DEMONSTRATION} ` +
       "Seal your side's offer for the current round. It is locked until the round opens, for everyone including the other side, and cannot be changed or withdrawn; only your first offer in a round counts. " +
-      "An offer beyond your own limit is refused. You may add a short note to your own organisation, shown once the round opens. " +
+      "An offer beyond your own limit is refused. If your user chose to approve each offer, propose it to them first and pass approvedByUser: true only once they approve that exact price. You may add a short note to your own organisation, shown once the round opens. " +
       "If you miss a round's window, that round ends without a deal.",
     inputSchema: {
       type: "object",
@@ -155,6 +158,7 @@ const TOOLS = [
         token: str("Your token, from start_negotiation or join_negotiation."),
         price: int("Your offer, in whole units, within the table's price range and your limit."),
         note: str(`Optional: one sentence to your own organisation explaining the offer, at most ${TABLE_LIMITS.maxNote} characters. Shown after the round opens.`),
+        approvedByUser: { type: "boolean", description: "Required when your user chose to approve each offer: true only once they have approved this exact price for this round. Never set it on their behalf." },
       },
       required: ["token", "price"],
       additionalProperties: false,
@@ -167,9 +171,9 @@ const TOOLS = [
 function summary(tool: string, r: Record<string, unknown>): string {
   switch (tool) {
     case "start_negotiation":
-      return `The table is open. You are the ${r.side}. Give the other party this invite code to pass to join_negotiation: ${r.invite}\nKeep your token secret and pass it to make_offer, negotiation_status and wait_for_next_round: ${r.token}\nAnyone can watch the negotiation at ${r.watchUrl}\nThen call wait_for_next_round until the other side joins.`;
+      return `The table is open. You are the ${r.side}, ${r.autonomous ? "bidding autonomously" : "asking your user to approve each offer"}. Give the other party this invite code to pass to join_negotiation: ${r.invite}\nKeep your token secret and pass it to make_offer, negotiation_status and wait_for_next_round: ${r.token}\nAnyone can watch the negotiation at ${r.watchUrl}\nThen call wait_for_next_round until the other side joins.`;
     case "join_negotiation":
-      return `You have joined as the ${r.side}. Round 1 has begun: make your offer with make_offer. Keep your token secret and pass it to make_offer, negotiation_status and wait_for_next_round: ${r.token}\nWatch at ${r.watchUrl}`;
+      return `You have joined as the ${r.side}, ${r.autonomous ? "bidding autonomously" : "asking your user to approve each offer"}. Read the terms back to your user. Round 1 has begun: ${r.autonomous ? "make your offer with make_offer" : "propose your first offer to your user"}. Keep your token secret and pass it to make_offer, negotiation_status and wait_for_next_round: ${r.token}\nWatch at ${r.watchUrl}`;
     case "make_offer":
       return `Sealed: your offer of ${r.price} for round ${r.round}. Nobody can read it until the round opens at ${r.opensAt}. Now call wait_for_next_round, and keep calling it until the negotiation is finished.`;
     case "wait_for_next_round":
@@ -182,6 +186,26 @@ function summary(tool: string, r: Record<string, unknown>): string {
 type Message = { jsonrpc?: unknown; id?: unknown; method?: unknown; params?: unknown };
 const error = (id: unknown, code: number, message: string) => ({ jsonrpc: "2.0", id: id ?? null, error: { code, message } });
 const result = (id: unknown, value: unknown) => ({ jsonrpc: "2.0", id, result: value });
+
+/** What the user must decide before a table is opened or joined, in words for the assistant to ask about. */
+const SETTINGS: Record<string, Record<string, string>> = {
+  start_negotiation: {
+    item: "what is being negotiated",
+    minPrice: "the lowest price either side may offer",
+    maxPrice: "the highest price either side may offer",
+    limit: "their own limit (as seller, the least they will accept; as buyer, the most they will pay)",
+    roundSeconds: "how long each round should stay open",
+    autonomous: "whether you should bid autonomously or ask them to approve each offer",
+  },
+  join_negotiation: {
+    limit: "their own limit (as buyer, the most they will pay; as seller, the least they will accept)",
+    autonomous: "whether you should bid autonomously or ask them to approve each offer",
+  },
+};
+function missingSettings(tool: string, args: Record<string, unknown>): string[] {
+  return Object.entries(SETTINGS[tool] ?? {}).filter(([key]) => args[key] === undefined || args[key] === null || args[key] === "").map(([, words]) => words);
+}
+const listOf = (items: string[]): string => (items.length < 2 ? items.join("") : `${items.slice(0, -1).join("; ")}; and ${items.at(-1)}`);
 
 /** A tool's reply: the environment first, in words and as data, then what happened. */
 function answer(name: string, body: Record<string, unknown>, tables: TableDirectory) {
@@ -248,6 +272,8 @@ async function callTool(name: string, args: Record<string, unknown>, tables: Tab
     negotiation_status: { table: () => tableOf(args.token), path: "/status", body: () => args },
     make_offer: { table: () => tableOf(args.token), path: "/offer", body: () => args },
   };
+  const missing = missingSettings(name, args);
+  if (missing.length) return { content: [{ type: "text", text: `Not yet: ask your user for ${listOf(missing)}, then call ${name} again. Do not choose these yourself.` }], isError: true };
   const route = routes[name];
   if (!route) return { content: [{ type: "text", text: `No tool called ${name}.` }], isError: true };
   const id = route.table();
