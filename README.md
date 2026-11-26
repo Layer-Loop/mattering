@@ -5,7 +5,7 @@
 
 Purpose: Seal digital information until a future time, and let anyone check the seal and the opening.
 
-**See it running:** [mattering.ai/demo](https://mattering.ai/demo) runs a sealed-bid auction between three software agents on this code, against a public clock.
+**See it running:** [mattering.ai/demo](https://mattering.ai/demo) runs a sealed-bid auction between three software agents, and a sealed negotiation between two, on this code, against a public clock.
 
 Mattering uses existing cryptography. The time lock is [drand](https://drand.love)'s tlock, called through drand's own library. What Mattering adds is a documented envelope format, a witness log with receipts and deadlines, a verifier that recomputes an outcome from published evidence, and a demo that shows all of it working.
 
@@ -49,16 +49,16 @@ The service runs the demo at mattering.ai, where each visitor gets a room of the
 
 ## See it
 
-**The Sealed Room** is a web page that runs a sealed-bid auction between three agents and invites you to cheat. It is the quickest way to see what Mattering does. It is live at [mattering.ai/demo](https://mattering.ai/demo), or run it yourself:
+**The Sealed Room** is a web page that runs a sealed-bid auction between three agents and invites you to cheat. It is the quickest way to see what Mattering does. It is live at [mattering.ai/demo/auction](https://mattering.ai/demo/auction), or run it yourself:
 
 ```bash
 npm install
 npm run showcase
 ```
 
-Then open http://127.0.0.1:8790. Use `npm run showcase:offline` if you have no internet connection. More in [docs/showcase.md](docs/showcase.md).
+Then open http://127.0.0.1:8790/demo. Use `npm run showcase:offline` if you have no internet connection. More in [docs/showcase.md](docs/showcase.md).
 
-**The Negotiation Room**, at http://127.0.0.1:8790/negotiation from the same command, shows two firms' agents negotiating early payment of an invoice in sealed steps, each under a mandate with a limit the other side cannot see. With a Claude API key, a language model chooses each agent's offer, held to the same mandate. Your browser checks every step from what the firms disclose to it. More in [docs/negotiation-room.md](docs/negotiation-room.md).
+**The Negotiation Room**, at http://127.0.0.1:8790/demo/negotiation from the same command, shows two firms' agents negotiating early payment of an invoice in sealed steps, each under a mandate with a limit the other side cannot see. With a Claude API key, a language model chooses each agent's offer, held to the same mandate. Your browser checks every step from what the firms disclose to it. More in [docs/negotiation-room.md](docs/negotiation-room.md).
 
 ## Try it
 

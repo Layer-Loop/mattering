@@ -2,7 +2,7 @@
 
 A web page that shows sealed negotiation between software agents to people who do not read code. Acme's treasury agent and Bolt's sales agent negotiate early payment of a £10,000 invoice: what Acme pays today for an invoice due in 60 days. Each agent acts under a mandate from its firm, with a limit the other side cannot see.
 
-**Status:** runs on a laptop beside the Sealed Room, and is built for the website at mattering.ai/negotiate. It is a demonstration, and the service behind it is not hardened ([service.md](service.md)).
+**Status:** runs on a laptop beside the Sealed Room, and is built for the website at mattering.ai/demo/negotiation. It is a demonstration, and the service behind it is not hardened ([service.md](service.md)).
 
 ## Running it
 
@@ -10,7 +10,7 @@ A web page that shows sealed negotiation between software agents to people who d
 npm run showcase
 ```
 
-Then open http://127.0.0.1:8790/negotiation. `npm run showcase:offline` runs it on a simulated clock instead of drand. A negotiation takes up to three steps of about 25 seconds each against drand: 15 seconds until a step closes, then 9 until its offers open.
+Then open http://127.0.0.1:8790/demo/negotiation. `npm run showcase:offline` runs it on a simulated clock instead of drand. A negotiation takes up to three steps of about 25 seconds each against drand: 15 seconds until a step closes, then 9 until its offers open. The page calls the steps rounds; it shares its design with the Sealed Room ([showcase.md](showcase.md), "The pages").
 
 ## What happens on the page
 
@@ -32,11 +32,11 @@ ANTHROPIC_API_KEY=... npm run showcase
 `MATTERING_MODEL` chooses the model, as for the auction; the default is `claude-haiku-5-5`. At the start of each step both agents are asked at once. Each is told the rules (offers sealed and opened together, the midpoint if they cross, up to three steps, the invoice paid in full if there is no deal), its own firm's limit, that its firm counts any deal within the mandate as better than none, and a list of every price it has seen: both sides' offers from earlier steps, step by step. It is told that the other side's offer for the current step is sealed, and never to describe, guess or imply it. At the last step it is told plainly that if the offers do not cross there is no deal at all. It answers with an offer and one sentence to its firm.
 
 - **The mandate binds the model as it binds the script.** An answer beyond the agent's limit is thrown away like any unusable answer, and the script decides for that agent. So does an amount out of range, a malformed answer, a refusal, a failure, or no answer within ten seconds.
-- **The page says which.** Before a negotiation starts, the deal panel names the model that will choose the offers (such as "Claude Haiku 5.5"), or says a script will because no model is configured. Each offer then carries a "chosen by …" label beside the agent's name.
-- **The note is shown once the step opens,** under the offer. It is the agent's explanation to its own firm, not part of the evidence, and it is never sealed.
+- **The page says which.** Before a negotiation starts, the page names the model that will choose the offers (such as "Claude Haiku 5.5"), or says a script will because no model is configured. Each agent's track is labelled "chosen by …", and an offer the script chose in place of the model says so where its note would be.
+- **The note is shown once the step opens,** under the chart. It is the agent's explanation to its own firm, not part of the evidence, and it is never sealed.
 - **A note may state only amounts the agent has seen.** Every amount of money in it is compared with the agent's list of seen prices, its own limit, the invoice's figures and the offer it is making. If any other amount appears, such as a guess at the other side's sealed offer, the note is withheld and the page says so; the offer still counts. This checks figures, not wording: a note that misdescribes seen prices without naming a new amount ("the buyer moved from £9,400", written before the buyer's new offer could be seen) is not caught by it, only discouraged by the prompt. Notes are the model's own words, and the page treats them as such.
 - **Chosen offers are held in memory only** until they are sealed.
-- **The rogue option overrides the model:** in the last step Acme's agent offers past its limit by script, whatever the model would have done.
+- **The rogue option overrides the model:** in the last step Acme's agent offers past its limit by script, whatever the model would have done. The page shows that offer as "chosen by a script, told to ignore its limit", with no note.
 
 Without a key, the scripts decide: each agent concedes toward its limit, reaching it at the third step.
 
@@ -49,7 +49,7 @@ Without a key, the scripts decide: each agent concedes toward its limit, reachin
 | Drop Bolt's offer as the log's operator | The browser removes Bolt's offer from the record and judges the step again | The record no longer matches the one signed at the close and countersigned before the offers could be read |
 | Read the offers as an outsider | The browser judges the step with no keys | The prices stay unreadable; an outsider sees only that both offers were in on time |
 
-**Let Acme's agent ignore its mandate in the last step** makes Acme's agent skip its own safeguard and offer past its limit. The deal still happens, and the page shows that the offer was beyond the mandate: Acme can prove its agent exceeded its authority, because the limit was fixed in the mandate before the negotiation began. Mattering detects this afterwards; it does not prevent it.
+**Let Acme's agent ignore its limit in the last round** makes Acme's agent skip its own safeguard and offer past its limit. The deal still happens, and the page shows that the offer was beyond the mandate: Acme can prove its agent exceeded its authority, because the limit was fixed in the mandate before the negotiation began. Mattering detects this afterwards; it does not prevent it.
 
 ## What is real and what is staged
 
@@ -60,11 +60,11 @@ Without a key, the scripts decide: each agent concedes toward its limit, reachin
 - Both agents run on the same server, which holds both firms' keys and mandate openings. In practice each agent runs at its own firm.
 - The firms, the invoice and the limits are invented. The offers come from a language model if one is configured, and from a script otherwise.
 - The disclosure to the visitor is automatic. In practice a firm decides whom to disclose to.
-- Until public witnesses cosign the log, the cosigner is run by the same operator. The page says so.
+- Until public witnesses cosign the log, the cosigner is run by the same operator. The page's scenario says we run the agents' server and hold both keys; the home page and these documents give the general limits.
 
 ## On the website
 
-The website serves the page at `/negotiate`, with its script and styles built from this repository (`npm run build:site`, which writes `negotiation-room.js` and `negotiation-room.css`). Until the page is redesigned it keeps the laptop version's look.
+The website serves the page at `/demo/negotiation`, built from this repository with the Sealed Room's (`npm run build:site`; see [showcase.md](showcase.md)). The old address, `/negotiate`, redirects to it.
 
 - **One room per visitor holds both demonstrations.** The negotiation runs in the same Durable Object as the visitor's auction room, under `/room/<id>/negotiation/…`, on the shared log, and is deleted with it 30 minutes after last use. A room runs at most 10 negotiations.
 - **Nothing happens until the visitor starts.** Before that the page asks only `/demo-info`, which the Worker answers without creating a room, for the name of the model that will choose the offers, if any. The website's `wrangler.jsonc` must send `/demo-info` to the Worker.

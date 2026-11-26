@@ -1,21 +1,27 @@
 /**
- * Build the two files the Mattering website needs from this repository:
+ * Build what the Mattering website needs from this repository:
  *
- *   <site>/src/worker.js                       the Worker and its Durable Object
- *   <site>/public/assets/sealed-room.js        the auction page's script
- *   <site>/public/assets/negotiation-room.js   the negotiation page's script
- *   <site>/public/assets/negotiation-room.css  its styles, until the page is redesigned
+ *   <site>/src/worker.js                     the Worker and its Durable Object
+ *   <site>/public/demo.html                  the way into the demos, at /demo
+ *   <site>/public/demo/auction.html          the Sealed Room, at /demo/auction
+ *   <site>/public/demo/negotiation.html      the Negotiation Room, at /demo/negotiation
+ *   <site>/public/assets/rooms.<hash>.js     the rooms' script
+ *   <site>/public/assets/rooms.<hash>.css    the demo pages' styles
  *
  *   npm run build:site -- ../mattering
  *
- * The site repository commits these files, so deploying it needs nothing from
- * here. Rebuild and commit there whenever this repository changes.
+ * The script and stylesheet are named by their content, so a new build never
+ * meets an old copy in a browser's cache; older builds' files are removed.
+ * The site repository commits all of these, so deploying it needs nothing
+ * from here. Rebuild and commit there whenever this repository changes.
  */
 import { execSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { chooserPage, roomPage, type PageOptions } from "../showcase/src/pages.ts";
 import { bundlePage } from "../showcase/src/server.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -50,12 +56,32 @@ const worker = await build({
   define: { global: "globalThis", window: "globalThis" },
 });
 mkdirSync(join(out, "src"), { recursive: true });
-mkdirSync(join(out, "public", "assets"), { recursive: true });
+const assets = join(out, "public", "assets");
+mkdirSync(join(out, "public", "demo"), { recursive: true });
+mkdirSync(assets, { recursive: true });
 writeFileSync(join(out, "src", "worker.js"), `${banner}\n${worker.outputFiles[0]!.text}`);
-writeFileSync(join(out, "public", "assets", "sealed-room.js"), `${banner}\n${await bundlePage(true)}`);
-writeFileSync(join(out, "public", "assets", "negotiation-room.js"), `${banner}\n${await bundlePage(true, "negotiation.ts")}`);
-writeFileSync(join(out, "public", "assets", "negotiation-room.css"), `/* ${banner.slice(3)} */\n${readFileSync(join(here, "..", "showcase", "web", "style.css"), "utf8")}`);
+
+// The rooms' script and styles, named by content.
+const hashed = (name: string, ext: string, text: string): string => `${name}.${createHash("sha256").update(text).digest("hex").slice(0, 10)}.${ext}`;
+const script = `${banner}\n${await bundlePage(true, "rooms/rooms.ts")}`;
+const styles = `/* ${banner.slice(3)} */\n${readFileSync(join(here, "..", "showcase", "web", "rooms", "rooms.css"), "utf8")}`;
+const scriptFile = hashed("rooms", "js", script);
+const stylesFile = hashed("rooms", "css", styles);
+// Earlier builds' files, including the pages' old scripts, go.
+for (const file of readdirSync(assets)) {
+  if (/^rooms\.[0-9a-f]{10}\.(js|css)$/.test(file) || ["sealed-room.js", "negotiation-room.js", "negotiation-room.css"].includes(file)) rmSync(join(assets, file));
+}
+writeFileSync(join(assets, scriptFile), script);
+writeFileSync(join(assets, stylesFile), styles);
+
+// The pages. Each visitor's room is at /room/<id>, handled by the Worker.
+const pages: PageOptions = { script: `/assets/${scriptFile}`, stylesheet: `/assets/${stylesFile}`, roomBase: "/room/{id}", site: "", paths: { demos: "/demo", auction: "/demo/auction", negotiation: "/demo/negotiation" } };
+const stamp = `<!-- ${banner.slice(3)} -->\n`;
+const withStamp = (html: string): string => html.replace("\n", `\n${stamp}`);
+writeFileSync(join(out, "public", "demo.html"), withStamp(chooserPage(pages)));
+writeFileSync(join(out, "public", "demo", "auction.html"), withStamp(roomPage("auction", pages)));
+writeFileSync(join(out, "public", "demo", "negotiation.html"), withStamp(roomPage("negotiation", pages)));
 console.log(`worker:  ${join(out, "src", "worker.js")}  (${Math.round(worker.outputFiles[0]!.text.length / 1024)} KB)`);
-console.log(`page:    ${join(out, "public", "assets", "sealed-room.js")}`);
-console.log(`page:    ${join(out, "public", "assets", "negotiation-room.js")} and .css`);
+console.log(`pages:   ${join(out, "public", "demo.html")}, demo/auction.html, demo/negotiation.html`);
+console.log(`assets:  ${scriptFile} (${Math.round(script.length / 1024)} KB), ${stylesFile}`);
 console.log(`source:  ${commit}`);

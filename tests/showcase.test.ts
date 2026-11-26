@@ -5,11 +5,15 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { generateKeyPair, prepareBid, verifyAuction, verifyStatements, type AuctionInputs, type AuctionPolicy, type BeaconInfo, type StatementInputs } from "@mattering/core";
 import { AGENTS, SLOT, acceptDecision, type Decider } from "../apps/showcase/src/agents.ts";
 import { claudeDecider } from "../apps/showcase/src/llm.ts";
 import { startShowcase } from "../apps/showcase/src/server.ts";
+import { checkDemo } from "./check-demo.ts";
 
 test("showcase: agents bid, a visitor joins, cheats fail, and the page's own verification agrees", async () => {
   const { url, stop } = await startShowcase({ mode: "simulated", closeAfter: 10, releaseAfter: 5, roundMs: 150, agentGapMs: 150 });
@@ -28,8 +32,12 @@ test("showcase: agents bid, a visitor joins, cheats fail, and the page's own ver
       throw new Error("timed out");
     };
 
-    assert.match(await (await fetch(url + "/")).text(), /The Sealed Room/);
-    assert.ok((await (await fetch(url + "/app.js")).text()).length > 50_000, "browser bundle is served");
+    assert.match(await (await fetch(url + "/demo/auction")).text(), /The Sealed Room/);
+    assert.match(await (await fetch(url + "/demo")).text(), /href="\/demo\/negotiation"/, "the way in leads to both rooms");
+    assert.ok((await (await fetch(url + "/rooms.js")).text()).length > 50_000, "browser bundle is served");
+    assert.deepEqual(await (await fetch(url + "/demo-info")).json(), { decider: null, mode: "simulated" }, "without a model the page is told the scripts decide");
+    const moved = await fetch(url + "/", { redirect: "manual" });
+    assert.equal(moved.headers.get("location"), "/demo/auction", "the old address leads to the room");
     assert.equal((await get<State>("/demo/state")).json.run, null);
     assert.equal((await get("/demo/forge", {})).status, 409);
 
@@ -61,8 +69,19 @@ test("showcase: agents bid, a visitor joins, cheats fail, and the page's own ver
     assert.equal(result.ok, true, JSON.stringify(result.checks));
     assert.equal(result.bids.length, 4);
     assert.equal(result.winner?.submitter, visitor.publicKey);
-    const statements = await verifyStatements((await get<StatementInputs>(`/api/policies/${run.forecastHash}/evidence`)).json, verifier);
+    const statementInputs = (await get<StatementInputs>(`/api/policies/${run.forecastHash}/evidence`)).json;
+    const statements = await verifyStatements(statementInputs, verifier);
     assert.equal(statements.statements.filter((s) => s.status === "valid").length, 3);
+
+    // The evidence the page lets you download, checked offline by the command line.
+    const dir = mkdtempSync(join(tmpdir(), "mattering-demo-"));
+    writeFileSync(join(dir, "beacon.json"), JSON.stringify(started.beacon));
+    writeFileSync(join(dir, "evidence.json"), JSON.stringify({ format: "mattering.demo-evidence/1", room: "auction", mode: "simulated", beacon: started.beacon, auction: evidence, statements: statementInputs }));
+    const refused = checkDemo(join(dir, "evidence.json"));
+    assert.equal(refused.status, 1, "the clock named in the file is not trusted on its own");
+    const checked = checkDemo(join(dir, "evidence.json"), "--allow-beacon", join(dir, "beacon.json"));
+    assert.equal(checked.status, 0, checked.stdout + checked.stderr);
+    assert.match(checked.stdout, new RegExp(`winner: ${visitor.publicKey.slice(0, 16)}… at £${run.auction.maxBid.toLocaleString("en-GB")}`));
 
     // The server's false announcement names the lowest valid bid, which the page's own count shows is not the winner.
     const announced = (await get<{ announced: { submitter: string; name: string; amount: number } }>("/demo/announce", {})).json.announced;

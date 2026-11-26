@@ -25,6 +25,7 @@ import { DEFAULT_MODEL, claudeDecider, claudeNegotiator, modelLabel, type OfferD
 import { LocalLogHost } from "./log-host.ts";
 import { Room, type RoomState } from "./room.ts";
 import { NegotiationRoom, type NegotiationRoomState } from "./negotiation-room.ts";
+import { chooserPage, roomPage, type PageOptions } from "./pages.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const web = join(here, "..", "web");
@@ -51,8 +52,8 @@ export interface ShowcaseOptions {
   negotiationReleaseAfter?: number;
 }
 
-/** Bundle a page's script for the browser: the auction page by default, or the negotiation page. */
-export async function bundlePage(minify = false, entry = "app.ts"): Promise<string> {
+/** Bundle a page's script for the browser: the rooms' page by default, or another entry under web/. */
+export async function bundlePage(minify = false, entry = "rooms/rooms.ts"): Promise<string> {
   const result = await build({
     entryPoints: [join(web, entry)],
     bundle: true,
@@ -121,17 +122,29 @@ export async function startShowcase(options: ShowcaseOptions): Promise<{ server:
     void Promise.all([room.work().catch(() => {}), negotiation.work().catch(() => {})]).finally(() => (working = false));
   }, Math.min(500, roundMs));
 
-  const [appJs, negotiationJs] = await Promise.all([bundlePage(), bundlePage(false, "negotiation.ts")]);
+  const roomsJs = await bundlePage();
+  // The demo pages, as the website has them: the way in, and a page per room.
+  const pages: PageOptions = { script: "/rooms.js", stylesheet: "/rooms.css", site: "https://mattering.ai", paths: { demos: "/demo", auction: "/demo/auction", negotiation: "/demo/negotiation" } };
+  const html = "text/html; charset=utf-8";
+  // Who chooses the agents' moves, and on what clock, said before any room has run.
+  const decider = options.negotiateLabel ?? (options.decide || options.negotiate ? "a language model" : null);
   const files: Record<string, [string, () => string]> = {
-    "/": ["text/html; charset=utf-8", () => readFileSync(join(web, "index.html"), "utf8")],
-    "/negotiation": ["text/html; charset=utf-8", () => readFileSync(join(web, "negotiation.html"), "utf8")],
-    "/style.css": ["text/css; charset=utf-8", () => readFileSync(join(web, "style.css"), "utf8")],
-    "/app.js": ["text/javascript; charset=utf-8", () => appJs],
-    "/negotiation.js": ["text/javascript; charset=utf-8", () => negotiationJs],
+    "/demo": [html, () => chooserPage(pages)],
+    "/demo/auction": [html, () => roomPage("auction", pages)],
+    "/demo/negotiation": [html, () => roomPage("negotiation", pages)],
+    "/rooms.css": ["text/css; charset=utf-8", () => readFileSync(join(web, "rooms", "rooms.css"), "utf8")],
+    "/rooms.js": ["text/javascript; charset=utf-8", () => roomsJs],
+    "/demo-info": ["application/json", () => JSON.stringify({ decider, mode: options.mode })],
   };
 
   const server = createServer((request, response) => {
     const url = new URL(request.url ?? "/", "http://localhost");
+    // The pages' old addresses lead to the new ones.
+    const moved = request.method === "GET" ? ({ "/": "/demo/auction", "/negotiation": "/demo/negotiation" } as Record<string, string>)[url.pathname] : undefined;
+    if (moved) {
+      response.writeHead(302, { location: moved });
+      return response.end();
+    }
     const file = request.method === "GET" ? files[url.pathname] : undefined;
     if (file) {
       response.writeHead(200, { "content-type": file[0], "cache-control": "no-store" });
@@ -162,8 +175,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     ...(apiKey ? { decide: claudeDecider({ apiKey, model }), negotiate: claudeNegotiator({ apiKey, model }), negotiateLabel: modelLabel(model) } : {}),
   });
   console.log(apiKey ? `Agents: bids decided by ${model}, with a script as fallback.` : "Agents: scripted. Set ANTHROPIC_API_KEY to have a language model decide their bids.");
-  console.log(`The Sealed Room is at ${url}`);
-  console.log(`The Negotiation Room is at ${url}/negotiation`);
+  console.log(`The demos are at ${url}/demo`);
+  console.log(`  the Sealed Room:      ${url}/demo/auction`);
+  console.log(`  the Negotiation Room: ${url}/demo/negotiation`);
   console.log(mode === "live" ? "Clock: the real drand quicknet beacon." : "Clock: SIMULATED on this machine, for showing offline. The cryptography is the same; the clock is not independent.");
   console.log("Demonstration only. Not security reviewed.");
 }
