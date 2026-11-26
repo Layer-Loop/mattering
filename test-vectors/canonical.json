@@ -1,0 +1,87 @@
+{
+  "description": "RFC 8785 canonical JSON of plain values with safe integers only, and Mattering's labelled hash: SHA-256 over the label's UTF-8 bytes, a zero byte, then the canonical JSON's UTF-8 bytes. The rejected values must be refused.",
+  "vectors": {
+    "accepted": [
+      {
+        "value": {
+          "b": 2,
+          "a": 1
+        },
+        "canonical": "{\"a\":1,\"b\":2}",
+        "hashes": {
+          "mattering/auction-policy/v1": "67cfe2094413c997899624e3a4ed99c2d8e255505e6fad135e21298e5c1af5f1",
+          "mattering/submission/v1": "16c9388a4368615f40a2e63a83f0f2a8be05beb9ee9a57855dcfd8611027726e"
+        }
+      },
+      {
+        "value": {
+          "nested": {
+            "z": [
+              3,
+              2,
+              1
+            ],
+            "a": "x"
+          },
+          "empty": {},
+          "list": []
+        },
+        "canonical": "{\"empty\":{},\"list\":[],\"nested\":{\"a\":\"x\",\"z\":[3,2,1]}}",
+        "hashes": {
+          "mattering/auction-policy/v1": "52c49a50f6a0b9934272d10ef61c1723d98cfb62a87c5d702a30115aaa05937c",
+          "mattering/submission/v1": "b81a615ef87d0b3c1266e6c78d4c977f375bcfca0059e0ed1bf0f60e4c255b39"
+        }
+      },
+      {
+        "value": {
+          "unicode": "£10,000 · café · 😀",
+          "escape": "quote \" backslash \\ newline \n"
+        },
+        "canonical": "{\"escape\":\"quote \\\" backslash \\\\ newline \\n\",\"unicode\":\"£10,000 · café · 😀\"}",
+        "hashes": {
+          "mattering/auction-policy/v1": "a8027e6aab001a2cf5c491e7a73b49d5330debe7d8f4af98ba5e0d167886b6aa",
+          "mattering/submission/v1": "2f87bd4212858bfa061eb852e923837ef1616e6d62ff8628843727ea940ba65c"
+        }
+      },
+      {
+        "value": {
+          "numbers": [
+            0,
+            -1,
+            9007199254740991,
+            123456789012
+          ],
+          "truth": [
+            true,
+            false
+          ]
+        },
+        "canonical": "{\"numbers\":[0,-1,9007199254740991,123456789012],\"truth\":[true,false]}",
+        "hashes": {
+          "mattering/auction-policy/v1": "0281ca0d65ad9750f39f9516d88d0c2d06889c91e28de0b5bdcef3281cc90277",
+          "mattering/submission/v1": "72fdb2bd78941410099c5ad73cfcd8496ba4f4579d68a32cbeb036d5cb2adc7e"
+        }
+      }
+    ],
+    "rejected": [
+      {
+        "why": "null",
+        "value": {
+          "a": null
+        }
+      },
+      {
+        "why": "a fraction",
+        "value": {
+          "a": 1.5
+        }
+      },
+      {
+        "why": "an integer past 2^53 - 1",
+        "value": {
+          "a": 9007199254740992
+        }
+      }
+    ]
+  }
+}

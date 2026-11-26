@@ -1,0 +1,207 @@
+{
+  "description": "One step of a sealed negotiation under mandates, on a witness log with one cosigner. The offers are sealed to both parties (alice is the buyer, bob the seller, as in recipients.json). With the disclosed file keys and the mandates' openings, verifying must give the outcome below; with no keys, the offers stay unresolved.",
+  "vectors": {
+    "beacon": "testBeacon",
+    "policyHash": "08f997173cf0461179537529f1c4b239614218388e6a93eccba2f595471a503e",
+    "evidence": {
+      "policy": {
+        "format": "mattering.negotiation-policy/1",
+        "negotiationId": "test-vector-INV-2041",
+        "step": 1,
+        "previous": "",
+        "item": "Pay invoice INV-2041 (£10,000) 60 days early: the amount paid now",
+        "unit": "GBP",
+        "minPrice": 9000,
+        "maxPrice": 10000,
+        "buyer": {
+          "signer": "d4fc6c620d59927250cb1dab12f7b1c979bf2e54f4a2bb6b828459c6ba159677",
+          "recipient": "age176fzcv4au6amlymse5k8x5rks6mz7hzp5plz5va4c5gvh972sv4sz25hw9",
+          "mandate": {
+            "format": "mattering.mandate/1",
+            "organisation": "7bd78b6637af086e07b93c726df0297f99a8ac4d17662db136598f31d30c1d49",
+            "organisationName": "Acme Treasury Ltd",
+            "agent": "d4fc6c620d59927250cb1dab12f7b1c979bf2e54f4a2bb6b828459c6ba159677",
+            "side": "buyer",
+            "unit": "GBP",
+            "limit": "d420c39579ed34e9fef3474207df39cb920c5fe49f58eefbe2ccbec876845422",
+            "expires": 4000000000,
+            "signature": "62f101d4df3e812113d5ce41e9a2a872ef37edf06e80cb7671f8d31d36e331ace2c6d193e6643dfa1a427eadb66cb8bf38f7a6ddbf7e9a2ccf97f6d5950b5d0e"
+          }
+        },
+        "seller": {
+          "signer": "089d00f875da7bb62ec31664e68ef87fc6aeaa52ce48841b3f17c0dd2f5e80ee",
+          "recipient": "age16x8pz8rzvakcwv3fu4qttqk98vp2qv3v5gqpj8a86vqv7ls2hg5s4wjccx",
+          "mandate": {
+            "format": "mattering.mandate/1",
+            "organisation": "5872f60f4ab956d50a3a1960a1d8cef2a6ea1fb63380bc5b1c4c1b6c74ce954e",
+            "organisationName": "Bolt Ltd",
+            "agent": "089d00f875da7bb62ec31664e68ef87fc6aeaa52ce48841b3f17c0dd2f5e80ee",
+            "side": "seller",
+            "unit": "GBP",
+            "limit": "c668f42082ad0d7632e20e20d79547967a5a53de426e2afcd40ba677d2b42312",
+            "expires": 4000000000,
+            "signature": "a630512c62e73ed4f72085e1add23738d1bef432a1ce90838831577d2ee9d2a4e513a5c764d6932bbc3d503acfee8bd28f78b7f94dd0154252634413af09e906"
+          }
+        },
+        "rule": "midpoint-if-crossed",
+        "beacon": {
+          "chainHash": "0b5ada51058ab1f145d421f96f8772ed2c7b5e4146d84235fa02f4878bc6b623",
+          "publicKey": "8eb49414c02370751fc2b2b923a993d7e6dda6e8254779466f5792fc892ffb0625e40bc46eede790f4d0b336be7e1b8505241200ddfa60d5da8a82fe184e838e438570dbf6727fc52b8df1c78b9617e2656272a8c9bbcb0147aa14daa762ee77",
+          "scheme": "bls-unchained-g1-rfc9380",
+          "genesisTime": 1,
+          "period": 1
+        },
+        "closeRound": 100,
+        "releaseRound": 110,
+        "witness": "1e7cff505cc062f6f150b6459117121cba56f7045364b6427cb7255f3f661d94",
+        "origin": "negotiation.example/log",
+        "logFrom": 0,
+        "cosigners": [
+          "negotiation-cosigner.example+88cdf7a3+BNi8kl1WyqEl4xGSL21TEO7BOajQ0NanyrxcJ2z8/Kk+"
+        ],
+        "cosignerThreshold": 1
+      },
+      "policyHash": "08f997173cf0461179537529f1c4b239614218388e6a93eccba2f595471a503e",
+      "entries": [
+        {
+          "format": "mattering.submission/1",
+          "policyHash": "08f997173cf0461179537529f1c4b239614218388e6a93eccba2f595471a503e",
+          "envelopeId": "72d42594eaecda01a28cb1b03132de122b52b7c93d0904b0d50aa00764a72104",
+          "submitter": "d4fc6c620d59927250cb1dab12f7b1c979bf2e54f4a2bb6b828459c6ba159677",
+          "signature": "233a25e7e7bdf529f5ec2d52b1a4a6b79b34b417560f47caa0ae04b13e21f4391b16023db77b811303a6913bbba9004d91cc94fed9578a719d4af7498769b604"
+        },
+        {
+          "format": "mattering.submission/1",
+          "policyHash": "08f997173cf0461179537529f1c4b239614218388e6a93eccba2f595471a503e",
+          "envelopeId": "c838fb615e3da0fc72e2ad478daad0fdb5d82a5d7e3f2a2f02237a404aeadf82",
+          "submitter": "089d00f875da7bb62ec31664e68ef87fc6aeaa52ce48841b3f17c0dd2f5e80ee",
+          "signature": "3372ba55f618b6d1cb436dcb22d6adbff557b08e9e86297f510d491168166bdf1c37ecdaad44ca0f4bdf0ba615b4e475fd2d8b944c92a3ae3ea7dcef42b7de07"
+        },
+        {
+          "format": "mattering.close/1",
+          "policyHash": "08f997173cf0461179537529f1c4b239614218388e6a93eccba2f595471a503e",
+          "observed": {
+            "round": 100,
+            "signature": "b0fe57bf43bf9bdb0f5e415164564352a5296670360a6197078581ddcadd49da0e6a96efb075fb4202baf6de37402788"
+          }
+        }
+      ],
+      "prefix": [],
+      "closing": {
+        "format": "mattering.checkpoint/1",
+        "witness": "1e7cff505cc062f6f150b6459117121cba56f7045364b6427cb7255f3f661d94",
+        "size": 3,
+        "root": "fe753ea9d4d4a63ba0e124f789d6414f3474cfba250db6b98b7347521af97869",
+        "observed": {
+          "round": 100,
+          "signature": "b0fe57bf43bf9bdb0f5e415164564352a5296670360a6197078581ddcadd49da0e6a96efb075fb4202baf6de37402788"
+        },
+        "closes": "08f997173cf0461179537529f1c4b239614218388e6a93eccba2f595471a503e",
+        "signature": "44a1b8753c59df19b29c5ba975b6147258ad15f2917d97be647cd6649a4aef167b7aa0b5432f5c54acb19675517e6d3249f9f4fac75a8da3d48a29ea1b195a05"
+      },
+      "witnessed": {
+        "checkpoint": "negotiation.example/log\n3\n/nU+qdTUpjug4ST3idZBTzR0z7olDba5i3NHUhr5eGk=\n\n— negotiation.example/log 3qQDQVgu980nHYrXw7iYA9V8DnVexUIFkivqTgRg99CVYl67X4J9yu8PoGUXV/3OxFNnezjZq5LinQhINnVSudbmzAM=\n— negotiation-cosigner.example iM33owAAAAAAAABkgXeJ49XQxfOymdOpOKTrglrZ/GgYMP78v/bvf6k1gOEtVFXRzOjGl0wxEmjH2o/UYz5WE6abYTmAsb2NlxTwDg==\n",
+        "proof": []
+      },
+      "envelopes": {
+        "72d42594eaecda01a28cb1b03132de122b52b7c93d0904b0d50aa00764a72104": {
+          "format": "mattering.envelope/2",
+          "beacon": {
+            "chainHash": "0b5ada51058ab1f145d421f96f8772ed2c7b5e4146d84235fa02f4878bc6b623",
+            "publicKey": "8eb49414c02370751fc2b2b923a993d7e6dda6e8254779466f5792fc892ffb0625e40bc46eede790f4d0b336be7e1b8505241200ddfa60d5da8a82fe184e838e438570dbf6727fc52b8df1c78b9617e2656272a8c9bbcb0147aa14daa762ee77",
+            "scheme": "bls-unchained-g1-rfc9380",
+            "genesisTime": 1,
+            "period": 1
+          },
+          "round": 110,
+          "context": {
+            "kind": "mattering.offer/1",
+            "policyHash": "08f997173cf0461179537529f1c4b239614218388e6a93eccba2f595471a503e",
+            "side": "buyer"
+          },
+          "recipients": [
+            "age16x8pz8rzvakcwv3fu4qttqk98vp2qv3v5gqpj8a86vqv7ls2hg5s4wjccx",
+            "age176fzcv4au6amlymse5k8x5rks6mz7hzp5plz5va4c5gvh972sv4sz25hw9"
+          ],
+          "ciphertext": "-----BEGIN AGE ENCRYPTED FILE-----\nYWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHRsb2NrIDExMCAwYjVhZGE1MTA1OGFi\nMWYxNDVkNDIxZjk2Zjg3NzJlZDJjN2I1ZTQxNDZkODQyMzVmYTAyZjQ4NzhiYzZi\nNjIzCmhMQTk3NmFkTWdPZDFZNzFUVVprWDRzYWZBSDZIT1hlQ3ZTUGx4YzdSaVZ1\nMWo3NFFxaDZZN0VhSUpleWVSK1cKRFhEOGU3VE0xVWQ2NTdkMEhxL05lbFZpVEpx\nY2dxN2xSbEJZNWdaTisxOEM3UXMvbkRCVmNtd0Mvd28rMlNLdwpZZWdBKzNXS3pG\nK3hXYUR5dWlybFhOUlEwU3dQNmF5czVTLzJnOG4vMlhvCi0tLSArcDloUWlKT1hT\nQytSby84azlBL0dabHF3NUZrZ0R6ZVBlYW9MeUVBbk1JCk4hMAzHW0TdMLHcjFz2\nTfjVMSnj64tYGP7ZQsiMR+E7MmCKfvXQZDqb1CI5eh0Fl7DdJJg/JvF99Ej/8quT\n4jWtQyQ5wPaVVV9Kz4XdNa/+9L9ji/MeuKefsnvefLUejnR1YrHXcaJ96TMByPDk\nIhpwOHeVmwNDS/uxKmTFbhJdUfEEs0CTIOe897MD88leErBHPXL32GKrdcjOOxN5\nLPTNohk8RKfONlH7WCeiq7dGhCdOEx+uX0GbuyOs+lBzS6UUEh/SCfLy8toUKvR+\nilg9XyFhkR7T733L9bnDO30YhyWyQ9FjIseMhxuUvZFXJfVca5bNM1saB4NOxqhB\ndjCSe+jXl1bUHyTYpWdpaPfrDS241NjXe07qnkZmANsbdoeaTGgHRPe0wh7BULcR\n+uVwmn7p5IDy7BQVzNXuVuuqNCp1R8kGHA9n3Gbae58Bcar6f6Xh9svB98BuCy0F\nZIYj/iVsjFRydTNv8MSxBv6BjKShQj834iGSh3Fzn/XIQx2hE0br6drwgp29zU5C\nUafVxujrDF8ZcQe5B33RseWV7M79e3koXpUUWX8GkAiwIS2CKCUkXygGy1ajf2WO\nk0C4+VwqqCVJ4V0eya00z+DdgILNKefJGqhDXeXMV88eCmccWG/i4pCnBNRxmdgw\n4GnoKZw2b1YS5VA+1/oZcFx10jDNpqmOEpu7joXn9dAwDKJGa0B6P33q6Y7ssCwG\nNRvywBRV9rHJyLKa6wqvv4iTOXUqD9WZxPbiYnY0sCs7kG8c+bWc\n-----END AGE ENCRYPTED FILE-----\n"
+        },
+        "c838fb615e3da0fc72e2ad478daad0fdb5d82a5d7e3f2a2f02237a404aeadf82": {
+          "format": "mattering.envelope/2",
+          "beacon": {
+            "chainHash": "0b5ada51058ab1f145d421f96f8772ed2c7b5e4146d84235fa02f4878bc6b623",
+            "publicKey": "8eb49414c02370751fc2b2b923a993d7e6dda6e8254779466f5792fc892ffb0625e40bc46eede790f4d0b336be7e1b8505241200ddfa60d5da8a82fe184e838e438570dbf6727fc52b8df1c78b9617e2656272a8c9bbcb0147aa14daa762ee77",
+            "scheme": "bls-unchained-g1-rfc9380",
+            "genesisTime": 1,
+            "period": 1
+          },
+          "round": 110,
+          "context": {
+            "kind": "mattering.offer/1",
+            "policyHash": "08f997173cf0461179537529f1c4b239614218388e6a93eccba2f595471a503e",
+            "side": "seller"
+          },
+          "recipients": [
+            "age16x8pz8rzvakcwv3fu4qttqk98vp2qv3v5gqpj8a86vqv7ls2hg5s4wjccx",
+            "age176fzcv4au6amlymse5k8x5rks6mz7hzp5plz5va4c5gvh972sv4sz25hw9"
+          ],
+          "ciphertext": "-----BEGIN AGE ENCRYPTED FILE-----\nYWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHRsb2NrIDExMCAwYjVhZGE1MTA1OGFi\nMWYxNDVkNDIxZjk2Zjg3NzJlZDJjN2I1ZTQxNDZkODQyMzVmYTAyZjQ4NzhiYzZi\nNjIzCnQxR1Q5QVBtOFBMVDNNYVMxZ0ZpaG40OGNKT0FhTTF5dTU2cU9paTZPc1d3\nRXlYa2lUSnY3VUs5TDZYUU85MkcKREN5RFoxeHZyQkZDWTQvK2pFV0o1OVBKVG8z\ndTRZZ1NUZUx0K1JVK0xXSUxvNVREOTdTZlNCSHRjbDUxRTI3KwpRNHcvb28vMFpW\nNUF4U2RnNE4raVNCaWcrc2NyYW4wZUkwd01mZ3MzejdJCi0tLSA3ZC9uM0ZIUTJy\nTXI3VTFobmpCNFIyYmprbTJ0cVVia1BwK09XNGhVeklBCszA+p1whBU0p23K/oXd\nVGyLCgrlphLyfMI3felxzAzfNnL81ZsZOIWy3phhWqqy/1h4mquTIH0YvUhLyG1l\nxxtJZXfqgNyR/wYHAx2Y0e1k9xY/XXlsQUCq8evw6vzulRXbHX/83+mun7xgsr1P\nfoGtV6X/PsEuCNtR6Eq/rwsAtzlVPteAza6WQU1vJyKUDpnUgESS3JO362FMHk55\nNgGTyGkI5XRAixhHSkT99k4yPzWh6PjOadKpocfWkMs4pPnzKLuDTDzeGYoxUa3Y\nFsXli1WTFvypNI81At/T8LSI/0M4s6cR/4/aID3U54G8Lwu1LgITiEj1pSjm4F1E\nT6HQLR3lLPNtTbCtfzC1ujJrkZtEUhtxu6tJ+RjvKcZsnRleghfjF+fUanw6jqZU\nMQbh9qmUVkuknVvDtEJU8pyE+WLqwsheAPdVuFu9zW7m25qInWQCutLI0bPe66h3\nCEG4X4cw0eUVuruiVkzmQnLCjfacWJmP67/fZzzZMiQIFVkvBmVgxt4P5JsAmAoR\nErwuCZr4jruGF+YfiCc+WF1o7XeqKChB3NUXNte2bwytbDRdXUYDXdExv4CKAlYE\nSDcCneFcEeWcv2NPYPnNuVnfr2BzRZZ8QfUX5BMdZj+dIxgyGkfe6GxeiqiRHnfO\nRWVzyZHE+ds2JIv8A01o6J2aUp9mQnmrrh5mM/TLPWZDYLIgByTLxEGKA2smSCXi\nUKM1DTrH1DGdGuEOSuMtMO8We1Lna4esDQy3hKECyOIokHHO2yxrBQ==\n-----END AGE ENCRYPTED FILE-----\n"
+        }
+      },
+      "state": "released",
+      "release": {
+        "round": 110,
+        "signature": "b7778271678b33e4ae7b7ee862892cb2bfc5ecae4c3ed41bf1c63085428f3de75cdfe86505be207c258630352b90b61e"
+      }
+    },
+    "fileKeys": {
+      "72d42594eaecda01a28cb1b03132de122b52b7c93d0904b0d50aa00764a72104": "7e5cc34e9693f56fd728d6c33615195f",
+      "c838fb615e3da0fc72e2ad478daad0fdb5d82a5d7e3f2a2f02237a404aeadf82": "85f90396a5720ca348653d25e62f16a0"
+    },
+    "openings": {
+      "buyer": {
+        "limit": 9750,
+        "blinding": "064555963bd0c09a3cb47960c23dfb9a78a32430c62024974dfb25bd9681e740"
+      },
+      "seller": {
+        "limit": 9600,
+        "blinding": "0ba8b756c2b4c5147379fbc0eb990b2154ba9d53248ed9a08ebc502d29a92a60"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "outcome": {
+        "deal": true,
+        "price": 9675,
+        "buyerOffer": 9700,
+        "sellerOffer": 9650
+      },
+      "offers": [
+        {
+          "side": "buyer",
+          "price": 9700,
+          "mandate": "within",
+          "status": "valid"
+        },
+        {
+          "side": "seller",
+          "price": 9650,
+          "mandate": "within",
+          "status": "valid"
+        }
+      ],
+      "checks": [
+        "policy-well-formed",
+        "beacon-accepted",
+        "closing-checkpoint-signed-by-witness",
+        "closing-checkpoint-is-for-this-policy",
+        "closed-at-the-close-round",
+        "closing-checkpoint-cosigned-before-release",
+        "log-matches-closing-checkpoint",
+        "closing-is-the-close-entry",
+        "closed-only-once",
+        "release-valid",
+        "offers-judged"
+      ]
+    }
+  }
+}

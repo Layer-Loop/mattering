@@ -1,0 +1,125 @@
+{
+  "description": "RFC 6962 Merkle trees: leaf hashes, the root of every prefix, inclusion proofs and consistency proofs. Leaves are given as hex bytes.",
+  "vectors": {
+    "leaves": [
+      "6c6561662030",
+      "6c6561662031",
+      "6c6561662032",
+      "6c6561662033",
+      "6c6561662034",
+      "6c6561662035",
+      "6c6561662036"
+    ],
+    "leafHashes": [
+      "1bb97dcc21635d47e2663efdfd0a174686d98dd701352dd2cd06e8b43fd3d305",
+      "cb5a3ce862c3e321f3f7df6d2690549e936a8e377135aae9f3d69f691f547d5b",
+      "ab37ba34d1dfe29015de717a6d5764a8fb029c3a7a0f5b64b93b54351885bf7c",
+      "58bd1496e1684aac9201c2e687ee7ae4f51c96a8b0d81ef3583628b93d3cd345",
+      "83115f8947955fafdc2a27e7f4c0854bbd8da27bb1b3e3405db571c9af8dbe1a",
+      "95adf15b7ef5db67386a8bafbefee4d145662afa450740e1868553e8348ed3a0",
+      "fb7f869ce8b7b51fdf719fc8c21a4736c98cc160a825606a81f78a7f4d2261d9"
+    ],
+    "roots": [
+      {
+        "size": 0,
+        "root": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "size": 1,
+        "root": "1bb97dcc21635d47e2663efdfd0a174686d98dd701352dd2cd06e8b43fd3d305"
+      },
+      {
+        "size": 2,
+        "root": "fc5f6b88ff8554f75bb2f9e6f39c31b1936d44b69276edf7b1205a955b9761e3"
+      },
+      {
+        "size": 3,
+        "root": "d4f92c8fbb89720eb3b55677c7d7efaddfeb10d11a1a84a0ba8f1a23337faa95"
+      },
+      {
+        "size": 4,
+        "root": "4f631084a157c54f54fcfb23ff5eb8650c4ba160c295bb13a9832b109d52677e"
+      },
+      {
+        "size": 5,
+        "root": "341515982d650e23520dbd54d7fcf0afa1b70cc3a16a411d464dc9c1ac96c301"
+      },
+      {
+        "size": 6,
+        "root": "8363c3821ce41ebb46222116a42cc83dba753984b23cfca26aaad0a6867336ea"
+      },
+      {
+        "size": 7,
+        "root": "5a61fc2b54f9cfa71774f2432143dd40c6cb2b11947faf65a7d3da5cb65199c8"
+      }
+    ],
+    "inclusion": [
+      {
+        "index": 0,
+        "size": 1,
+        "proof": []
+      },
+      {
+        "index": 2,
+        "size": 5,
+        "proof": [
+          "58bd1496e1684aac9201c2e687ee7ae4f51c96a8b0d81ef3583628b93d3cd345",
+          "fc5f6b88ff8554f75bb2f9e6f39c31b1936d44b69276edf7b1205a955b9761e3",
+          "83115f8947955fafdc2a27e7f4c0854bbd8da27bb1b3e3405db571c9af8dbe1a"
+        ]
+      },
+      {
+        "index": 6,
+        "size": 7,
+        "proof": [
+          "75ab928268c86f44da5d4241188ed71e4aab2d4d77d6d50117dad94a842ede03",
+          "4f631084a157c54f54fcfb23ff5eb8650c4ba160c295bb13a9832b109d52677e"
+        ]
+      },
+      {
+        "index": 3,
+        "size": 7,
+        "proof": [
+          "ab37ba34d1dfe29015de717a6d5764a8fb029c3a7a0f5b64b93b54351885bf7c",
+          "fc5f6b88ff8554f75bb2f9e6f39c31b1936d44b69276edf7b1205a955b9761e3",
+          "01571b557bc70672650d467c7bad8337e09a7f354a72051f23b43a782c0f48e6"
+        ]
+      }
+    ],
+    "consistency": [
+      {
+        "oldSize": 1,
+        "newSize": 2,
+        "proof": [
+          "cb5a3ce862c3e321f3f7df6d2690549e936a8e377135aae9f3d69f691f547d5b"
+        ]
+      },
+      {
+        "oldSize": 3,
+        "newSize": 7,
+        "proof": [
+          "ab37ba34d1dfe29015de717a6d5764a8fb029c3a7a0f5b64b93b54351885bf7c",
+          "58bd1496e1684aac9201c2e687ee7ae4f51c96a8b0d81ef3583628b93d3cd345",
+          "fc5f6b88ff8554f75bb2f9e6f39c31b1936d44b69276edf7b1205a955b9761e3",
+          "01571b557bc70672650d467c7bad8337e09a7f354a72051f23b43a782c0f48e6"
+        ]
+      },
+      {
+        "oldSize": 4,
+        "newSize": 7,
+        "proof": [
+          "01571b557bc70672650d467c7bad8337e09a7f354a72051f23b43a782c0f48e6"
+        ]
+      },
+      {
+        "oldSize": 6,
+        "newSize": 7,
+        "proof": [
+          "75ab928268c86f44da5d4241188ed71e4aab2d4d77d6d50117dad94a842ede03",
+          "fb7f869ce8b7b51fdf719fc8c21a4736c98cc160a825606a81f78a7f4d2261d9",
+          "4f631084a157c54f54fcfb23ff5eb8650c4ba160c295bb13a9832b109d52677e"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "description": "Pedersen commitments on Ristretto255: amount·G + blinding·H, where G is the Ristretto255 base point and H the blinding generator below. A blinding is a non-zero scalar below the group order, as 32 bytes of big-endian hex.",
+  "vectors": {
+    "blindingGenerator": "8c9240b456a9e6dc65c377a1048d745f94a08cdb7f44cbcd7b46f34048871134",
+    "commitments": [
+      {
+        "amount": 0,
+        "blinding": "020b5f1a01e4210e02b8b1440ee9f49786dc8252191627517b10c2535da330fb",
+        "commitment": "eeb73366cb3a9bf873c61f4bf8f9cd27b4365796cea5a8346af037cb8c273c07"
+      },
+      {
+        "amount": 4200,
+        "blinding": "04690af6b4c0969069cf1433c7f0dc4a0a8ae34aaf4df63a0f25cd3bdc750edc",
+        "commitment": "cc79824d48f56b473609db3f20bffa97168fb338b49f6c63eb58b1c8d726057b"
+      },
+      {
+        "amount": 976000,
+        "blinding": "0cc9c61aa661853420a34222c44e2086e97fe99dd1e6f125266697c5681b4782",
+        "commitment": "2c7cd200dd4dd5dcfff5b68d32f520372fd45536234f28d2244b708153c36d29"
+      }
+    ],
+    "notOpening": [
+      {
+        "why": "the amount is one more",
+        "commitment": "cc79824d48f56b473609db3f20bffa97168fb338b49f6c63eb58b1c8d726057b",
+        "amount": 4201,
+        "blinding": "04690af6b4c0969069cf1433c7f0dc4a0a8ae34aaf4df63a0f25cd3bdc750edc"
+      }
+    ]
+  }
+}

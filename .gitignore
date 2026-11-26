@@ -5,3 +5,4 @@ dist/
 examples/agent-auction/out/
 witness-data/
 cosigner-data/
+.npm/

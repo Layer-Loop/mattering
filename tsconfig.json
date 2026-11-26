@@ -23,6 +23,8 @@
     "apps/*/src",
     "apps/*/web",
     "tests",
-    "examples"
+    "examples",
+    "test-vectors",
+    "scripts"
   ]
 }
