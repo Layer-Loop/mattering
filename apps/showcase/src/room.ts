@@ -11,6 +11,8 @@ import {
   generateKeyPair,
   prepareBid,
   prepareStatement,
+  verifyAuction,
+  type AuctionInputs,
   type AuctionPolicy,
   type BeaconInfo,
   type BeaconSource,
@@ -32,6 +34,10 @@ interface AgentState {
   submitted: boolean;
   /** What chose this agent's bid, once chosen. */
   decidedBy?: "model" | "script";
+  /** When the bid was sealed and logged, by this server's clock (milliseconds). For display only: the log carries no times. */
+  sealedAt?: number;
+  /** The bid's position in the shared log, from the witness's receipt. */
+  logIndex?: number;
 }
 
 interface RunState {
@@ -42,6 +48,8 @@ interface RunState {
   forecastHash: string;
   closeAt: number;
   releaseAt: number;
+  /** When the auction started, by this server's clock (milliseconds). */
+  startedAt?: number;
   agents: AgentState[];
 }
 
@@ -141,6 +149,7 @@ export class Room {
         forecastHash,
         closeAt: options.timeOfRound(closeRound),
         releaseAt: options.timeOfRound(releaseRound),
+        startedAt: started,
         agents: AGENTS.map((agent, i) => {
           const keys = generateKeyPair();
           return { name: agent.name, tagline: agent.tagline, series: agent.series, publicKey: keys.publicKey, secretKey: keys.secretKey, dueAt: started + options.agentGapMs * (i + 1), submitted: false };
@@ -171,8 +180,11 @@ export class Room {
           const decision = this.decided!.decisions[i]!;
           const bid = await prepareBid(run.auction, decision.bid, keys);
           const statement = await prepareStatement(run.forecast, decision.prediction, keys);
-          await this.log.submit(bid.submission, bid.envelope);
+          const receipt = await this.log.submit(bid.submission, bid.envelope);
+          agent.sealedAt = Date.now();
+          agent.logIndex = receipt.index;
           await this.log.submit(statement.submission, statement.envelope);
+          await this.options.saveState(this.state);
         } catch (error) {
           console.error(`${agent.name}: ${(error as Error).message}`);
         }
@@ -239,12 +251,33 @@ export class Room {
         forecastHash: run.forecastHash,
         closeAt: run.closeAt,
         releaseAt: run.releaseAt,
+        startedAt: run.startedAt,
+        closeRound: run.auction.closeRound,
+        releaseRound: run.auction.releaseRound,
         agents: run.agents.map(({ secretKey: _secret, dueAt: _due, ...shown }) => shown),
         phase: phase.state,
         cosigned: phase.cosignatures >= 1,
         entries: (await this.log.submissions(run.auctionHash)).map((e) => ({ submitter: e.submitter, envelopeId: e.envelopeId })),
       },
     };
+  }
+
+  /**
+   * A false announcement, made on purpose: once the bids are open, the server
+   * names the lowest valid bidder as the winner. The page checks it against
+   * its own count of the opened bids and shows it to be false.
+   */
+  private async announce(): Promise<Record<string, unknown>> {
+    const run = this.state.run;
+    if (!run) throw new MatteringError("POLICY", "no auction is running");
+    const evidence = await this.log.evidence(run.auctionHash);
+    if (evidence.state !== "released") throw new MatteringError("POLICY", "the bids have not opened yet");
+    const result = await verifyAuction(evidence as unknown as AuctionInputs, { acceptedBeacons: [this.beacon] });
+    const valid = result.bids.filter((b) => b.status === "valid" && b.amount !== undefined);
+    if (valid.length < 2) throw new MatteringError("POLICY", "there are not enough valid bids to announce the wrong one");
+    const lowest = valid.reduce((a, b) => (b.amount! < a.amount! ? b : a));
+    const agent = run.agents.find((a) => a.publicKey === lowest.submitter);
+    return { announced: { submitter: lowest.submitter, name: agent?.name ?? "You", amount: lowest.amount } };
   }
 
   /**
@@ -293,6 +326,8 @@ export class Room {
           return ok(await this.viewer.latest());
         case "POST /demo/forge":
           return ok(await this.forge());
+        case "POST /demo/announce":
+          return ok(await this.announce());
         default:
           return { status: 404, body: { error: "no such route" } };
       }

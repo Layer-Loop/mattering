@@ -15,8 +15,8 @@ export interface Slot {
 }
 
 export const SLOT: Slot = {
-  title: "Exclusive advertising package, one quarter",
-  detail: "Exclusive category sponsorship across a national media network for three months.",
+  title: "Spring prime-time package: 12 weeks of TV, streaming and outdoor",
+  detail: "A 12-week spring package of TV, streaming and outdoor advertising.",
   minBid: 400_000,
   maxBid: 800_000,
 };
@@ -74,21 +74,10 @@ export function acceptDecision(slot: Slot, value: unknown): Decision | undefined
 
 export const AGENTS: Agent[] = [
   {
-    name: "Company A",
-    tagline: "A market leader planning a major launch this quarter.",
-    persona: "a market-leading consumer brand with a major product launch this quarter. Winning this package matters a great deal to the launch, and the budget is generous.",
+    name: "Fernhill Coffee",
+    tagline: "Coffee-shop chain opening 40 stores",
+    persona: "a coffee-shop chain opening 40 stores. It is a disciplined, returns-led advertiser: it bids what its forecast return supports and would sooner lose than overpay.",
     series: 1,
-    ceiling: [640_000, 780_000],
-    script: (_slot, ceiling, random) => {
-      const bid = round(ceiling * (0.86 + random() * 0.08));
-      return { bid, prediction: `We are bidding ${pounds(bid)} and expect to win. This quarter matters more to us than to anyone else in the room.` };
-    },
-  },
-  {
-    name: "Company B",
-    tagline: "A returns-led advertiser that bids what the numbers support.",
-    persona: "a disciplined, returns-led advertiser. It bids what its forecast return supports and would sooner lose than overpay.",
-    series: 2,
     ceiling: [560_000, 700_000],
     script: (_slot, ceiling, random) => {
       const bid = round(ceiling * (0.88 + random() * 0.07));
@@ -96,9 +85,20 @@ export const AGENTS: Agent[] = [
     },
   },
   {
-    name: "Company C",
-    tagline: "A challenger with a smaller budget, hoping for a bargain.",
-    persona: "a challenger brand with a smaller budget than its rivals. It can only win if the others bid cautiously, and it knows that.",
+    name: "Kestrel Mobile",
+    tagline: "Phone network launching a new plan",
+    persona: "a phone network launching a new plan this spring. Winning this package matters a great deal to the launch, and the budget is generous.",
+    series: 2,
+    ceiling: [640_000, 780_000],
+    script: (_slot, ceiling, random) => {
+      const bid = round(ceiling * (0.86 + random() * 0.08));
+      return { bid, prediction: `We are bidding ${pounds(bid)} and expect to win. This quarter matters more to us than to anyone else in the room.` };
+    },
+  },
+  {
+    name: "Orla Travel",
+    tagline: "Online travel agent",
+    persona: "an online travel agent with a smaller budget than its rivals. It can only win if the others bid cautiously, and it knows that.",
     series: 3,
     ceiling: [470_000, 580_000],
     script: (slot, ceiling, random) => {

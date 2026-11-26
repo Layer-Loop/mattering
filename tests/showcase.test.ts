@@ -18,7 +18,7 @@ test("showcase: agents bid, a visitor joins, cheats fail, and the page's own ver
       const r = await fetch(url + path, body === undefined ? {} : { method: "POST", body: JSON.stringify(body) });
       return { status: r.status, json: (await r.json()) as T };
     };
-    type State = { beacon: BeaconInfo; run: { phase: string; auction: AuctionPolicy; auctionHash: string; forecastHash: string; cosigned: boolean; agents: { submitted: boolean }[] } | null };
+    type State = { beacon: BeaconInfo; run: { phase: string; auction: AuctionPolicy; auctionHash: string; forecastHash: string; cosigned: boolean; startedAt: number; agents: { name: string; publicKey: string; submitted: boolean; sealedAt?: number; logIndex?: number }[] } | null };
     const until = async (done: (s: State) => boolean): Promise<State> => {
       for (let i = 0; i < 200; i++) {
         const s = (await get<State>("/demo/state")).json;
@@ -39,8 +39,17 @@ test("showcase: agents bid, a visitor joins, cheats fail, and the page's own ver
     const visitor = generateKeyPair();
     const mine = await prepareBid(run.auction, run.auction.maxBid, visitor);
     assert.equal((await get("/api/submissions", mine)).status, 200);
-    await until((s) => s.run!.agents.every((a) => a.submitted));
+    const sealed = await until((s) => s.run!.agents.every((a) => a.logIndex !== undefined));
+    // Each agent's bid says when it was sealed and where it sits in the log, and the log agrees.
+    const auctionEntries = (await get<{ entries: { submitter?: string; policyHash?: string }[]; from: number }>(`/api/log?from=${run.auction.logFrom}`)).json;
+    for (const a of sealed.run!.agents) {
+      assert.ok(a.sealedAt! >= sealed.run!.startedAt);
+      const entry = auctionEntries.entries[a.logIndex! - auctionEntries.from]!;
+      assert.equal(entry.submitter, a.publicKey);
+      assert.equal(entry.policyHash, run.auctionHash);
+    }
     assert.equal((await get("/demo/forge", {})).status, 409, "no rewriting before release");
+    assert.equal((await get("/demo/announce", {})).status, 409, "nothing to announce before release");
 
     await until((s) => s.run!.phase === "closed" && s.run!.cosigned);
     const late = await prepareBid(run.auction, run.auction.maxBid, generateKeyPair());
@@ -54,6 +63,13 @@ test("showcase: agents bid, a visitor joins, cheats fail, and the page's own ver
     assert.equal(result.winner?.submitter, visitor.publicKey);
     const statements = await verifyStatements((await get<StatementInputs>(`/api/policies/${run.forecastHash}/evidence`)).json, verifier);
     assert.equal(statements.statements.filter((s) => s.status === "valid").length, 3);
+
+    // The server's false announcement names the lowest valid bid, which the page's own count shows is not the winner.
+    const announced = (await get<{ announced: { submitter: string; name: string; amount: number } }>("/demo/announce", {})).json.announced;
+    const lowest = Math.min(...result.bids.filter((b) => b.status === "valid").map((b) => b.amount!));
+    assert.equal(announced.amount, lowest);
+    assert.notEqual(announced.submitter, result.winner?.submitter);
+    assert.equal(announced.name, sealed.run!.agents.find((a) => a.publicKey === announced.submitter)?.name ?? "You");
 
     const forged = (await get<{ cosignerSaid: string; evidence: AuctionInputs }>("/demo/forge", {})).json;
     assert.equal(forged.evidence.entries.length, evidence.entries.length + 1);
@@ -107,7 +123,7 @@ test("showcase: a language model's decisions are sealed as given, and the page i
     seen.push({ name: agent.name, ceiling });
     return { bid: slot.minBid + 1000 * (seen.length + 1), prediction: `  ${agent.name} says\nhello  ` };
   });
-  assert.deepEqual(seen.map((s) => s.name).sort(), ["Company A", "Company B", "Company C"]);
+  assert.deepEqual(seen.map((s) => s.name).sort(), ["Fernhill Coffee", "Kestrel Mobile", "Orla Travel"]);
   for (const [i, agent] of AGENTS.entries()) {
     const asked = seen.find((s) => s.name === agent.name)!;
     assert.ok(asked.ceiling >= agent.ceiling[0] && asked.ceiling <= agent.ceiling[1], "each agent is given a private ceiling in its range");
@@ -119,9 +135,9 @@ test("showcase: a language model's decisions are sealed as given, and the page i
 
 test("showcase: a model that fails, stalls or returns junk is replaced by the script, agent by agent", async () => {
   const result = await runWith(async (agent, slot) => {
-    if (agent.name === "Company A") throw new Error("API down");
-    if (agent.name === "Company B") return { bid: slot.maxBid * 50, prediction: "We bid fifty times the maximum." };
-    return new Promise(() => {}); // Company C: never answers
+    if (agent.name === "Fernhill Coffee") throw new Error("API down");
+    if (agent.name === "Kestrel Mobile") return { bid: slot.maxBid * 50, prediction: "We bid fifty times the maximum." };
+    return new Promise(() => {}); // Orla Travel: never answers
   }, 400);
   assert.deepEqual(result.decidedBy, ["script", "script", "script"]);
   for (const [i, agent] of AGENTS.entries()) {
@@ -181,7 +197,7 @@ test("the Claude decider sends one well-formed request and reads the answer; fai
     assert.equal(sent.body.thinking, undefined, "thinking is left to the model's default");
     assert.equal(sent.body.temperature, undefined);
     const prompt = JSON.stringify([sent.body.system, sent.body.messages]);
-    assert.ok(prompt.includes("Company B") && prompt.includes("£650,000") && prompt.includes("£400,000") && prompt.includes("£800,000"));
+    assert.ok(prompt.includes("Kestrel Mobile") && prompt.includes("£650,000") && prompt.includes("£400,000") && prompt.includes("£800,000"));
     const quiet = console.error;
     console.error = () => {};
     try {

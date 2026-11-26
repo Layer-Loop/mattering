@@ -38,8 +38,8 @@ export const INVOICE = {
 } as const;
 
 export const FIRMS = {
-  buyer: { organisation: "Acme Treasury Ltd", agent: "Acme's treasury agent", role: "Pays the invoice early if the discount is worth it" },
-  seller: { organisation: "Bolt Components plc", agent: "Bolt's sales agent", role: "Takes less now in exchange for cash today" },
+  buyer: { organisation: "Acme Treasury Ltd", agent: "Acme's treasury agent", role: "Pays the invoice early, if the price is right" },
+  seller: { organisation: "Bolt Ltd", agent: "Bolt's sales agent", role: "Is paid early, at a discount" },
 } as const;
 
 const MAX_STEPS = 3;
@@ -68,6 +68,10 @@ interface StepState {
   releaseAt: number;
   dueAt: Record<Side, number>;
   submitted: Record<Side, boolean>;
+  /** When each side's offer was sealed and logged, by this server's clock (milliseconds). For display only. */
+  sealedAt?: Partial<Record<Side, number>>;
+  /** Each side's offer's position in the shared log, from the witness's receipt. */
+  logIndex?: Partial<Record<Side, number>>;
   /** What chose each side's offer, once chosen. */
   decidedBy?: Partial<Record<Side, "model" | "script">>;
   /** Each agent's note to its firm, published only once the step has opened. */
@@ -87,6 +91,8 @@ interface RunState {
   rogue: boolean;
   /** Whether a language model may choose offers in this negotiation, decided once at the start. */
   useModel: boolean;
+  /** When the negotiation started, by this server's clock (milliseconds). */
+  startedAt?: number;
   agents: Record<Side, AgentState>;
   steps: StepState[];
   done: boolean;
@@ -185,7 +191,7 @@ export class NegotiationRoom {
       }
       const useModel = options.decide !== undefined && (options.allowModel ? await options.allowModel().catch(() => false) : true);
       state.runs = id;
-      state.run = { id, negotiationId: `INV-2041-early-payment-${Date.now()}-${id}`, rogue, useModel, agents, steps: [], done: false };
+      state.run = { id, negotiationId: `INV-2041-early-payment-${Date.now()}-${id}`, rogue, useModel, startedAt: Date.now(), agents, steps: [], done: false };
       await this.beginStep(state.run, now);
       await options.saveState(state);
     });
@@ -312,7 +318,10 @@ export class NegotiationRoom {
           // An honest agent's software refuses an offer beyond its mandate; the rogue one skips the check.
           const opening = side === "buyer" && run.rogue ? undefined : agent.opening;
           const offer = await prepareOffer(step.policy, side, price, this.signer(run, side), opening);
-          await this.options.log.submit(offer.submission, offer.envelope);
+          const receipt = await this.options.log.submit(offer.submission, offer.envelope);
+          step.sealedAt = { ...step.sealedAt, [side]: Date.now() };
+          step.logIndex = { ...step.logIndex, [side]: receipt.index };
+          await this.options.saveState(this.state);
         } catch (error) {
           console.error(`${side}: ${(error as Error).message}`);
         }
@@ -354,6 +363,10 @@ export class NegotiationRoom {
         phase: phase.state,
         cosigned: phase.cosignatures >= step.policy.cosignerThreshold && phase.state !== "open",
         submitted: step.submitted,
+        sealedAt: step.sealedAt ?? {},
+        logIndex: step.logIndex ?? {},
+        closeRound: step.policy.closeRound,
+        releaseRound: step.policy.releaseRound,
         decidedBy: step.decidedBy ?? {},
         // Notes can give an offer away, so they are shown only once the step has opened.
         notes: phase.state === "released" ? (step.notes ?? {}) : {},
@@ -361,7 +374,7 @@ export class NegotiationRoom {
       });
     }
     const mandates = { buyer: run.agents.buyer.mandate, seller: run.agents.seller.mandate };
-    return { ...base, run: { id: run.id, rogue: run.rogue, useModel: run.useModel, done: run.done, negotiationId: run.negotiationId, mandates, steps } };
+    return { ...base, run: { id: run.id, rogue: run.rogue, useModel: run.useModel, done: run.done, startedAt: run.startedAt, negotiationId: run.negotiationId, mandates, steps } };
   }
 
   /**
