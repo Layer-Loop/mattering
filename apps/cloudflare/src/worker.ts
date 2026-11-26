@@ -435,6 +435,7 @@ function tableDirectory(env: Env, origin: string): TableDirectory {
       return { status: reply.status, body: await reply.json() };
     },
     watchUrl: (id) => `${origin}/demo/table?id=${id}`,
+    clock: env.SIMULATED === "1" ? "simulated" : "live",
   };
 }
 const LOG_PATH = /^\/log(\/.*)?$/;

@@ -14,12 +14,37 @@ export interface TableDirectory {
   call(tableId: string, method: string, path: string, body?: unknown): Promise<Reply>;
   /** Where anyone can watch a table. */
   watchUrl(tableId: string): string;
+  /** The clock the tables run on: drand in public, simulated only for development. */
+  clock: "live" | "simulated";
 }
+
+/**
+ * What kind of environment this server is, said in every tool description and
+ * reply, so that neither the assistant nor its user can mistake a
+ * demonstration for a real transaction. Only a demonstration exists. A live
+ * environment would be a separate server, at its own address, with its own
+ * terms, and would say so here in the same words.
+ */
+export function environment(clock: "live" | "simulated") {
+  return {
+    name: "demonstration",
+    legallyBinding: false,
+    paymentsMade: false,
+    offers: "Sealed and time-locked for real, and recorded on Mattering's public log, but they commit no one to anything.",
+    organisations: "Whoever the parties name. Not verified.",
+    keys: "Mattering's server holds both parties' keys and seals offers for them. In a live environment each party would seal on its own machine.",
+    clock: clock === "live" ? "drand quicknet, the public randomness beacon" : "simulated on the server, for development only",
+    liveEnvironment: "None exists yet. A live environment would be a separate server address with its own terms.",
+  };
+}
+/** The one line every description and reply starts with. */
+const DEMONSTRATION = "Demonstration environment: offers are sealed and recorded for real, but they are not legally binding and no payment is made or arranged.";
 
 const SUPPORTED_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 const SERVER = { name: "mattering", title: "Mattering sealed negotiation", version: "0.1.0" };
 
 const INSTRUCTIONS =
+  `${DEMONSTRATION} The organisations are whoever the parties name, and are not verified. ` +
   "Mattering runs sealed negotiations between two parties. One party opens a table and shares the invite; the other joins. " +
   "Each sets a private limit, which its firm's mandate fixes in advance: the buyer's most it may offer, the seller's least it may accept. " +
   "Then, round by round, each side seals one offer. Neither side can see the other's offer until both open together when a public clock (drand) releases the key. " +
@@ -41,6 +66,7 @@ const TOOLS = [
     name: "start_negotiation",
     title: "Open a negotiation table",
     description:
+      `${DEMONSTRATION} ` +
       "Open a sealed negotiation table and take one side of it. You set what is being negotiated, the price range, and your own private limit. " +
       "Returns your token (keep it secret; it acts for your side) and an invite code for the other party to pass to join_negotiation. " +
       "Rounds begin when the other side joins.",
@@ -60,12 +86,13 @@ const TOOLS = [
       required: ["side", "item", "minPrice", "maxPrice", "limit"],
       additionalProperties: false,
     },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
   {
     name: "join_negotiation",
     title: "Join a negotiation table",
     description:
+      `${DEMONSTRATION} ` +
       "Join a sealed negotiation table with the invite code the other party shared, taking the remaining side. You set your own private limit. " +
       "Returns your token (keep it secret; it acts for your side) and the table's terms. Round 1 begins at once.",
     inputSchema: {
@@ -78,12 +105,13 @@ const TOOLS = [
       required: ["invite", "limit"],
       additionalProperties: false,
     },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
   {
     name: "negotiation_status",
     title: "Where the negotiation stands",
     description:
+      `${DEMONSTRATION} ` +
       "Everything your side may know: the terms, your limit, the current round and how long until it closes and opens, whether each side has sealed, " +
       "every opened round's two offers, and the result once there is one. Check it before making an offer, and again after the round opens. " +
       "The other side's offer for the current round is sealed: nobody can know it until the round opens.",
@@ -93,12 +121,13 @@ const TOOLS = [
       required: ["token"],
       additionalProperties: false,
     },
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
     name: "wait_for_next_round",
     title: "Wait for the negotiation to move on",
     description:
+      `${DEMONSTRATION} ` +
       "Wait until something changes at your table: the other side joins, the current round opens, the next round begins, or the negotiation ends. Returns at once if it already has, and otherwise after at most maxSeconds. " +
       "The reply says what changed and gives a nextStep to follow. Nothing else will tell you, so after each offer keep calling this, and act on each nextStep, until the negotiation is finished.",
     inputSchema: {
@@ -110,12 +139,13 @@ const TOOLS = [
       required: ["token"],
       additionalProperties: false,
     },
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
     name: "make_offer",
     title: "Seal an offer for this round",
     description:
+      `${DEMONSTRATION} ` +
       "Seal your side's offer for the current round. It is locked until the round opens, for everyone including the other side, and cannot be changed or withdrawn; only your first offer in a round counts. " +
       "An offer beyond your own limit is refused. You may add a short note to your own organisation, shown once the round opens. " +
       "If you miss a round's window, that round ends without a deal.",
@@ -129,7 +159,7 @@ const TOOLS = [
       required: ["token", "price"],
       additionalProperties: false,
     },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
 ] as const;
 
@@ -152,6 +182,12 @@ function summary(tool: string, r: Record<string, unknown>): string {
 type Message = { jsonrpc?: unknown; id?: unknown; method?: unknown; params?: unknown };
 const error = (id: unknown, code: number, message: string) => ({ jsonrpc: "2.0", id: id ?? null, error: { code, message } });
 const result = (id: unknown, value: unknown) => ({ jsonrpc: "2.0", id, result: value });
+
+/** A tool's reply: the environment first, in words and as data, then what happened. */
+function answer(name: string, body: Record<string, unknown>, tables: TableDirectory) {
+  const structured = { environment: environment(tables.clock), ...body };
+  return { content: [{ type: "text" as const, text: `[${DEMONSTRATION}]\n${summary(name, body)}\n${JSON.stringify(structured, null, 2)}` }], structuredContent: structured };
+}
 
 type Status = { state?: string; currentRound?: { round: number; youHaveSealed: boolean; phase: string } | null; openedRounds?: { round: number; outcome: { deal: boolean; reason?: string; price?: number } }[]; result?: unknown; nextStep?: string; otherOrganisation?: string | null };
 
@@ -204,7 +240,7 @@ async function callTool(name: string, args: Record<string, unknown>, tables: Tab
     const reply = await waitForChange(id, args.token, seconds, tables);
     if (reply.status !== 200) return { content: [{ type: "text", text: `Refused: ${String(reply.body.error ?? `status ${reply.status}`)}` }], isError: true };
     if (typeof reply.body.tableId === "string") reply.body.watchUrl = tables.watchUrl(reply.body.tableId);
-    return { content: [{ type: "text", text: `${summary(name, reply.body)}\n${JSON.stringify(reply.body, null, 2)}` }], structuredContent: reply.body };
+    return answer(name, reply.body, tables);
   }
   const routes: Record<string, { table: () => string | undefined; path: string; body: () => Record<string, unknown> }> = {
     start_negotiation: { table: () => newTableId(), path: "/create", body: () => args },
@@ -220,7 +256,7 @@ async function callTool(name: string, args: Record<string, unknown>, tables: Tab
   const body = (reply.body ?? {}) as Record<string, unknown>;
   if (reply.status !== 200) return { content: [{ type: "text", text: `Refused: ${String(body.error ?? `status ${reply.status}`)}` }], isError: true };
   if (typeof body.tableId === "string") body.watchUrl = tables.watchUrl(body.tableId);
-  return { content: [{ type: "text", text: `${summary(name, body)}\n${JSON.stringify(body, null, 2)}` }], structuredContent: body };
+  return answer(name, body, tables);
 }
 
 /** Answer one JSON-RPC message, or undefined for a notification or a response. */

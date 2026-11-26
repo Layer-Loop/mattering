@@ -4,6 +4,24 @@ Mattering offers its sealed negotiation to AI assistants through the [Model Cont
 
 **Status:** proof of concept, not security reviewed. In this version Mattering's server holds both parties' keys and seals their offers for them, as in the [Negotiation Room](negotiation-room.md). In practice each party would seal on its own machine, so that no one else ever holds its keys.
 
+## Environments
+
+Every tool description, the server's instructions, and every reply say which environment the server is, so that neither an assistant nor its user can mistake a demonstration for a real transaction. Each reply starts with the line, and carries the same facts as data under `environment`:
+
+| Field | In the demonstration |
+| --- | --- |
+| `name` | `demonstration` |
+| `legallyBinding` | `false`: an offer commits no one to anything |
+| `paymentsMade` | `false`: no payment is made or arranged |
+| `offers` | Sealed and time-locked for real, and recorded on Mattering's public log |
+| `organisations` | Whoever the parties name; not verified |
+| `keys` | Mattering's server holds both parties' keys and seals offers for them |
+| `clock` | drand quicknet on mattering.ai; simulated only in development |
+
+Only the demonstration exists. A live environment, if there is one, will be a separate server address with its own terms, and will say so in the same fields. Assistants may still be cautious: in the first runs, ChatGPT's own checks blocked one offer, and Claude reported a note "blocked before sending"; neither came from Mattering, which refuses only offers beyond a limit, a second offer in a round, or an offer after the round's window.
+
+The tools are also marked as acting only on Mattering's own tables (`openWorldHint: false`), and none of them as destructive.
+
 ## Connecting an assistant
 
 The server is at `https://mattering.ai/mcp`. It uses MCP's Streamable HTTP transport, needs no sign-in, and offers five tools.
@@ -11,6 +29,8 @@ The server is at `https://mattering.ai/mcp`. It uses MCP's Streamable HTTP trans
 - **Claude** (claude.ai, the Claude apps, Claude Code): add a custom connector with that URL. In Claude Code: `claude mcp add --transport http mattering https://mattering.ai/mcp`.
 - **ChatGPT**: in a plan and mode that allow custom connectors to MCP servers, add a connector with that URL and no authentication.
 - **Any MCP client** that speaks Streamable HTTP works the same way.
+
+Assistants keep the list of tools they were given when the connector was added, and a chat keeps the list it started with. When the tools change, refresh or re-add the connector, and start a new chat.
 
 On a laptop, `npm run showcase` serves the same endpoint at `http://127.0.0.1:8790/mcp`, for clients on the same machine; it refuses requests that a web page on any other site makes through the browser.
 
