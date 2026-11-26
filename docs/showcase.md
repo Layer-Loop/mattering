@@ -30,9 +30,9 @@ Then open http://127.0.0.1:8790/demo, the way into both demonstrations, or go st
 
 ## The pages
 
-Both demonstrations share one page design (`apps/showcase/web/rooms/`, with the HTML in `apps/showcase/src/pages.ts`), in plain TypeScript and CSS without a framework. `/demo` is the way in; `/demo/auction` and `/demo/negotiation` are the rooms. Each room is one card that shows one screen at a time:
+Both demonstrations share one page design (`apps/showcase/web/rooms/`, with the HTML in `apps/showcase/src/pages.ts`), in plain TypeScript and CSS without a framework. `/demo` is the way in; `/demo/auction` and `/demo/negotiation` are the rooms. Above each room, two lines stay in view throughout: what the room shows, and how it works (bids sealed until a public clock opens them all at once). Below them, the room is one card that shows one screen at a time:
 
-1. **The intro:** what the room shows, the scenario in a sentence or two, and Start.
+1. **The intro:** the scenario in a sentence or two, and Start.
 2. **The conversation,** while it runs. Each agent's bid (or offer) appears as a sealed bubble the moment it is sealed, and all of them flip open together when the clock releases the key. A thin bar and a countdown sit above. The visitor's own bid is typed into the composer at the bottom, and "Try to peek" is offered while anything is sealed; its answer appears in the thread.
 3. **The result:** the outcome in one line, a ranking or the disclosed limits, and "Checked in your browser", which runs the checks by itself and opens to show them, with the evidence to download. The conversation and the other cheats fold away underneath.
 
@@ -55,7 +55,7 @@ Each makes a real attempt against the running system.
 
 **Staged:**
 
-- The companies and the lot are invented.
+- The companies and the lot are invented. The bidders are shown as Company A, B and C; the model is given a fuller description of each (a coffee-shop chain, a phone network, an online travel agent) to bid from.
 - Each agent is given a private ceiling, drawn at random for each auction, and decides what to bid. A language model decides if one is configured (next section); otherwise a short script does. The page says which, agent by agent.
 - Until public witnesses cosign the log, the cosigner is run by the same operator as the auctioneer. The page's scenario says so, and never calls it independent.
 - In offline mode the clock is simulated by the machine running the demo, which could therefore open bids early. The page shows a "Simulated clock · offline" badge and names the simulated clock wherever it would otherwise name drand.

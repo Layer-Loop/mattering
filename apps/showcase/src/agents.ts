@@ -74,7 +74,7 @@ export function acceptDecision(slot: Slot, value: unknown): Decision | undefined
 
 export const AGENTS: Agent[] = [
   {
-    name: "Fernhill Coffee",
+    name: "Company A",
     tagline: "Coffee-shop chain opening 40 stores",
     persona: "a coffee-shop chain opening 40 stores. It is a disciplined, returns-led advertiser: it bids what its forecast return supports and would sooner lose than overpay.",
     series: 1,
@@ -85,7 +85,7 @@ export const AGENTS: Agent[] = [
     },
   },
   {
-    name: "Kestrel Mobile",
+    name: "Company B",
     tagline: "Phone network launching a new plan",
     persona: "a phone network launching a new plan this spring. Winning this package matters a great deal to the launch, and the budget is generous.",
     series: 2,
@@ -96,7 +96,7 @@ export const AGENTS: Agent[] = [
     },
   },
   {
-    name: "Orla Travel",
+    name: "Company C",
     tagline: "Online travel agent",
     persona: "an online travel agent with a smaller budget than its rivals. It can only win if the others bid cautiously, and it knows that.",
     series: 3,

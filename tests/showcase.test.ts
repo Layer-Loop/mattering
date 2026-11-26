@@ -142,7 +142,7 @@ test("showcase: a language model's decisions are sealed as given, and the page i
     seen.push({ name: agent.name, ceiling });
     return { bid: slot.minBid + 1000 * (seen.length + 1), prediction: `  ${agent.name} says\nhello  ` };
   });
-  assert.deepEqual(seen.map((s) => s.name).sort(), ["Fernhill Coffee", "Kestrel Mobile", "Orla Travel"]);
+  assert.deepEqual(seen.map((s) => s.name).sort(), ["Company A", "Company B", "Company C"]);
   for (const [i, agent] of AGENTS.entries()) {
     const asked = seen.find((s) => s.name === agent.name)!;
     assert.ok(asked.ceiling >= agent.ceiling[0] && asked.ceiling <= agent.ceiling[1], "each agent is given a private ceiling in its range");
@@ -154,9 +154,9 @@ test("showcase: a language model's decisions are sealed as given, and the page i
 
 test("showcase: a model that fails, stalls or returns junk is replaced by the script, agent by agent", async () => {
   const result = await runWith(async (agent, slot) => {
-    if (agent.name === "Fernhill Coffee") throw new Error("API down");
-    if (agent.name === "Kestrel Mobile") return { bid: slot.maxBid * 50, prediction: "We bid fifty times the maximum." };
-    return new Promise(() => {}); // Orla Travel: never answers
+    if (agent.name === "Company A") throw new Error("API down");
+    if (agent.name === "Company B") return { bid: slot.maxBid * 50, prediction: "We bid fifty times the maximum." };
+    return new Promise(() => {}); // Company C: never answers
   }, 400);
   assert.deepEqual(result.decidedBy, ["script", "script", "script"]);
   for (const [i, agent] of AGENTS.entries()) {
@@ -216,7 +216,7 @@ test("the Claude decider sends one well-formed request and reads the answer; fai
     assert.equal(sent.body.thinking, undefined, "thinking is left to the model's default");
     assert.equal(sent.body.temperature, undefined);
     const prompt = JSON.stringify([sent.body.system, sent.body.messages]);
-    assert.ok(prompt.includes("Kestrel Mobile") && prompt.includes("£650,000") && prompt.includes("£400,000") && prompt.includes("£800,000"));
+    assert.ok(prompt.includes("Company B") && prompt.includes("£650,000") && prompt.includes("£400,000") && prompt.includes("£800,000"));
     const quiet = console.error;
     console.error = () => {};
     try {
