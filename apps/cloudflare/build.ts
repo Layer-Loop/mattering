@@ -34,7 +34,7 @@ const out = resolve(site);
 let commit = "unknown";
 try {
   commit = execSync("git rev-parse --short HEAD", { cwd: here, encoding: "utf8" }).trim();
-  if (execSync("git status --porcelain", { cwd: here, encoding: "utf8" }).trim()) commit += " (with uncommitted changes)";
+  if (execSync("git status --porcelain --untracked-files=no", { cwd: here, encoding: "utf8" }).trim()) commit += " (with uncommitted changes)";
 } catch {
   // not a git checkout
 }
