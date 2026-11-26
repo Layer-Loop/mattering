@@ -1,0 +1,184 @@
+{
+  "description": "A sealed-bid auction on a witness log with one cosigner, closed at round 100 and released at round 110 of the test beacon. Verifying the evidence must give the result below. The bid amounts exist only inside the envelopes and the commitments.",
+  "vectors": {
+    "beacon": "testBeacon",
+    "policyHash": "feed82cceb891321508c8b7c66b49c6b414d51adc38faf8f5ae6d2e16aa4b804",
+    "evidence": {
+      "policy": {
+        "format": "mattering.auction-policy/3",
+        "auctionId": "test-vector-lot-7",
+        "beacon": {
+          "chainHash": "0b5ada51058ab1f145d421f96f8772ed2c7b5e4146d84235fa02f4878bc6b623",
+          "publicKey": "8eb49414c02370751fc2b2b923a993d7e6dda6e8254779466f5792fc892ffb0625e40bc46eede790f4d0b336be7e1b8505241200ddfa60d5da8a82fe184e838e438570dbf6727fc52b8df1c78b9617e2656272a8c9bbcb0147aa14daa762ee77",
+          "scheme": "bls-unchained-g1-rfc9380",
+          "genesisTime": 1,
+          "period": 1
+        },
+        "closeRound": 100,
+        "releaseRound": 110,
+        "witness": "05d2f772ca8ef36125418c9e76ab463b6bb42b154ff16e9ec301d21af9bd40c4",
+        "origin": "auction.example/log",
+        "logFrom": 0,
+        "cosigners": [
+          "auction-cosigner.example+20fbb19a+BO2j04rz9OEYW266lz5RXWsE4hxWMT1qucgLcGlZjSMg"
+        ],
+        "cosignerThreshold": 1,
+        "minBid": 100,
+        "maxBid": 10000,
+        "rule": "highest-bid",
+        "tieBreak": "release-round-signature"
+      },
+      "policyHash": "feed82cceb891321508c8b7c66b49c6b414d51adc38faf8f5ae6d2e16aa4b804",
+      "entries": [
+        {
+          "format": "mattering.submission/1",
+          "policyHash": "feed82cceb891321508c8b7c66b49c6b414d51adc38faf8f5ae6d2e16aa4b804",
+          "envelopeId": "86820806914a338636906afe6426fabe827264915874ad9ab5ae99f9b4f28357",
+          "commitment": "a6d0222d8e711be84c6456e3d963ac0c49b3d7223c95e6c666f7f440eabb6e5b",
+          "submitter": "b79271990f61d962fdbb3078e04fd5de867732581cedf09c7dec2a0555891e8d",
+          "signature": "a13463ba2a18a7b4d239ec06d0f94b2521fe7c3473985543e1c8438a1fc704a9bdf2f5f319fe7817c093203676a442c4b9619dd33ad05592050c786fa7ec8502"
+        },
+        {
+          "format": "mattering.submission/1",
+          "policyHash": "feed82cceb891321508c8b7c66b49c6b414d51adc38faf8f5ae6d2e16aa4b804",
+          "envelopeId": "8f8a7d500fc1caa84fa38cf89b160c9d6a680165014ba4036dfbc9ac88258fab",
+          "commitment": "88713d8956229afcd9116fea51de0a6c164223e8fb7603fee75631469edf6f26",
+          "submitter": "bb82ba0f0ef0d786bc29f438467fe1444e3d66c3c30aeb5a220d6f23dfb74675",
+          "signature": "b9ffb72db53cbb8cf648d6df1724c57f27f224d514df4f51c6b127d1a87ba343b7408daaec275a5a751926b055f1237196f11a3833cc78e9d9e58a665f97dc03"
+        },
+        {
+          "format": "mattering.submission/1",
+          "policyHash": "feed82cceb891321508c8b7c66b49c6b414d51adc38faf8f5ae6d2e16aa4b804",
+          "envelopeId": "017a8a18749c68192d8ac695614183b0b9df91f9214a820ff852b989dc0a3167",
+          "commitment": "58ba72d13a0e1ae383498b722ecfc4fc38ce872524dbe57923a48e186f25ce19",
+          "submitter": "413758178e0da95663fdef08ee8bf9a47dee127188f2b468835da163099120e2",
+          "signature": "83cbf4bb594b00c5bb3d1f27e674c23584049aacb6d50ca6b43680d4958b86f6f0601e4bcd815bc7d1c677053b87c4b705e45ff0df688dd8bccd00c0a7be9602"
+        },
+        {
+          "format": "mattering.close/1",
+          "policyHash": "feed82cceb891321508c8b7c66b49c6b414d51adc38faf8f5ae6d2e16aa4b804",
+          "observed": {
+            "round": 100,
+            "signature": "b0fe57bf43bf9bdb0f5e415164564352a5296670360a6197078581ddcadd49da0e6a96efb075fb4202baf6de37402788"
+          }
+        }
+      ],
+      "prefix": [],
+      "closing": {
+        "format": "mattering.checkpoint/1",
+        "witness": "05d2f772ca8ef36125418c9e76ab463b6bb42b154ff16e9ec301d21af9bd40c4",
+        "size": 4,
+        "root": "ba8648cfa9629c8256be6422f2a0ff4549841ab2558589de9468299c0050d4ca",
+        "observed": {
+          "round": 100,
+          "signature": "b0fe57bf43bf9bdb0f5e415164564352a5296670360a6197078581ddcadd49da0e6a96efb075fb4202baf6de37402788"
+        },
+        "closes": "feed82cceb891321508c8b7c66b49c6b414d51adc38faf8f5ae6d2e16aa4b804",
+        "signature": "be5d8fb5e98baa2d80461ac600c905be2b2f1f20157aa2e8fe4a17c40bf58103425beb58de64403afb099dcfd2c9455b3387262f601ba5321fbdbe226e695705"
+      },
+      "witnessed": {
+        "checkpoint": "auction.example/log\n4\nuoZIz6linIJWvmQi8qD/RUmEGrJVhYnelGgpnABQ1Mo=\n\n— auction.example/log 0WrFzGeFYyESRSxr0FmoH6kZcQoeXy+e0ZfUzqqLfi7KL75/cSLf97LFBuysO9XS2AElC9ielAawRaTjJlZ46Vwd+wA=\n— auction-cosigner.example IPuxmgAAAAAAAABkoYltdn0UwVCkRuCR2esFC3umV1VCUQJWiv0N/pmXyXrf76TJ4azrU67/McB3GhN/aDXsiJGwka3h6XsmdcwwAQ==\n",
+        "proof": []
+      },
+      "envelopes": {
+        "86820806914a338636906afe6426fabe827264915874ad9ab5ae99f9b4f28357": {
+          "format": "mattering.envelope/1",
+          "beacon": {
+            "chainHash": "0b5ada51058ab1f145d421f96f8772ed2c7b5e4146d84235fa02f4878bc6b623",
+            "publicKey": "8eb49414c02370751fc2b2b923a993d7e6dda6e8254779466f5792fc892ffb0625e40bc46eede790f4d0b336be7e1b8505241200ddfa60d5da8a82fe184e838e438570dbf6727fc52b8df1c78b9617e2656272a8c9bbcb0147aa14daa762ee77",
+            "scheme": "bls-unchained-g1-rfc9380",
+            "genesisTime": 1,
+            "period": 1
+          },
+          "round": 110,
+          "context": {
+            "kind": "mattering.bid/1",
+            "policyHash": "feed82cceb891321508c8b7c66b49c6b414d51adc38faf8f5ae6d2e16aa4b804",
+            "bidder": "b79271990f61d962fdbb3078e04fd5de867732581cedf09c7dec2a0555891e8d"
+          },
+          "ciphertext": "-----BEGIN AGE ENCRYPTED FILE-----\nYWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHRsb2NrIDExMCAwYjVhZGE1MTA1OGFi\nMWYxNDVkNDIxZjk2Zjg3NzJlZDJjN2I1ZTQxNDZkODQyMzVmYTAyZjQ4NzhiYzZi\nNjIzCnVjWGo0TzY5S1MyRmJhYVdXSGhUSUNUVDFidkhXb2hDUG5NT2RyUld5MW1h\nVDVaaHNJMFAxLzVXTnFnZWVrOE8KQ3FDU3ROYkhEZnN2NGpoMjl4VzdJK3UvOVdm\nemEwWXVRZFVpN2VJWGZkYytaeEt5bUtxQStOem5maGZCV0Q5NwpCRC9oTGFzcUtJ\ndUx2dGkyZW9hSEltSmZoNkM2cklteC9kR0NDaWI3RWlZCi0tLSB2R0diT245b1Q4\nc1VqdkFxbGg2TzdKakFaZU9DNURjckp1allsWUk0TXZ3Ciuf4XNn5VGAzp/9ZMbM\nKA14QkyoCMPoy5GuFIfcceVgOLa/jAU5pO8RVFJl69JEPqrq4LYtywrFo4IUMv0L\nO+6K/vbZrOmULb5B7QDgMDy+Nq6g/aWbT17/buD5T7iNR0c10tpv4wI3V9Z3IF5R\nkhjlAowdF4YXopfXov+8LUA8Hk+LhLeSRNB9ptKKSqO6Y1GJcIAQpf0c2h2cRupG\nqKGj3diou2da/2OW5BOfNMRn3xJOjHWwwZIgXkON9vOC6HmYaTv14aMYswPEpaNd\nvuNlVNoecjMbzrd/+aF8NmtrIjZ5x5E0xeQKJi5i5aEq4LkQSz3HYAzGjH0UVjIN\n5fB57Mh7/967dF0q6OZqe3JMSm4l2H7YXrjGbOnx9NkRi85L4blVqJvehx5yGfk5\n5SFOhYd1LkcSFt+S2nPi1aaS980/nEenEXxysXN3TpmMeKzGYtfNSk6XJQ==\n-----END AGE ENCRYPTED FILE-----\n"
+        },
+        "8f8a7d500fc1caa84fa38cf89b160c9d6a680165014ba4036dfbc9ac88258fab": {
+          "format": "mattering.envelope/1",
+          "beacon": {
+            "chainHash": "0b5ada51058ab1f145d421f96f8772ed2c7b5e4146d84235fa02f4878bc6b623",
+            "publicKey": "8eb49414c02370751fc2b2b923a993d7e6dda6e8254779466f5792fc892ffb0625e40bc46eede790f4d0b336be7e1b8505241200ddfa60d5da8a82fe184e838e438570dbf6727fc52b8df1c78b9617e2656272a8c9bbcb0147aa14daa762ee77",
+            "scheme": "bls-unchained-g1-rfc9380",
+            "genesisTime": 1,
+            "period": 1
+          },
+          "round": 110,
+          "context": {
+            "kind": "mattering.bid/1",
+            "policyHash": "feed82cceb891321508c8b7c66b49c6b414d51adc38faf8f5ae6d2e16aa4b804",
+            "bidder": "bb82ba0f0ef0d786bc29f438467fe1444e3d66c3c30aeb5a220d6f23dfb74675"
+          },
+          "ciphertext": "-----BEGIN AGE ENCRYPTED FILE-----\nYWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHRsb2NrIDExMCAwYjVhZGE1MTA1OGFi\nMWYxNDVkNDIxZjk2Zjg3NzJlZDJjN2I1ZTQxNDZkODQyMzVmYTAyZjQ4NzhiYzZi\nNjIzCnVVTTcwQUlkQ2swSlpFWUY5Y0JaSzhTOFFCK3JtbFRSa1RXOElzaEVKeFoz\nTkZtM2x0S1BrY2VRMTkyNHdYU0MKQnIxM2I4SU0yNHF3RUlHclNnN01sZFlkK0Vn\nQ3FGSG5iTURIRVdmVEhJMk9jSk1peVZlbHlYOUVIS3lMaU8rKwpjSjQyRk9KSnNU\nWjhQOStCb1Frci9lb1dDMGVXemY1Y3hNSVdNMG1BUmxBCi0tLSAvdjZVRWVRR05U\nckFpckxrZjJHSEsxZGFuTWlMeHRxbnRhRU02VFNvaUhnCsOh37rJ9Gb5bN5bekhY\nuxtaecc1sa6yEQCFadxSikBuDgAdNvzytoZAhmetgS08LCqBSDvDcM8pa9PFz1ZA\nDkGVl2ehryK8Cv9P5hGziQYylimAbP0/h4sdsjNh/Vbipt2Xvrz1P0sVSyaYW3ex\nmguEABZ80w8ZEIqGxAyNewJRgGmGlpkCDDsNeGnGUrh5VZNlrWHOFIYMcaQkzBg/\n0NEz6K1vARajlg6SM1nM7TxyEboIytoQGL0Nn+DWr56iguik8nE2i71PdBfLDTJa\n8JLCugEMFrMfwOvpO6b/eXlv+CuJEr/kH/1smF3nQnhQdZQmnTFKnxkm4UpmDoEN\nJbrlKwmyR6s6IFFsEjG28g3d8+wwly1ds50JnYCmVsrDL0dh8IB+MxvPli6+aZ2l\npWloZlYv/GcWxBxIwXUK9fuTelTovhLjOrwWcOmA9ITir2iYxppbRdt/7w==\n-----END AGE ENCRYPTED FILE-----\n"
+        },
+        "017a8a18749c68192d8ac695614183b0b9df91f9214a820ff852b989dc0a3167": {
+          "format": "mattering.envelope/1",
+          "beacon": {
+            "chainHash": "0b5ada51058ab1f145d421f96f8772ed2c7b5e4146d84235fa02f4878bc6b623",
+            "publicKey": "8eb49414c02370751fc2b2b923a993d7e6dda6e8254779466f5792fc892ffb0625e40bc46eede790f4d0b336be7e1b8505241200ddfa60d5da8a82fe184e838e438570dbf6727fc52b8df1c78b9617e2656272a8c9bbcb0147aa14daa762ee77",
+            "scheme": "bls-unchained-g1-rfc9380",
+            "genesisTime": 1,
+            "period": 1
+          },
+          "round": 110,
+          "context": {
+            "kind": "mattering.bid/1",
+            "policyHash": "feed82cceb891321508c8b7c66b49c6b414d51adc38faf8f5ae6d2e16aa4b804",
+            "bidder": "413758178e0da95663fdef08ee8bf9a47dee127188f2b468835da163099120e2"
+          },
+          "ciphertext": "-----BEGIN AGE ENCRYPTED FILE-----\nYWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHRsb2NrIDExMCAwYjVhZGE1MTA1OGFi\nMWYxNDVkNDIxZjk2Zjg3NzJlZDJjN2I1ZTQxNDZkODQyMzVmYTAyZjQ4NzhiYzZi\nNjIzCnE0UDdpVUZVTXB6WjBpM3JtdWZVd1FwRjZPNFEySmVPK09xNVpVK0prVENF\nd2lhTitnWExuUytHbGZQMkhRNmgKRkZGVWR1ZmxpaGl3d1lONkI1VjB0MDVwSFBX\nUERSTzg4NWtsT0toN05mQTJ1ZVJFNTQzZmxiVWJDNHB4UmdlVAp0MVFpcmUwTXZy\nZlZMMk1kMU5VQndpVnpJRkNDcGlrQkRtZTZ0aEtoZEhJCi0tLSBOcDNpT2xHNDAv\nTW9Xc2NSdmQ4UW5GL2JzYm5TZ2h6MTVKMFZ1eEVLYzIwCspBzakbydrKvS1K9fUX\n3YYMikH1lO/H2GlS9AhHIXMbu126PNywxIOzQwxk/u5eYXrufoGqXKOdT2QfTFtc\nWjgW/Y3yk1oIC0dTlNnxb/P8dOJmGuoLhvBSwxa3bVl4OVrPwud1piMiJdL4s5cT\nswU6eW/mLiuvuBsK2vWOxniiDvgcoQgR8hd5cgQNHGF1ZSvYxtSxFzl8+BgX0K6u\nXo4bSUr+3vMMGQluSfdHMfe2GnBAuT74RhPPlb2jP3SJoSd3FMmnWpm8o5MOgUgC\nLeCZjgXDnacEcJa0AWHjut7r8CUZP2ZjQYq0YPZH3h4gnh8mEALFZ0NkMFhBec1C\ntxlAkZUo5GRAmNpSo0LJasjKPN1xo3Xy3ReZ4CaQ9ItSn22tJStNbK133DUzdU/7\nzYlYRL91yzwZLzFL6Q35lupq21GeL1ClKOxgp2oCugakyBKAQitBU6/vng==\n-----END AGE ENCRYPTED FILE-----\n"
+        }
+      },
+      "state": "released",
+      "release": {
+        "round": 110,
+        "signature": "b7778271678b33e4ae7b7ee862892cb2bfc5ecae4c3ed41bf1c63085428f3de75cdfe86505be207c258630352b90b61e"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "winner": {
+        "submitter": "bb82ba0f0ef0d786bc29f438467fe1444e3d66c3c30aeb5a220d6f23dfb74675",
+        "amount": 5100
+      },
+      "bids": [
+        {
+          "submitter": "b79271990f61d962fdbb3078e04fd5de867732581cedf09c7dec2a0555891e8d",
+          "amount": 4200,
+          "status": "valid"
+        },
+        {
+          "submitter": "bb82ba0f0ef0d786bc29f438467fe1444e3d66c3c30aeb5a220d6f23dfb74675",
+          "amount": 5100,
+          "status": "valid"
+        },
+        {
+          "submitter": "413758178e0da95663fdef08ee8bf9a47dee127188f2b468835da163099120e2",
+          "amount": 3900,
+          "status": "valid"
+        }
+      ],
+      "checks": [
+        "policy-well-formed",
+        "beacon-accepted",
+        "closing-checkpoint-signed-by-witness",
+        "closing-checkpoint-is-for-this-policy",
+        "closed-at-the-close-round",
+        "closing-checkpoint-cosigned-before-release",
+        "log-matches-closing-checkpoint",
+        "closing-is-the-close-entry",
+        "closed-only-once",
+        "release-valid",
+        "every-on-time-bid-judged"
+      ]
+    },
+    "tampered": {
+      "why": "a bid's entry is removed from the log after the close",
+      "failingCheck": "log-matches-closing-checkpoint"
+    }
+  }
+}

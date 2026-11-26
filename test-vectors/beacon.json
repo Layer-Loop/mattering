@@ -1,0 +1,88 @@
+{
+  "description": "Beacons and their releases. A release verifies against the beacon's public key; quicknet's are real, the test beacon's secret is published for testing only.",
+  "vectors": {
+    "quicknet": {
+      "info": {
+        "chainHash": "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
+        "publicKey": "83cf0f2896adee7eb8b5f01fcad3912212c437e0073e911fb90022d3e760183c8c4b450b6a0a6c3ac6a5776a2d1064510d1fec758c921cc22b0e17e63aaf4bcb5ed66304de9cf809bd274ca73bab4af5a6e9c76a4bc09e76eae8991ef5ece45a",
+        "scheme": "bls-unchained-g1-rfc9380",
+        "genesisTime": 1692803367,
+        "period": 3
+      },
+      "releases": [
+        {
+          "round": 1000000,
+          "signature": "83ad29e4c409f9470fc2ef02f90214df49e02b441a1a241a82d622d9f608ef98fd8b11a029f1bee9d9e83b45088abe72"
+        },
+        {
+          "round": 1000001,
+          "signature": "a5bd91e5e2d8c0bf51bffdfad87eef34348fd9c0b2df2bee39db90bdef7e1399b1a77bb2fe98b24d84c0936a306c4218"
+        }
+      ]
+    },
+    "testBeacon": {
+      "secret": "3b7b1eb74d112e8539f809f0498f676f22a4bd59891036e7a38f46ffa05e9401",
+      "info": {
+        "chainHash": "0b5ada51058ab1f145d421f96f8772ed2c7b5e4146d84235fa02f4878bc6b623",
+        "publicKey": "8eb49414c02370751fc2b2b923a993d7e6dda6e8254779466f5792fc892ffb0625e40bc46eede790f4d0b336be7e1b8505241200ddfa60d5da8a82fe184e838e438570dbf6727fc52b8df1c78b9617e2656272a8c9bbcb0147aa14daa762ee77",
+        "scheme": "bls-unchained-g1-rfc9380",
+        "genesisTime": 1,
+        "period": 1
+      },
+      "releases": [
+        {
+          "round": 42,
+          "signature": "8483bd67f778552213466cc260c3d1b53a0ba54bfa4b97668fe0ac553c79257352ac7bf3bd5fd90f34e61df1bac0870b"
+        },
+        {
+          "round": 43,
+          "signature": "acbea07f58951f185a09f6f649fff3a568187c8914df01ff111e1fb0c176b329c00b5e9b27b6cf63c5e26cefa047c1f9"
+        },
+        {
+          "round": 100,
+          "signature": "b0fe57bf43bf9bdb0f5e415164564352a5296670360a6197078581ddcadd49da0e6a96efb075fb4202baf6de37402788"
+        }
+      ]
+    },
+    "invalid": [
+      {
+        "why": "round 1,000,000's signature presented as round 1,000,001's",
+        "beacon": "quicknet",
+        "release": {
+          "round": 1000001,
+          "signature": "83ad29e4c409f9470fc2ef02f90214df49e02b441a1a241a82d622d9f608ef98fd8b11a029f1bee9d9e83b45088abe72"
+        }
+      },
+      {
+        "why": "one byte of the signature changed",
+        "beacon": "quicknet",
+        "release": {
+          "round": 1000000,
+          "signature": "83ad29e4c409f9470fc2ef02f90214df49e02b441a1a241a82d622d9f608ef98fd8b11a029f1bee9d9e83b45088abe00"
+        }
+      }
+    ],
+    "schedule": [
+      {
+        "unixSeconds": 0,
+        "firstRoundAtOrAfter": 1,
+        "timeOfThatRound": 1692803367
+      },
+      {
+        "unixSeconds": 1692803367,
+        "firstRoundAtOrAfter": 1,
+        "timeOfThatRound": 1692803367
+      },
+      {
+        "unixSeconds": 1692803370,
+        "firstRoundAtOrAfter": 2,
+        "timeOfThatRound": 1692803370
+      },
+      {
+        "unixSeconds": 1800000000,
+        "firstRoundAtOrAfter": 35732212,
+        "timeOfThatRound": 1800000000
+      }
+    ]
+  }
+}

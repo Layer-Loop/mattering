@@ -1,0 +1,22 @@
+{
+  "description": "C2SP signed notes: verifier keys, a checkpoint signed by its log (Ed25519, type 0x01), and a timestamped cosignature (type 0x04). Ed25519 is deterministic, so the signatures are exact.",
+  "vectors": {
+    "log": {
+      "secretKey": "35363901f99ed36110401dbf136f694174eeb76f9d81b15b692545a1cc0f2551",
+      "publicKey": "1b952f34c58cbe7939ef2e9362a3dd49e58aa51dd41cba6744135c744da4698c",
+      "vkey": "example.com/vector-log+b1d6fe14+ARuVLzTFjL55Oe8uk2Kj3UnliqUd1By6Z0QTXHRNpGmM"
+    },
+    "cosigner": {
+      "secretKey": "57bef7b89c1fad5658811fedfcee93f67400b8d50bd8fcb21affcb6c2dc047a1",
+      "publicKey": "9baccc40a9442fd440e8e1eaf607c5360e0fec1d33ffb091e89f1f7c0fff968c",
+      "vkey": "cosigner.example+c88259fa+BJuszECpRC/UQOjh6vYHxTYOD+wdM/+wkeifH3wP/5aM"
+    },
+    "checkpointText": "example.com/vector-log\n7\nWmH8K1T5z6cXdPJDIUPdQMbLKxGUf69lp9PaXLZRmcg=\n",
+    "logSignatureLine": "— example.com/vector-log sdb+FKlwCPm8Z3+Hfc39TXfCIdNP9xwa5PhfaJbNGjv+lnoKOhhkCOH/k5BO4gfEALaIbKM7or882bArItFheT2SOQQ=\n",
+    "cosignature": {
+      "timestamp": 1800000000,
+      "signatureLine": "— cosigner.example yIJZ+gAAAABrSdIAzjkFFaCVwQCa9hP7/spoeONTISx1tr32/eTd00E2wm5GPfkWcTYL3cyM1l+ZOA1m55+RMmEXWFhQr7oWcHxoAg==\n"
+    },
+    "note": "example.com/vector-log\n7\nWmH8K1T5z6cXdPJDIUPdQMbLKxGUf69lp9PaXLZRmcg=\n\n— example.com/vector-log sdb+FKlwCPm8Z3+Hfc39TXfCIdNP9xwa5PhfaJbNGjv+lnoKOhhkCOH/k5BO4gfEALaIbKM7or882bArItFheT2SOQQ=\n— cosigner.example yIJZ+gAAAABrSdIAzjkFFaCVwQCa9hP7/spoeONTISx1tr32/eTd00E2wm5GPfkWcTYL3cyM1l+ZOA1m55+RMmEXWFhQr7oWcHxoAg==\n"
+  }
+}

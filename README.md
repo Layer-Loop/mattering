@@ -131,14 +131,15 @@ The full list is in [docs/threat-model.md](docs/threat-model.md).
 
 | Path | Contents |
 | --- | --- |
-| `packages/core` | The SDK: envelopes, witness log, commitments, auction verifier |
+| `packages/core` | The SDK, `@mattering/core`: envelopes, recipients, witness log, commitments, auction and negotiation verifiers |
 | `apps/cli` | The `mattering` command |
 | `apps/witness` | The witness and registry service, a cosigner, and a client |
 | `apps/showcase` | The Sealed Room: a web page for demonstrations |
 | `apps/cloudflare` | The same room as a Cloudflare Worker, for the website |
 | `examples/agent-auction` | Three agents, one auction, and a standalone verifier |
 | `examples/hosted-registry` | The same through the hosted service, plus sealed predictions |
-| `tests` | 95 tests (one, against live drand, runs only with `npm run test:live`): sealing, sealing to recipients, sealed negotiation, agent mandates, the negotiation demo, tampering, replay, early opening, cheating bidders, a cheating witness, a cheating coordinator, the witness protocol and its formats, the service over HTTP, and one log shared by many auctions |
+| `test-vectors` | Known inputs and outputs for every format, for a second implementation ([README](test-vectors/README.md)) |
+| `tests` | 104 tests (one, against live drand, runs only with `npm run test:live`): sealing, sealing to recipients, sealed negotiation, agent mandates, the negotiation demo, tampering, replay, early opening, cheating bidders, a cheating witness, a cheating coordinator, the witness protocol and its formats, the service over HTTP, one log shared by many auctions, and the test vectors |
 | `docs/protocol.md` | The envelope, submission, log, auction and statement formats |
 | `docs/service.md` | Running the witness service, its interface, and what it lacks |
 | `docs/showcase.md` | The demonstration page: what is real and what is staged |
@@ -153,6 +154,12 @@ The full list is in [docs/threat-model.md](docs/threat-model.md).
 `npm test` runs offline. It uses a local test beacon with its own key, so the time lock is exercised for real: a ciphertext made for round 42 does not open with round 41's signature, even when every Mattering check is bypassed.
 
 `npm run test:live` runs one test against the real drand network. It needs internet access to a drand relay and takes about ten seconds.
+
+`tests/vectors.test.ts` checks the published [test vectors](test-vectors/README.md) against the library, so the two cannot drift apart. Two of the vectors are real drand quicknet rounds, checked offline from their recorded signatures.
+
+## The npm package
+
+`@mattering/core` is ready to publish but not yet on npm. `npm run pack:core` compiles it to JavaScript with type declarations in `.npm/core/`, packs it, installs the packed copy into an empty project, and checks that it seals, refuses to open early, opens on time, seals to a recipient, and that its types resolve. Publishing is then `npm publish .npm/core --access public`, from an account that owns the `@mattering` scope. In this repository the workspace uses the TypeScript source directly.
 
 ## Dependencies
 

@@ -23,7 +23,9 @@
     "example:hosted": "tsx examples/hosted-registry/run.ts",
     "showcase": "tsx apps/showcase/src/server.ts",
     "showcase:offline": "tsx apps/showcase/src/server.ts offline",
-    "build:site": "tsx apps/cloudflare/build.ts"
+    "build:site": "tsx apps/cloudflare/build.ts",
+    "vectors": "tsx test-vectors/generate.ts",
+    "pack:core": "tsx scripts/pack-core.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

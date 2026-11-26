@@ -1,0 +1,45 @@
+{
+  "description": "Version 2 envelopes (mattering.envelope/2): locked to a round and to age X25519 recipients. A recipient opens it with the round's release and its identity; its file key lets anyone else open that one envelope. A stranger cannot.",
+  "vectors": {
+    "identities": {
+      "alice": {
+        "identity": "AGE-SECRET-KEY-1TZW0T6JE07DJ8P54RJL6P0HZXZUR2GVJ5XJG47LD0LVD5U0AQGVQDLF4KM",
+        "recipient": "age176fzcv4au6amlymse5k8x5rks6mz7hzp5plz5va4c5gvh972sv4sz25hw9"
+      },
+      "bob": {
+        "identity": "AGE-SECRET-KEY-1C6KD0SHEYKD3A5NN3TRMCQ7X9J9KKQXJQSA6KL4SDRCSQSK2A72SPHXZFU",
+        "recipient": "age16x8pz8rzvakcwv3fu4qttqk98vp2qv3v5gqpj8a86vqv7ls2hg5s4wjccx"
+      },
+      "stranger": {
+        "identity": "AGE-SECRET-KEY-16WZDJAKZVKKYLM8P8D79PK2ENKJDREJSLHQ0KYA207EQP7T4T4FQ3MF43T",
+        "recipient": "age1g5rdemsftkdu2p0ujfa97xmxfnvusnjy9yvmn8w4arm4c9enzg4qv6t7rc"
+      }
+    },
+    "envelope": {
+      "format": "mattering.envelope/2",
+      "beacon": {
+        "chainHash": "0b5ada51058ab1f145d421f96f8772ed2c7b5e4146d84235fa02f4878bc6b623",
+        "publicKey": "8eb49414c02370751fc2b2b923a993d7e6dda6e8254779466f5792fc892ffb0625e40bc46eede790f4d0b336be7e1b8505241200ddfa60d5da8a82fe184e838e438570dbf6727fc52b8df1c78b9617e2656272a8c9bbcb0147aa14daa762ee77",
+        "scheme": "bls-unchained-g1-rfc9380",
+        "genesisTime": 1,
+        "period": 1
+      },
+      "round": 42,
+      "context": {
+        "purpose": "test vector, to recipients"
+      },
+      "recipients": [
+        "age16x8pz8rzvakcwv3fu4qttqk98vp2qv3v5gqpj8a86vqv7ls2hg5s4wjccx",
+        "age176fzcv4au6amlymse5k8x5rks6mz7hzp5plz5va4c5gvh972sv4sz25hw9"
+      ],
+      "ciphertext": "-----BEGIN AGE ENCRYPTED FILE-----\nYWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHRsb2NrIDQyIDBiNWFkYTUxMDU4YWIx\nZjE0NWQ0MjFmOTZmODc3MmVkMmM3YjVlNDE0NmQ4NDIzNWZhMDJmNDg3OGJjNmI2\nMjMKdDY0dFVob3NHQWJFNFN5a1FCbjhnd1pxejNWazkyWU1BL1dZREZsbVBNVFpk\nQzgreEpGaGwramQyTUlTY2ErMgpCVVVNWVNEMEVpOENGQ0NoQ2ZXRG0ySVVuQlR2\nMWN2SVQ1Q00rd0RUem9KT3BrQlRsaVFZM0dYN2QydkVqcjYxCkJ2eGJpUUlTRzY5\naFkzYmxnd0VHQ3d6US9YREUvRTNyWlRyRWRsS2NPbnMKLS0tIFAxOFV1WU9KeDlJ\nUklacjh2eWplUnJLOGVRUllYbXNUM1VCUTBYbW5TaVUK7pUyuawjmTmEawY1Fogw\nXROf6WSnN0W/ZcaX4xhGvE3tAR3+ZPaNza3SXL+SywY7z7rgVc48+VQ8dbKpGBPq\nfvxadwYhUV7RvB8ZaHhtqJsLim8TaB698fy/tb7WGZ+jbn2f2mO+yXo7jXRCVLEP\nc67O1zx4nb4TJiCDB3dwObDq1kmU0cRKSNKO+Rghj68gkEBRNgj29U4gmflJGEmF\nSFt6UR4jIHB8r7UwglEPR8f43U7hHC2KJB2g9MLpA7V8eflESwd+27P7HPUtAQD6\nJPRooUIOn9YDOkLCjiMiGqf/+iPVN6/Fbi2jUILDKvY4MixFdL6nf8J/x5KPQhCq\npv/7HNiA6H/zYxpGOj9lxRu5AKIyEnADAwaCyMEDl+QzLEUnDRUHFeT6mPP5aU1A\nn5z8X2+bx/0fZOoon1piY+RAZ/T90EGvORYGofgEBwlszax7MyudM6DVIEVLOpB2\nl1zzTsF7OCxt7r6UkBY2CE9N8H7/x3ZRValBuMEcJquMmrv3bgdAafIDjbuneJ7a\np9v+1Ldf1ymGErL2E1wNIvs29E8zvb6nV327HQDKaA==\n-----END AGE ENCRYPTED FILE-----\n"
+    },
+    "envelopeId": "f469af853a9d48e19db2429e116a2f13b2c67a1d74d573d6ba3ca8ed72042d4f",
+    "release": {
+      "round": 42,
+      "signature": "8483bd67f778552213466cc260c3d1b53a0ba54bfa4b97668fe0ac553c79257352ac7bf3bd5fd90f34e61df1bac0870b"
+    },
+    "payload": "4269643a20c2a3342c32303020666f72206c6f7420372e205365616c656420666f7220746865204d6174746572696e67207465737420766563746f72732e0a",
+    "fileKey": "bb852a2a57f563c8970af8c04861f473"
+  }
+}

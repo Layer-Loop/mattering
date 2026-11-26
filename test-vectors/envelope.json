@@ -1,0 +1,93 @@
+{
+  "description": "Version 1 envelopes (mattering.envelope/1). Each opens to the payload with its round's release, and fails with any other round's. Encryption is randomised, so these were sealed once and recorded.",
+  "vectors": {
+    "payload": "4269643a20c2a3342c32303020666f72206c6f7420372e205365616c656420666f7220746865204d6174746572696e67207465737420766563746f72732e0a",
+    "envelopes": [
+      {
+        "name": "test beacon, round 42",
+        "beacon": "testBeacon",
+        "envelope": {
+          "format": "mattering.envelope/1",
+          "beacon": {
+            "chainHash": "0b5ada51058ab1f145d421f96f8772ed2c7b5e4146d84235fa02f4878bc6b623",
+            "publicKey": "8eb49414c02370751fc2b2b923a993d7e6dda6e8254779466f5792fc892ffb0625e40bc46eede790f4d0b336be7e1b8505241200ddfa60d5da8a82fe184e838e438570dbf6727fc52b8df1c78b9617e2656272a8c9bbcb0147aa14daa762ee77",
+            "scheme": "bls-unchained-g1-rfc9380",
+            "genesisTime": 1,
+            "period": 1
+          },
+          "round": 42,
+          "context": {
+            "purpose": "test vector",
+            "lot": "7"
+          },
+          "ciphertext": "-----BEGIN AGE ENCRYPTED FILE-----\nYWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHRsb2NrIDQyIDBiNWFkYTUxMDU4YWIx\nZjE0NWQ0MjFmOTZmODc3MmVkMmM3YjVlNDE0NmQ4NDIzNWZhMDJmNDg3OGJjNmI2\nMjMKaWtkZ0JYdFprdWZ6ZkNrQUdoM0lvbmFiUy8rQUxDR0ZsbTExTk95UHBtNFlh\nemZWT295VWNSczFWYlpkd3BqdgpEaWd0NWFoU3lWYTJiTWpCQWFIdlVpVi82RlJG\nTk5mSUpBYnBKVXNjZWx4Wkx1Uml6YVpCTzAvdGZoZjY1UnQ2ClFOdHdKeFE1M3Bx\nQjd6eEkrbXB6bUVoSFgzL0w5OWxwYjU5dHZQaU0rTlkKLS0tIFlJc3dNWXgxQ3h5\nMDlwaEVObkdKaHI0T01FRWFSZ29CTXhCNlkxYmVMT2sKhpTtJVKevYPYjM4HUyMH\nBLwlPv8SJv0gFIQ5RnNMHyXJZpH95fZQ3yPSLJr95eU+F63N4QRaq1x/jnvdbCnb\nVDdVP8FNLxDrn6orL9eZbJ+sPXCbE13Dsf74yN0wkX+lvSvWs9FxJ0P2IDWz2Qe0\ngY6m19ghz76USPkT4U3sYVT1DUlj\n-----END AGE ENCRYPTED FILE-----\n"
+        },
+        "envelopeId": "8422826055fcd4ab87fc93f14fba267f3c1b65c1c67ee137c9435a71cd4647ec",
+        "opensWith": {
+          "round": 42,
+          "signature": "8483bd67f778552213466cc260c3d1b53a0ba54bfa4b97668fe0ac553c79257352ac7bf3bd5fd90f34e61df1bac0870b"
+        },
+        "payload": "4269643a20c2a3342c32303020666f72206c6f7420372e205365616c656420666f7220746865204d6174746572696e67207465737420766563746f72732e0a",
+        "doesNotOpenWith": {
+          "round": 43,
+          "signature": "acbea07f58951f185a09f6f649fff3a568187c8914df01ff111e1fb0c176b329c00b5e9b27b6cf63c5e26cefa047c1f9"
+        }
+      },
+      {
+        "name": "real drand quicknet, round 1,000,000",
+        "beacon": "quicknet",
+        "envelope": {
+          "format": "mattering.envelope/1",
+          "beacon": {
+            "chainHash": "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
+            "publicKey": "83cf0f2896adee7eb8b5f01fcad3912212c437e0073e911fb90022d3e760183c8c4b450b6a0a6c3ac6a5776a2d1064510d1fec758c921cc22b0e17e63aaf4bcb5ed66304de9cf809bd274ca73bab4af5a6e9c76a4bc09e76eae8991ef5ece45a",
+            "scheme": "bls-unchained-g1-rfc9380",
+            "genesisTime": 1692803367,
+            "period": 3
+          },
+          "round": 1000000,
+          "context": {
+            "purpose": "test vector, real drand quicknet"
+          },
+          "ciphertext": "-----BEGIN AGE ENCRYPTED FILE-----\nYWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHRsb2NrIDEwMDAwMDAgNTJkYjliYTcw\nZTBjYzBmNmVhZjc4MDNkZDA3NDQ3YTFmNTQ3NzczNWZkM2Y2NjE3OTJiYTk0NjAw\nYzg0ZTk3MQprWjA0NHhCaUdqdTJNTEFDMm93WEZIZ3JKK0RJUnYrbElXS1kzdzNG\nRE5Md2U3bXlQb3N2UFp1MWdUbC9VcUU2CkRKL2g2Tmx0Wk1BMk8va05KUmFuOGhO\ndXBLQkFVNHVFeTFYdWJoQTZBRUtoMXZ3QjVwZXF4LzlJaXoyRmdRK3oKZVdJODlY\nZDFKOXFxbWErV1FBcXRQRzVaeE1kdHBwWFJvVHU4WXVTU29OTQotLS0gcU5pOUF2\nRkNHUkE1YmFrZUpLalg2ekRMVW93TGc2M3RMWi9lOWRJNFVtMAqmJ6lAHD+C015v\nuUWFpki2MGv29nIbU5ddN+mAqbipGwiFQVYCrQIn2i4Xuw8xAr/xf7jOy7JgjTy3\n/x5MFcvYoWmC8Ze8RMfVhvSMmaW5u1u1HAueRxp7r9iqS8Ic9qxJbD29XuZV8A2V\n22lWeq+i2kBgnk/LKAz0KUgmpkoSiwKVncc=\n-----END AGE ENCRYPTED FILE-----\n"
+        },
+        "envelopeId": "459de412c50546142213bfc1314a9e73abeac1bf2b17ec98efd697b5cca44218",
+        "opensWith": {
+          "round": 1000000,
+          "signature": "83ad29e4c409f9470fc2ef02f90214df49e02b441a1a241a82d622d9f608ef98fd8b11a029f1bee9d9e83b45088abe72"
+        },
+        "payload": "4269643a20c2a3342c32303020666f72206c6f7420372e205365616c656420666f7220746865204d6174746572696e67207465737420766563746f72732e0a",
+        "doesNotOpenWith": {
+          "round": 1000001,
+          "signature": "a5bd91e5e2d8c0bf51bffdfad87eef34348fd9c0b2df2bee39db90bdef7e1399b1a77bb2fe98b24d84c0936a306c4218"
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "why": "the context was changed after sealing; the header no longer matches what was sealed",
+        "beacon": "testBeacon",
+        "envelope": {
+          "format": "mattering.envelope/1",
+          "beacon": {
+            "chainHash": "0b5ada51058ab1f145d421f96f8772ed2c7b5e4146d84235fa02f4878bc6b623",
+            "publicKey": "8eb49414c02370751fc2b2b923a993d7e6dda6e8254779466f5792fc892ffb0625e40bc46eede790f4d0b336be7e1b8505241200ddfa60d5da8a82fe184e838e438570dbf6727fc52b8df1c78b9617e2656272a8c9bbcb0147aa14daa762ee77",
+            "scheme": "bls-unchained-g1-rfc9380",
+            "genesisTime": 1,
+            "period": 1
+          },
+          "round": 42,
+          "context": {
+            "purpose": "test vector",
+            "lot": "8"
+          },
+          "ciphertext": "-----BEGIN AGE ENCRYPTED FILE-----\nYWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHRsb2NrIDQyIDBiNWFkYTUxMDU4YWIx\nZjE0NWQ0MjFmOTZmODc3MmVkMmM3YjVlNDE0NmQ4NDIzNWZhMDJmNDg3OGJjNmI2\nMjMKaWtkZ0JYdFprdWZ6ZkNrQUdoM0lvbmFiUy8rQUxDR0ZsbTExTk95UHBtNFlh\nemZWT295VWNSczFWYlpkd3BqdgpEaWd0NWFoU3lWYTJiTWpCQWFIdlVpVi82RlJG\nTk5mSUpBYnBKVXNjZWx4Wkx1Uml6YVpCTzAvdGZoZjY1UnQ2ClFOdHdKeFE1M3Bx\nQjd6eEkrbXB6bUVoSFgzL0w5OWxwYjU5dHZQaU0rTlkKLS0tIFlJc3dNWXgxQ3h5\nMDlwaEVObkdKaHI0T01FRWFSZ29CTXhCNlkxYmVMT2sKhpTtJVKevYPYjM4HUyMH\nBLwlPv8SJv0gFIQ5RnNMHyXJZpH95fZQ3yPSLJr95eU+F63N4QRaq1x/jnvdbCnb\nVDdVP8FNLxDrn6orL9eZbJ+sPXCbE13Dsf74yN0wkX+lvSvWs9FxJ0P2IDWz2Qe0\ngY6m19ghz76USPkT4U3sYVT1DUlj\n-----END AGE ENCRYPTED FILE-----\n"
+        },
+        "release": {
+          "round": 42,
+          "signature": "8483bd67f778552213466cc260c3d1b53a0ba54bfa4b97668fe0ac553c79257352ac7bf3bd5fd90f34e61df1bac0870b"
+        }
+      }
+    ]
+  }
+}
