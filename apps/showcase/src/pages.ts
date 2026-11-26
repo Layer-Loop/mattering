@@ -86,14 +86,15 @@ ${siteHeader(o, true)}
 ${siteFooter(o)}`;
 }
 
-const ROOMS: Record<RoomName, { title: string; description: string; eyebrow: string; h1: string; scenario: string; how: string; staged: string; start: string; hint: string; option?: string; doc: string }> = {
+const ROOMS: Record<RoomName, { title: string; description: string; eyebrow: string; purpose: string; mechanic: string; scenario: string; how: string; staged: string; start: string; hint: string; option?: string; doc: string }> = {
   auction: {
     title: "The Sealed Room: a sealed-bid auction · Mattering",
     description: "Watch three software agents bid in a sealed auction where nobody, including us, can read a bid until a public clock publishes the key. Bid yourself, try to cheat, and check the result in your own browser.",
     eyebrow: "The Sealed Room · an auction",
-    h1: "Three agents bid for an advertising package. Nobody can see a bid until the clock runs out.",
-    scenario: "Invented advertisers bid £400,000 to £800,000 for 12 weeks of spring airtime. The highest bid wins. You can bid too.",
-    how: "Each bid is locked to a public clock, so not even we can open it early. When the time comes, every bid opens at once and your browser counts them.",
+    purpose: "Three companies’ agents bid for an advertising package.",
+    mechanic: "Every bid is sealed until a public clock opens them all at once. The highest bid wins.",
+    scenario: "The package is 12 weeks of spring airtime, and bids run from £400,000 to £800,000. You can bid too.",
+    how: "Not even we can open a bid early. When the time comes, your browser counts the bids itself.",
     staged: "The companies are invented. We run the auction’s log and, until independent witnesses join, its cosigner.",
     start: "Start the auction",
     hint: 'About 45 seconds. Bids are chosen by <span data-decider>a language model</span>.',
@@ -103,9 +104,10 @@ const ROOMS: Record<RoomName, { title: string; description: string; eyebrow: str
     title: "The Negotiation Room: an early-payment negotiation · Mattering",
     description: "Watch two firms' software agents agree a price for paying an invoice early. Each round both offers stay sealed until they open together, each agent under a limit the other cannot see. Try to cheat, and check every round in your own browser.",
     eyebrow: "The Negotiation Room · a negotiation",
-    h1: "Two firms’ agents agree a price for paying an invoice early. Each round, both offers stay sealed until they open together.",
-    scenario: "Acme pays Bolt’s £10,000 invoice today instead of in 60 days, at a discount. Each agent has a limit, set by its firm, that the other can’t see. If the offers cross, they meet in the middle. Up to three rounds.",
-    how: "Each offer is locked to a public clock, so neither agent can see the other’s before making its own. Your browser checks every round.",
+    purpose: "Two firms’ agents agree a price for paying an invoice early.",
+    mechanic: "Each round, both offers are sealed until a public clock opens them together. If they cross, they meet in the middle.",
+    scenario: "Acme pays Bolt’s £10,000 invoice today instead of in 60 days, at a discount. Each agent has a limit, set by its firm, that the other can’t see. Up to three rounds.",
+    how: "Neither agent can see the other’s offer before making its own. Your browser checks every round.",
     staged: "The firms are invented. Both agents run on our server, so we hold both firms’ keys.",
     start: "Start the negotiation",
     hint: 'Up to 75 seconds. Offers are chosen by <span data-decider>a language model</span>.',
@@ -123,10 +125,9 @@ export function roomPage(room: RoomName, o: PageOptions): string {
 ${siteHeader(o, true)}
 <main class="page room">
 <nav class="tabs" aria-label="Demos"><ul>${tab("auction", "Auction")}${tab("negotiation", "Negotiation")}</ul></nav>
+<header class="reminder"><p class="eyebrow">${r.eyebrow}</p><h1>${r.purpose}</h1><p>${r.mechanic}</p></header>
 <div class="card">
-<section id="s-intro" class="screen" aria-labelledby="intro-h">
-<p class="eyebrow">${r.eyebrow}</p>
-<h1 id="intro-h">${r.h1}</h1>
+<section id="s-intro" class="screen" aria-label="About this demo">
 <p class="lead">${r.scenario}</p>
 <p class="how">${r.how}</p>
 <div class="start-row">

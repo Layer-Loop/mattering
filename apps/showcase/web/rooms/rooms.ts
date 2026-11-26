@@ -355,7 +355,7 @@ namespace Auction {
   export const finished = (): boolean => !!state?.run && !!opened(state.run);
   export const running = (): boolean => !!state?.run && !finished();
 
-  export const LIVE_CHEATS: Cheat[] = [{ id: "peek", title: "Peek at a bid early", how: "Ask for the key to Kestrel’s sealed bid now.", did: "You asked for the key to a sealed bid early." }];
+  export const LIVE_CHEATS: Cheat[] = [{ id: "peek", title: "Peek at a bid early", how: "Ask for the key to Company B’s sealed bid now.", did: "You asked for the key to a sealed bid early." }];
   export const RESULT_CHEATS: Cheat[] = [
     { id: "late", title: "Slip in a late bid", how: "Send a £700,000 bid now that bidding has closed.", did: "You sent a late bid." },
     { id: "rewrite", title: "Rewrite the list as the auctioneer", how: "As the operator, add a winning bid of our own from before the close.", did: "You rewrote the list as the auctioneer." },
@@ -369,8 +369,8 @@ namespace Auction {
     switch (id) {
       case "peek": {
         if (run.phase === "released") return { at, verdict: "Nothing to peek at.", detail: "The bids are open now. Run it again and try while they are sealed." };
-        const kestrel = run.agents.find((a) => a.name.startsWith("Kestrel"));
-        const entry = run.entries.find((e) => e.submitter === kestrel?.publicKey) ?? run.entries[0];
+        const target = run.agents[1];
+        const entry = run.entries.find((e) => e.submitter === target?.publicKey) ?? run.entries[0];
         if (!entry) return { at, verdict: "Not yet.", detail: "No bid has been sealed yet. Try again in a few seconds." };
         const envelope = (await getJson<Envelope>(`/api/envelopes/${entry.envelopeId}`)).json;
         const latest = (await getJson<Release>("/demo/latest")).json;
@@ -463,10 +463,10 @@ namespace Auction {
       const at = a.sealedAt ?? seen.get(a.publicKey);
       const tone = TONES[i] ?? "t1";
       if (at === undefined || !run.entries.some((e) => e.submitter === a.publicKey)) {
-        if (run.phase === "open") out.push(typing("left", a.name, a.name[0]!, tone, Number.MAX_SAFE_INTEGER - 10 + i));
+        if (run.phase === "open") out.push(typing("left", a.name, a.name.split(" ").at(-1)!, tone, Number.MAX_SAFE_INTEGER - 10 + i));
         return;
       }
-      const b = { side: "left" as const, who: a.name, avatar: a.name[0]!, tone, ...(a.decidedBy === "script" && decider ? { small: "chosen by a script" } : {}) };
+      const b = { side: "left" as const, who: a.name, avatar: a.name.split(" ").at(-1)!, tone, ...(a.decidedBy === "script" && decider ? { small: "chosen by a script" } : {}) };
       const bid = bids.find((x) => x.submitter === a.publicKey);
       const words = result?.statements.statements.find((s) => s.author === a.publicKey)?.text;
       if (!bid) out.push({ at, html: bubble({ ...b, sealed: true }) });

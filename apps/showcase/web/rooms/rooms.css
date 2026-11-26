@@ -64,6 +64,9 @@ main.room { max-width: 680px; gap: 16px; }
 .tabs ul { list-style: none; margin: 0; padding: 4px; display: inline-flex; gap: 4px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
 .tabs a { display: flex; align-items: center; min-height: 40px; padding: 0 16px; border-radius: 9px; text-decoration: none; font-size: 15px; font-weight: 700; color: var(--ink); }
 .tabs a[aria-current="page"] { background: var(--ink); color: var(--surface); }
+.reminder { display: flex; flex-direction: column; gap: 4px; padding: 0 4px; }
+.reminder h1 { margin: 0; font-family: var(--display); font-size: clamp(22px, 3vw, 28px); font-weight: 800; line-height: 1.2; letter-spacing: -0.01em; }
+.reminder p:last-child { margin: 0; font-size: 16px; line-height: 1.45; color: var(--soft); }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: clamp(20px, 4vw, 36px); box-shadow: 0 1px 2px rgba(21, 23, 58, 0.04), 0 8px 28px rgba(21, 23, 58, 0.06); }
 .screen { display: flex; flex-direction: column; gap: 16px; }
 .screen[hidden] { display: none; }
