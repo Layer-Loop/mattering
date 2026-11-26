@@ -144,6 +144,7 @@ export async function startShowcase(options: ShowcaseOptions): Promise<{ server:
     },
     watchUrl: (tableId) => `${baseUrl}/demo/table?id=${tableId}`,
     clock: simulated ? "simulated" : "live",
+    evidenceUrl: (hash) => `${baseUrl}/api/policies/${hash}/evidence`,
   };
 
   // One piece of work at a time: a decision by a language model can take seconds.

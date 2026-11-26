@@ -50,16 +50,16 @@ test("two assistants negotiate at a table through MCP, and anyone can check the 
       }
       return { tools: all.map((t) => t.name), instructions };
     })();
-    assert.deepEqual(listed.tools, ["start_negotiation", "join_negotiation", "negotiation_status", "wait_for_next_round", "make_offer"]);
+    assert.deepEqual(listed.tools, ["start_negotiation", "join_negotiation", "wait_for_next_round", "make_offer", "negotiation_status", "leave_negotiation"]);
     assert.match(listed.instructions ?? "", /^Demonstration environment: .*not legally binding/);
 
     // An assistant that has not asked its user is sent back to ask, and nothing is opened.
     const unasked = await acme.call("start_negotiation", { side: "buyer", item: "A Sony TV", minPrice: 500, maxPrice: 1500, limit: 1200 });
     assert.equal(unasked.isError, true);
-    assert.match(unasked.content[0]!.text, /^Not yet: ask your user for how long each round should stay open; and whether you should bid autonomously or ask them to approve each offer/);
+    assert.match(unasked.content[0]!.text, /^Not yet: ask your user for how many rounds at most; how long each round should stay open; and whether you should bid autonomously or ask them to approve each offer/);
 
     // Acme's assistant opens the table as the buyer, with its limit, bidding by itself.
-    const opened = await acme.call("start_negotiation", { side: "buyer", item: "Early payment of invoice INV-2041 (£10,000, due in 60 days)", minPrice: 9000, maxPrice: 10000, limit: 9750, organisation: "Acme Treasury Ltd", rounds: 3, roundSeconds: 30, autonomous: true });
+    const opened = await acme.call("start_negotiation", { side: "buyer", item: "Early payment of invoice INV-2041 (£10,000, due in 60 days)", minPrice: 9000, maxPrice: 10000, limit: 9750, rounds: 3, roundSeconds: 30, autonomous: true });
     assert.equal(opened.isError, undefined, opened.content[0]?.text);
     // Every reply says so too, in words and as data.
     assert.match(opened.content[0]!.text, /^\[Demonstration environment: /);
@@ -68,11 +68,19 @@ test("two assistants negotiate at a table through MCP, and anyone can check the 
     const acmeToken = opened.structuredContent!.token as string;
     const invite = opened.structuredContent!.invite as string;
     const tableId = opened.structuredContent!.tableId as string;
-    assert.match(opened.content[0]!.text, /invite code/);
+    // The token and the invite say what they are, and the defaults chosen are named for the user.
+    assert.match(acmeToken, /^tok_[0-9a-f]{24}_[0-9a-f]{32}$/);
+    assert.match(invite, /^inv_[0-9a-f]{24}_[0-9a-f]{32}$/);
+    assert.match(opened.content[0]!.text, /Share only this invite with the other party: inv_/);
+    assert.match(opened.content[0]!.text, /Defaults used, tell your user: unit: GBP, organisation: The buyer\./);
+    assert.match(opened.structuredContent!.rules as string, /Two parties only.*midpoint/);
     assert.match(opened.structuredContent!.watchUrl as string, new RegExp(`/demo/table\\?id=${tableId}$`));
     const waiting = (await acme.call("negotiation_status", { token: acmeToken })).structuredContent as unknown as Status;
     assert.equal(waiting.state, "waiting for the other side to join");
 
+    // Mixing them up is caught: a token is not an invite, and an invite is not a token.
+    assert.match((await bolt.call("join_negotiation", { invite: acmeToken, limit: 9600, autonomous: false })).content[0]!.text, /That is a token, which is secret, not an invite/);
+    assert.match((await acme.call("negotiation_status", { token: invite })).content[0]!.text, /That is the invite/);
     // Bolt's assistant joins as the seller, asking its user to approve each offer. An invite cannot be used twice.
     assert.match((await bolt.call("join_negotiation", { invite, limit: 9600 })).content[0]!.text, /ask your user for whether you should bid autonomously/);
     const joined = await bolt.call("join_negotiation", { invite, limit: 9600, organisation: "Bolt Ltd", autonomous: false });
@@ -80,7 +88,14 @@ test("two assistants negotiate at a table through MCP, and anyone can check the 
     assert.match(joined.content[0]!.text, /asking your user to approve each offer\. Read the terms back to your user/);
     const boltToken = joined.structuredContent!.token as string;
     assert.equal((await bolt.call("join_negotiation", { invite, limit: 9600, autonomous: true })).isError, true);
-    // Its next step is to propose to its user, and an offer without the user's approval is sent back.
+    // Round 1 has not begun: it waits for the opener to check in, so no round runs while the opener is away.
+    const before = (await bolt.call("negotiation_status", { token: boltToken })).structuredContent as unknown as Status;
+    assert.equal(before.state, "waiting for both sides to check in");
+    assert.match((await bolt.call("make_offer", { token: boltToken, price: 9950, approvedByUser: true })).content[0]!.text, /round 1 has not begun/);
+    // Acme's assistant checks in by waiting; round 1 begins, and it is told at once that it owes an offer.
+    const checkedIn = await acme.call("wait_for_next_round", { token: acmeToken, maxSeconds: 5 });
+    assert.match(checkedIn.structuredContent!.changed as string, /^Round 1 is open and you have not sealed an offer for it yet/);
+    // Bolt's next step is to propose to its user, and an offer without the user's approval is sent back.
     assert.match(((await bolt.call("negotiation_status", { token: boltToken })).structuredContent!.nextStep as string), /^Propose an offer for round 1 to your user/);
     const unapproved = await bolt.call("make_offer", { token: boltToken, price: 9950 });
     assert.equal(unapproved.isError, true);
@@ -107,14 +122,23 @@ test("two assistants negotiate at a table through MCP, and anyone can check the 
     // Asked to wait while it still owes an offer, it says so at once rather than waiting.
     const owes = await acme.call("wait_for_next_round", { token: acmeToken, maxSeconds: 20 });
     assert.match(owes.structuredContent!.changed as string, /not sealed an offer/);
+    // A note stays hidden from the watch page, which both sides have, until the negotiation is over.
+    const midState = (await (await fetch(`${url}/table/${tableId}/negotiation/state`)).json()) as { run: { steps: { notes: Partial<Record<Side, string>> }[] } };
+    assert.deepEqual(midState.run.steps[0]!.notes, {}, "no note is shown while the negotiation runs");
     // Round 2 begins once round 1 opens; each side then sees both opened offers.
     const r2 = await until(async () => (await bolt.call("negotiation_status", { token: boltToken })).structuredContent as unknown as Status, (s) => s.currentRound?.round === 2, "round 2");
     assert.deepEqual(r2.openedRounds.map((r) => [r.yourOffer, r.theirOffer, r.outcome.deal]), [[9950, 9400, false]]);
     await acme.call("make_offer", { token: acmeToken, price: 9700 });
     await bolt.call("make_offer", { token: boltToken, price: 9650, approvedByUser: true });
     const finished = await acme.call("wait_for_next_round", { token: acmeToken, maxSeconds: 20 });
-    assert.match(finished.structuredContent!.changed as string, /negotiation is over: round 2 opened and the offers crossed, a deal at 9675/);
-    assert.match(finished.content[0]!.text, /Report the result/);
+    assert.match(finished.structuredContent!.changed as string, /negotiation is over: the offers crossed, a deal at 9675/);
+    assert.match(finished.content[0]!.text, /Report the result, with its receipt/);
+    // The receipt: what anyone can check the result against, with where to fetch each round's evidence.
+    const receipt = finished.structuredContent!.receipt as { negotiationId: string; rounds: { round: number; policyHash: string; openedAtDrandRound: number; evidence: string }[] };
+    assert.equal(receipt.rounds.length, 2);
+    assert.match(finished.content[0]!.text, /Receipt \(table-[0-9a-f]{24}\): round 1: policy [0-9a-f]{16}…, opened at drand round \d+, evidence http/);
+    const evidence = (await (await fetch(receipt.rounds[1]!.evidence)).json()) as { policyHash: string; state: string };
+    assert.equal(evidence.state, "released", "each round's evidence is public at the receipt's address");
     const done = (await acme.call("negotiation_status", { token: acmeToken })).structuredContent as unknown as Status;
     assert.deepEqual(done.result, { deal: true, price: 9675, buyerOffer: 9700, sellerOffer: 9650 });
 
@@ -122,8 +146,8 @@ test("two assistants negotiate at a table through MCP, and anyone can check the 
     const get = async <T>(path: string): Promise<T> => (await (await fetch(`${url}/table/${tableId}${path}`)).json()) as T;
     const state = await get<{ beacon: BeaconInfo; firms: Record<Side, { organisation: string }>; run: { done: boolean; steps: { step: number; notes: Partial<Record<Side, string>> }[] } }>("/negotiation/state");
     assert.equal(state.run.done, true);
-    assert.equal(state.firms.buyer.organisation, "Acme Treasury Ltd");
-    assert.equal(state.run.steps[0]!.notes.buyer, "We open low.", "notes are shown once the round has opened");
+    assert.equal(state.firms.buyer.organisation, "The buyer");
+    assert.equal(state.run.steps[0]!.notes.buyer, "We open low.", "notes are shown once the negotiation is over");
     const verifier = { acceptedBeacons: [state.beacon] };
     const disclosures = await Promise.all(state.run.steps.map((s) => get<{ evidence: StepInputs; fileKeys: Record<string, string>; openings: Record<Side, MandateOpening> }>(`/negotiation/disclosure/${s.step}`)));
     for (const d of disclosures) assert.equal((await verifyNegotiationStep(d.evidence, withFileKeys(d.fileKeys), verifier, d.openings)).ok, true);
@@ -138,6 +162,26 @@ test("two assistants negotiate at a table through MCP, and anyone can check the 
   } finally {
     await acme.close();
     await bolt.close();
+    stop();
+  }
+});
+
+test("either side can walk away, and the other is told", async () => {
+  const { url, stop } = await startShowcase({ mode: "simulated", roundMs: 100, tableTimeScale: 0.04 });
+  const a = await assistant(url, "a");
+  const b = await assistant(url, "b");
+  try {
+    const opened = await a.call("start_negotiation", { side: "seller", item: "A Sony TV", minPrice: 500, maxPrice: 1500, limit: 900, rounds: 3, roundSeconds: 60, autonomous: true, unit: "GBP", organisation: "Seller" });
+    const joined = await b.call("join_negotiation", { invite: opened.structuredContent!.invite, limit: 1100, autonomous: true });
+    const left = await b.call("leave_negotiation", { token: joined.structuredContent!.token });
+    assert.match(left.content[0]!.text, /You have left the negotiation/);
+    const told = await a.call("wait_for_next_round", { token: opened.structuredContent!.token, maxSeconds: 5 });
+    assert.match(told.structuredContent!.changed as string, /over/);
+    assert.deepEqual(told.structuredContent!.result, { deal: false, reason: "the other side left the negotiation" });
+    assert.equal((await a.call("make_offer", { token: opened.structuredContent!.token, price: 1000 })).isError, true, "no offers after it has ended");
+  } finally {
+    await a.close();
+    await b.close();
     stop();
   }
 });

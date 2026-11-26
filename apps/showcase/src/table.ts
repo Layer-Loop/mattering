@@ -37,12 +37,14 @@ import type { LogHost } from "./log-host.ts";
 export const TABLE_LIMITS = {
   minRounds: 1,
   maxRounds: 5,
-  minRoundSeconds: 20,
+  minRoundSeconds: 30,
   /** Long enough for an assistant to read the status, decide and seal; short enough for a demonstration. */
   defaultRoundSeconds: 60,
   maxRoundSeconds: 600,
   maxNote: 280,
   maxText: 200,
+  /** An unjoined table expires this long after it was opened. */
+  joinWithinMs: 30 * 60 * 1000,
 } as const;
 
 /** What the party opening the table chooses. */
@@ -84,7 +86,7 @@ interface RoundState {
   submitted: Record<Side, boolean>;
   sealedAt: Partial<Record<Side, number>>;
   logIndex: Partial<Record<Side, number>>;
-  /** Each side's note to its own firm, shown only once the round has opened. */
+  /** Each side's note to its own firm, shown to everyone, the other side included, only once the negotiation is over. */
   notes: Partial<Record<Side, string>>;
   /** Both opened offers, once the round has opened and been judged here. */
   opened?: Partial<Record<Side, number>>;
@@ -104,6 +106,10 @@ export interface TableState {
   parties: Partial<Record<Side, PartyState>>;
   rounds: RoundState[];
   startedAt?: number;
+  /** Sides that have checked in since both were seated. Round 1 begins once both have. */
+  checkedIn?: Partial<Record<Side, boolean>>;
+  /** Set when a side walked away before the end. */
+  left?: Side;
   done: boolean;
 }
 
@@ -128,11 +134,18 @@ const secret = (): string => randomHex(16);
 /** A table id: short, unguessable, safe in a URL and a Durable Object name. */
 export const newTableId = (): string => randomHex(12);
 const isTableId = (id: unknown): id is string => typeof id === "string" && /^[0-9a-f]{24}$/.test(id);
-/** Tokens and invites name their table, so a stateless front end knows where to send them. */
+/**
+ * Tokens and invites name their table, so a stateless front end knows where
+ * to send them, and say what they are: `tok_` is secret and acts for a side,
+ * `inv_` is for sharing with the other party. Tables opened before the
+ * prefixes used `<table>.<secret>` for both.
+ */
 export const tableOf = (code: unknown): string | undefined => {
-  const id = typeof code === "string" ? code.split(".")[0] : undefined;
+  if (typeof code !== "string") return undefined;
+  const id = /^(?:tok|inv)_([0-9a-f]{24})_[0-9a-f]+$/.exec(code)?.[1] ?? code.split(".")[0];
   return isTableId(id) ? id : undefined;
 };
+export const isInvite = (code: unknown): boolean => typeof code === "string" && code.startsWith("inv_");
 
 function fail(message: string): never {
   throw new MatteringError("POLICY", message);
@@ -159,9 +172,9 @@ function side(value: unknown): Side {
 /** What the side should do now, in a sentence an assistant can act on. */
 function nextStep(st: TableState, s: Side, current: RoundState | undefined, now: number): string {
   const autonomous = st.parties[s]?.autonomous !== false;
-  if (!st.parties[other(s)]) return st.host === s ? "Share the invite with the other party, then call wait_for_next_round until they join." : "Wait for the other side to join: call wait_for_next_round.";
-  if (st.done) return "The negotiation is over. Report the result.";
-  if (!current) return "Call wait_for_next_round until the next round begins.";
+  if (st.done) return st.left ? "The negotiation is over: a side left it. Report that there is no deal." : "The negotiation is over. Report the result, with its receipt.";
+  if (!st.parties[other(s)]) return st.host === s ? "Share the invite (it starts inv_) with the other party, never your token, then call wait_for_next_round until they join." : "Wait for the other side to join: call wait_for_next_round.";
+  if (!current) return "Round 1 begins once the other side checks in. Call wait_for_next_round.";
   const left = Math.max(0, Math.ceil((current.closeAt - now) / 1000));
   if (!current.submitted[s] && now < current.closeAt) {
     return autonomous
@@ -203,13 +216,18 @@ export class Table {
     return run;
   }
 
+  /** The table can no longer be joined: opened too long ago without a second party. */
+  private expired(st: TableState): boolean {
+    return !st.done && (!st.parties.buyer || !st.parties.seller) && Date.now() - st.createdAt > TABLE_LIMITS.joinWithinMs;
+  }
+
   /** One party takes a side and sets its limit. Its firm's mandate is issued here. */
   private async seat(organisation: string, s: Side, limit: number, autonomous: boolean, expires: number): Promise<PartyState> {
     const org = generateKeyPair();
     const signer = generateKeyPair();
     const box = await generateRecipientKeys();
     const { mandate, opening } = issueMandate(org, { organisationName: organisation, agent: signer.publicKey, side: s, unit: this.state!.terms.unit, limit, expires });
-    return { token: `${this.state!.id}.${secret()}`, organisation, orgSecret: org.secretKey, signerSecret: signer.secretKey, identity: box.identity, recipient: box.recipient, mandate, opening, autonomous };
+    return { token: `tok_${this.state!.id}_${secret()}`, organisation, orgSecret: org.secretKey, signerSecret: signer.secretKey, identity: box.identity, recipient: box.recipient, mandate, opening, autonomous };
   }
 
   private async expiry(): Promise<number> {
@@ -235,28 +253,37 @@ export class Table {
       };
       const host = side(input.side);
       const now = Date.now();
-      this.state = { version: 1, id, invite: `${id}.${secret()}`, createdAt: now, touchedAt: now, terms, host, parties: {}, rounds: [], done: false };
+      this.state = { version: 1, id, invite: `inv_${id}_${secret()}`, createdAt: now, touchedAt: now, terms, host, parties: {}, rounds: [], done: false };
       const limit = whole(input.limit, "limit", minPrice, maxPrice);
       const autonomous = flag(input.autonomous, "autonomous");
-      this.state.parties[host] = await this.seat(text(input.organisation, "organisation", host === "buyer" ? "The buyer" : "The seller"), host, limit, autonomous, await this.expiry());
+      const organisation = text(input.organisation, "organisation", host === "buyer" ? "The buyer" : "The seller");
+      this.state.parties[host] = await this.seat(organisation, host, limit, autonomous, await this.expiry());
       await this.options.saveState(this.state);
-      return { tableId: id, side: host, token: this.state.parties[host]!.token, invite: this.state.invite, terms, yourLimit: limit, autonomous };
+      // Say what was not chosen, so the assistant can tell its user.
+      const defaultsUsed = [
+        ...(input.unit === undefined ? [`unit: ${terms.unit}`] : []),
+        ...(input.organisation === undefined ? [`organisation: ${organisation}`] : []),
+        ...(input.rounds === undefined ? [`rounds: ${terms.rounds}`] : []),
+      ];
+      return { tableId: id, side: host, token: this.state.parties[host]!.token, invite: this.state.invite, terms, yourLimit: limit, autonomous, joinBy: new Date(now + TABLE_LIMITS.joinWithinMs).toISOString(), ...(defaultsUsed.length ? { defaultsUsed } : {}) };
     });
   }
 
-  /** The other party joins with the invite, setting its own limit. Round 1 begins. */
+  /** The other party joins with the invite, setting its own limit. Round 1 begins once both sides have checked in. */
   join(input: Record<string, unknown>): Promise<Record<string, unknown>> {
     return this.exclusive(async () => {
       const st = this.state ?? fail("no table by that invite");
       if (input.invite !== st.invite) fail("that invite is not for this table");
+      if (st.done) fail("this negotiation has ended");
+      if (this.expired(st)) fail("this table was not joined in time and has expired; ask the other party to open a new one");
       const s = other(st.host);
       if (st.parties[s]) fail("both sides of this table are taken");
       const limit = whole(input.limit, "limit", st.terms.minPrice, st.terms.maxPrice);
       const autonomous = flag(input.autonomous, "autonomous");
       st.parties[s] = await this.seat(text(input.organisation, "organisation", s === "buyer" ? "The buyer" : "The seller"), s, limit, autonomous, await this.expiry());
-      st.startedAt = Date.now();
       st.touchedAt = Date.now();
-      await this.beginRound((await deadlineRound(this.viewer)).round);
+      // Joining is checking in. Round 1 waits for the opener to check in too, so no round runs while it is away.
+      st.checkedIn = { [s]: true };
       await this.options.saveState(st);
       return { tableId: st.id, side: s, token: st.parties[s]!.token, terms: st.terms, otherOrganisation: st.parties[st.host]!.organisation, yourLimit: limit, autonomous };
     });
@@ -306,7 +333,7 @@ export class Table {
       const st = this.state!;
       const { side: s, party } = this.partyOf(input.token);
       if (st.done) fail("the negotiation is over");
-      const round = st.rounds.at(-1) ?? fail("the other side has not joined yet; share the invite");
+      const round = st.rounds.at(-1) ?? fail(st.parties[other(s)] ? "round 1 has not begun: it begins once both sides have checked in; call wait_for_next_round" : "the other side has not joined yet; share the invite");
       if (round.submitted[s]) fail(`you have already sealed an offer for round ${round.policy.step}; only the first counts`);
       if (Date.now() >= round.closeAt) fail(`round ${round.policy.step} has closed; wait for it to open and the next to begin`);
       const price = whole(input.price, "price", st.terms.minPrice, st.terms.maxPrice);
@@ -338,20 +365,27 @@ export class Table {
       const st = this.state!;
       const { side: s, party } = this.partyOf(input.token);
       st.touchedAt = Date.now();
+      // Checking in: once both sides have, after both are seated, round 1 begins.
+      if (st.parties.buyer && st.parties.seller && st.rounds.length === 0 && !st.done) {
+        st.checkedIn = { ...st.checkedIn, [s]: true };
+        if (st.checkedIn.buyer && st.checkedIn.seller) {
+          st.startedAt = Date.now();
+          await this.beginRound((await deadlineRound(this.viewer)).round);
+        }
+        await this.options.saveState(st);
+      }
       const now = Date.now();
       const current = st.done ? undefined : st.rounds.at(-1);
       const last = st.rounds.at(-1);
+      const expired = this.expired(st);
       return {
         tableId: st.id,
         yourSide: s,
-        yourOrganisation: party.organisation,
-        otherOrganisation: st.parties[other(s)]?.organisation ?? null,
-        terms: st.terms,
         yourLimit: party.opening.limit,
-        yourLimitMeans: s === "buyer" ? "the most you may offer" : "the least you may accept",
         youBidAutonomously: party.autonomous !== false,
-        state: !st.parties[other(s)] ? "waiting for the other side to join" : st.done ? "finished" : "running",
-        ...(!st.parties[other(s)] && st.host === s ? { invite: st.invite } : {}),
+        otherOrganisation: st.parties[other(s)]?.organisation ?? null,
+        state: expired ? "expired: the other side did not join in time" : !st.parties[other(s)] ? "waiting for the other side to join" : st.done ? "finished" : st.rounds.length === 0 ? "waiting for both sides to check in" : "running",
+        ...(!st.parties[other(s)] && st.host === s && !expired ? { invite: st.invite } : {}),
         currentRound: current
           ? {
               round: current.policy.step,
@@ -364,9 +398,38 @@ export class Table {
             }
           : null,
         openedRounds: st.rounds.filter((r) => r.outcome).map((r) => ({ round: r.policy.step, yourOffer: r.opened?.[s] ?? null, theirOffer: r.opened?.[other(s)] ?? null, outcome: r.outcome })),
-        result: st.done && last?.outcome ? last.outcome : null,
-        nextStep: nextStep(st, s, current, now),
+        result: st.left ? { deal: false, reason: `${st.left === s ? "you" : "the other side"} left the negotiation` } : st.done && last?.outcome ? last.outcome : null,
+        ...(st.done ? { receipt: this.receipt(st) } : {}),
+        nextStep: expired ? "The table expired before the other side joined. Tell your user, and open a new one if they want to." : nextStep(st, s, current, now),
       };
+    });
+  }
+
+  /**
+   * What anyone can check the negotiation against: each round's policy hash,
+   * the drand round that opened it, and where its offers sit in the shared
+   * log. The front end adds where to fetch the evidence.
+   */
+  private receipt(st: TableState): Record<string, unknown> {
+    const first = st.rounds[0]?.policy;
+    return {
+      negotiationId: `table-${st.id}`,
+      log: first ? { origin: first.origin, witness: first.witness, cosigners: first.cosigners } : null,
+      rounds: st.rounds.map((r) => ({ round: r.policy.step, policyHash: r.hash, closeRound: r.policy.closeRound, openedAtDrandRound: r.policy.releaseRound, logEntries: r.logIndex, outcome: r.outcome ?? null })),
+    };
+  }
+
+  /** One side walks away. The negotiation ends without a deal, and the other side is told. */
+  leave(input: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.exclusive(async () => {
+      const st = this.state!;
+      const { side: s } = this.partyOf(input.token);
+      if (st.done) fail("the negotiation is already over");
+      st.done = true;
+      st.left = s;
+      st.touchedAt = Date.now();
+      await this.options.saveState(st);
+      return { tableId: st.id, left: true, result: { deal: false, reason: "you left the negotiation" } };
     });
   }
 
@@ -406,7 +469,7 @@ export class Table {
     const base = {
       mode: this.options.mode,
       beacon: this.beacon,
-      table: st ? { id: st.id, terms: st.terms, waiting: !st.parties.buyer || !st.parties.seller } : null,
+      table: st ? { id: st.id, terms: st.terms, waiting: !st.parties.buyer || !st.parties.seller, ended: st.left ? `${st.parties[st.left]?.organisation ?? "One side"} left the negotiation` : null } : null,
       invoice: st ? { item: st.terms.item, unit: st.terms.unit, minPrice: st.terms.minPrice, maxPrice: st.terms.maxPrice } : null,
       firms: { buyer: firms("buyer"), seller: firms("seller") },
       decider: "each firm’s own AI assistant",
@@ -430,7 +493,8 @@ export class Table {
         closeRound: r.policy.closeRound,
         releaseRound: r.policy.releaseRound,
         decidedBy: {},
-        notes: phase.state === "released" ? r.notes : {},
+        // Notes could give a side's strategy away, and the watch link is shared with both sides: show them only at the end.
+        notes: st.done ? r.notes : {},
         withheld: [],
       });
     }
@@ -470,6 +534,7 @@ export class Table {
       if (method === "POST" && first === "join") return ok(await this.join(await input()));
       if (method === "POST" && first === "offer") return ok(await this.offer(await input()));
       if (method === "POST" && first === "status") return ok(await this.status(await input()));
+      if (method === "POST" && first === "leave") return ok(await this.leave(await input()));
       if (method === "GET" && first === "negotiation" && second === "state") return ok(await this.view());
       if (method === "GET" && first === "negotiation" && second === "disclosure") return ok(await this.disclosure(Number(arg)));
       return { status: 404, body: { error: "no such route" } };

@@ -613,7 +613,7 @@ namespace Negotiation {
     serverTime: number;
     run: Run | null;
     /** Present when watching a negotiation table run by two parties' own assistants. */
-    table?: { id: string; terms: { item: string; unit: string; minPrice: number; maxPrice: number; rounds: number }; waiting: boolean } | null;
+    table?: { id: string; terms: { item: string; unit: string; minPrice: number; maxPrice: number; rounds: number }; waiting: boolean; ended?: string | null } | null;
     firms?: Record<Side, { organisation: string; agent: string }>;
   }
   interface Disclosure { evidence: StepInputs; fileKeys: Record<string, string>; openings: Record<Side, MandateOpening> }
@@ -683,6 +683,9 @@ namespace Negotiation {
         WHO.seller.avatar = json.firms.seller.organisation.replace(/^the /i, "")[0]?.toUpperCase() ?? "S";
         unit = json.table.terms.unit;
         table = json.table;
+        // A table a side left before any round began has nothing else to show.
+        const lead = document.querySelector("#s-intro .lead");
+        if (lead && json.table.ended && !json.run) lead.textContent = `No deal: ${json.table.ended} before the first round.`;
       }
       MAX_STEPS = json.run?.maxSteps ?? json.table?.terms.rounds ?? 3;
       if (json.run && json.run.id !== shownRun) {
@@ -849,7 +852,10 @@ namespace Negotiation {
     const open = openings(run);
     const beyond = SIDES.find((side) => run.steps.some((s) => offerOf(run, s.step, side)?.mandate === "beyond"));
     let head: string, line: string;
-    if (!c || !c.ok) {
+    if (table?.ended && !o?.deal) {
+      head = "No deal";
+      line = `${table.ended}.`;
+    } else if (!c || !c.ok) {
       head = "The negotiation could not be checked";
       line = c?.problem ?? "";
     } else if (o?.deal) {
