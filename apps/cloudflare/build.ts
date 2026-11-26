@@ -5,6 +5,7 @@
  *   <site>/public/demo.html                  the way into the demos, at /demo
  *   <site>/public/demo/auction.html          the Sealed Room, at /demo/auction
  *   <site>/public/demo/negotiation.html      the Negotiation Room, at /demo/negotiation
+ *   <site>/public/demo/table.html            watching a negotiation table, at /demo/table?id=…
  *   <site>/public/assets/rooms.<hash>.js     the rooms' script
  *   <site>/public/assets/rooms.<hash>.css    the demo pages' styles
  *
@@ -81,6 +82,8 @@ const withStamp = (html: string): string => html.replace("\n", `\n${stamp}`);
 writeFileSync(join(out, "public", "demo.html"), withStamp(chooserPage(pages)));
 writeFileSync(join(out, "public", "demo", "auction.html"), withStamp(roomPage("auction", pages)));
 writeFileSync(join(out, "public", "demo", "negotiation.html"), withStamp(roomPage("negotiation", pages)));
+// Watching a negotiation table that two parties' assistants run through MCP: /demo/table?id=<table>.
+writeFileSync(join(out, "public", "demo", "table.html"), withStamp(roomPage("negotiation", { ...pages, roomBase: "/table/{table}", watch: true })));
 console.log(`worker:  ${join(out, "src", "worker.js")}  (${Math.round(worker.outputFiles[0]!.text.length / 1024)} KB)`);
 console.log(`pages:   ${join(out, "public", "demo.html")}, demo/auction.html, demo/negotiation.html`);
 console.log(`assets:  ${scriptFile} (${Math.round(script.length / 1024)} KB), ${stylesFile}`);

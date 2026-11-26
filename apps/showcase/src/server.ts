@@ -19,13 +19,15 @@ import { build } from "esbuild";
 import { QUICKNET, generateKeyPair, scheduleClock, timeOfRound } from "@mattering/core";
 import { drandSource } from "@mattering/core/drand-http";
 import { TestBeacon, WallTestClock } from "@mattering/core/testing";
-import { memoryStore, readJson, send } from "@mattering/witness";
+import { memoryStore, readJson, readText, send } from "@mattering/witness";
 import type { Decider } from "./agents.ts";
 import { DEFAULT_MODEL, claudeDecider, claudeNegotiator, modelLabel, type OfferDecider } from "./llm.ts";
 import { LocalLogHost } from "./log-host.ts";
 import { Room, type RoomState } from "./room.ts";
 import { NegotiationRoom, type NegotiationRoomState } from "./negotiation-room.ts";
+import { handleMcpHttp, type TableDirectory } from "./mcp.ts";
 import { chooserPage, roomPage, type PageOptions } from "./pages.ts";
+import { Table, type TableState } from "./table.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const web = join(here, "..", "web");
@@ -50,6 +52,8 @@ export interface ShowcaseOptions {
   /** Rounds from a negotiation step's start to its close, and from close to release. */
   negotiationCloseAfter?: number;
   negotiationReleaseAfter?: number;
+  /** Tests only: shortens the negotiation tables' round windows by this factor. */
+  tableTimeScale?: number;
 }
 
 /** Bundle a page's script for the browser: the rooms' page by default, or another entry under web/. */
@@ -114,12 +118,39 @@ export async function startShowcase(options: ShowcaseOptions): Promise<{ server:
     ...(options.decideTimeoutMs ? { decideTimeoutMs: options.decideTimeoutMs } : {}),
   });
 
+  // Negotiation tables for MCP clients, in memory, each on the same shared log.
+  let baseUrl = "";
+  const tables = new Map<string, Table>();
+  const tableDirectory: TableDirectory = {
+    async call(id, method, path, body) {
+      let table = tables.get(id);
+      if (!table) {
+        if (path !== "/create") return { status: 404, body: { error: "no such table" } };
+        let saved: TableState | undefined;
+        table = await Table.open({
+          mode: options.mode,
+          sourceFor,
+          timeOfRound: (round) => (clock ? clock.timeOfRound(round) : timeOfRound(QUICKNET, round) * 1000),
+          log,
+          loadState: async () => saved,
+          saveState: async (state) => void (saved = state),
+          roundMs,
+          releaseAfter: simulated ? 6 : 3,
+          timeScale: options.tableTimeScale ?? 1,
+        });
+        tables.set(id, table);
+      }
+      return table.handle(method, path, async () => body);
+    },
+    watchUrl: (tableId) => `${baseUrl}/demo/table?id=${tableId}`,
+  };
+
   // One piece of work at a time: a decision by a language model can take seconds.
   let working = false;
   const timer = setInterval(() => {
     if (working) return;
     working = true;
-    void Promise.all([room.work().catch(() => {}), negotiation.work().catch(() => {})]).finally(() => (working = false));
+    void Promise.all([room.work().catch(() => {}), negotiation.work().catch(() => {}), ...[...tables.values()].map((t) => t.work().catch(() => {}))]).finally(() => (working = false));
   }, Math.min(500, roundMs));
 
   const roomsJs = await bundlePage();
@@ -150,14 +181,36 @@ export async function startShowcase(options: ShowcaseOptions): Promise<{ server:
       response.writeHead(200, { "content-type": file[0], "cache-control": "no-store" });
       return response.end(file[1]());
     }
+    // MCP clients, and pages on this machine only: guard against other sites calling through the browser.
+    if (url.pathname === "/mcp") {
+      const headers = { get: (name: string) => (request.headers[name.toLowerCase()] as string | undefined) ?? null };
+      void handleMcpHttp(request.method ?? "GET", headers, () => readText(request), tableDirectory, (origin) => /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin)).then((reply) => {
+        response.writeHead(reply.status, reply.headers);
+        response.end(reply.body);
+      });
+      return;
+    }
+    // Watching a table: its page, and the read-only routes the page polls.
+    if (url.pathname === "/demo/table" && request.method === "GET") {
+      response.writeHead(200, { "content-type": html, "cache-control": "no-store" });
+      return response.end(roomPage("negotiation", { ...pages, roomBase: "/table/{table}", watch: true }));
+    }
+    const tableRoute = /^\/table\/([0-9a-f]{24})(\/negotiation\/.*)$/.exec(url.pathname);
+    if (tableRoute && request.method === "GET") {
+      const table = tables.get(tableRoute[1]!);
+      if (!table) return send(response, 404, { error: "no such table" });
+      void table.handle("GET", tableRoute[2]!, async () => undefined).then((reply) => send(response, reply.status, reply.body));
+      return;
+    }
     const target = url.pathname.startsWith("/negotiation/") ? negotiation : room;
     void target.handle(request.method ?? "GET", url.pathname, url.searchParams, () => readJson(request)).then((reply) => send(response, reply.status, reply.body));
   });
 
   await new Promise<void>((resolve) => server.listen(options.port ?? 0, "127.0.0.1", resolve));
+  baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   return {
     server,
-    url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    url: baseUrl,
     stop: () => {
       clearInterval(timer);
       server.close();
@@ -178,6 +231,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   console.log(`The demos are at ${url}/demo`);
   console.log(`  the Sealed Room:      ${url}/demo/auction`);
   console.log(`  the Negotiation Room: ${url}/demo/negotiation`);
+  console.log(`MCP server, for negotiation tables: ${url}/mcp`);
   console.log(mode === "live" ? "Clock: the real drand quicknet beacon." : "Clock: SIMULATED on this machine, for showing offline. The cryptography is the same; the clock is not independent.");
   console.log("Demonstration only. Not security reviewed.");
 }
