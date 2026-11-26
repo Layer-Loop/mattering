@@ -16,7 +16,7 @@
  └──────────────────────────────────────────────────────────────┘
 ```
 
-The sealer and the opener share nothing but the envelope file. Neither talks to a Mattering service, because there is none.
+The sealer and the opener share nothing but the envelope file. Neither talks to a Mattering service, because sealing and opening need none.
 
 In the auction, a **witness** sits between bidders and verifier. Bidders hand it signed submissions and get receipts. It publishes the log and a closing checkpoint. It never holds a key that opens anything.
 
@@ -78,7 +78,7 @@ The showcase (`apps/showcase`) runs its rooms on one such log through a small lo
 
 | Component | Owned and run by |
 | --- | --- |
-| A deployed public witness and registry | Mattering. The demonstration's shared log is the first step; it is not yet registered with any public witness |
+| A deployed public witness and registry | Mattering. The demonstration's shared log is the first step; it has been accepted onto the Witness Network's testing list, but no public witness cosigns it yet |
 | Cosigners | Parties independent of Mattering |
 | Anchoring checkpoints to a public ledger | Mattering's witness |
 | Range proofs, durable storage | Undecided; only if review supports them |

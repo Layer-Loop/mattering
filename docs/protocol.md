@@ -1,6 +1,6 @@
 # Protocol note
 
-**Version:** envelope format 1. **Status:** implemented, except where a paragraph says "not built".
+**Version:** envelope formats 1 and 2. **Status:** implemented, except where a paragraph says "not built".
 
 This note is meant to be enough to write a second implementation, and enough for a reviewer to find what is wrong.
 
@@ -305,7 +305,7 @@ What this gives: the other side knows who stands behind the agent and cannot lea
 
 ## 11. Things this design does not do
 
-- Keep anything secret after the release round.
+- Keep a version 1 envelope secret after its release round. A version 2 envelope stays secret after it only from those who are not its recipients, and only as long as they keep it so.
 - Prove a range, or anything else, about a sealed value before it opens.
 - Store envelopes durably. Whoever needs an envelope opened must keep it.
 - Identify or authenticate agents. A submitter is a public key, and what that key stands for is someone else's problem.
