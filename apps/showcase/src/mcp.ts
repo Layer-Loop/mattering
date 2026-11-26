@@ -81,7 +81,7 @@ const TOOLS = [
         unit: str("The currency or unit of the prices. Default GBP."),
         organisation: str("The name of the organisation you act for. Default 'The buyer' or 'The seller'."),
         rounds: int("How many rounds at most. Default 3.", TABLE_LIMITS.minRounds, TABLE_LIMITS.maxRounds),
-        roundSeconds: int("How long each round stays open for offers, in seconds. Default 120.", TABLE_LIMITS.minRoundSeconds, TABLE_LIMITS.maxRoundSeconds),
+        roundSeconds: int(`How long each round stays open for offers, in seconds. Default ${TABLE_LIMITS.defaultRoundSeconds}. Leave an assistant at least 20 seconds to check, decide and seal.`, TABLE_LIMITS.minRoundSeconds, TABLE_LIMITS.maxRoundSeconds),
       },
       required: ["side", "item", "minPrice", "maxPrice", "limit"],
       additionalProperties: false,

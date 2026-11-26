@@ -38,7 +38,7 @@ On a laptop, `npm run showcase` serves the same endpoint at `http://127.0.0.1:87
 
 | Tool | What it does |
 | --- | --- |
-| `start_negotiation` | Opens a table: what is negotiated, the price range, the unit, how many rounds (1 to 5, default 3) and how long each stays open (30 to 600 seconds, default 120). The caller takes a side and sets its private limit. Returns a token for the caller and an invite code for the other side |
+| `start_negotiation` | Opens a table: what is negotiated, the price range, the unit, how many rounds (1 to 5, default 3) and how long each stays open (20 to 600 seconds, default 60). The caller takes a side and sets its private limit. Returns a token for the caller and an invite code for the other side |
 | `join_negotiation` | Takes the other side with the invite code, setting its own private limit. Round 1 begins at once |
 | `negotiation_status` | Everything the caller's side may know: the terms, its own limit, the current round and its timing, whether each side has sealed, every opened round's two offers, and the result |
 | `wait_for_next_round` | Holds the call until the table moves on (the other side joins, the round opens, the next begins, or the negotiation ends), for at most 40 seconds by default and 55 at most, then says what changed. Returns at once if the caller still owes an offer for an open round |
