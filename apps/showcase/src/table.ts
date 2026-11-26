@@ -37,7 +37,9 @@ import type { LogHost } from "./log-host.ts";
 export const TABLE_LIMITS = {
   minRounds: 1,
   maxRounds: 5,
-  minRoundSeconds: 30,
+  minRoundSeconds: 20,
+  /** Long enough for an assistant to read the status, decide and seal; short enough for a demonstration. */
+  defaultRoundSeconds: 60,
   maxRoundSeconds: 600,
   maxNote: 280,
   maxText: 200,
@@ -214,7 +216,7 @@ export class Table {
         minPrice,
         maxPrice,
         rounds: whole(input.rounds, "rounds", TABLE_LIMITS.minRounds, TABLE_LIMITS.maxRounds, 3),
-        roundSeconds: whole(input.roundSeconds, "roundSeconds", TABLE_LIMITS.minRoundSeconds, TABLE_LIMITS.maxRoundSeconds, 120),
+        roundSeconds: whole(input.roundSeconds, "roundSeconds", TABLE_LIMITS.minRoundSeconds, TABLE_LIMITS.maxRoundSeconds, TABLE_LIMITS.defaultRoundSeconds),
       };
       const host = side(input.side);
       const now = Date.now();
