@@ -38,15 +38,24 @@ On a laptop, `npm run showcase` serves the same endpoint at `http://127.0.0.1:87
 
 | Tool | What it does |
 | --- | --- |
-| `start_negotiation` | Opens a table: what is negotiated, the price range, the unit, how many rounds (1 to 5, default 3) and how long each stays open (20 to 600 seconds, default 60). The caller takes a side and sets its private limit. Returns a token for the caller and an invite code for the other side |
-| `join_negotiation` | Takes the other side with the invite code, setting its own private limit. Round 1 begins at once |
+| `start_negotiation` | Opens a table. The user decides, and the assistant must ask: what is negotiated, the lowest and highest price, their own limit, how long each round stays open (20 to 600 seconds), and whether the assistant bids autonomously or asks them to approve each offer. Optional: the unit, the organisation's name, and how many rounds (1 to 5, default 3). Returns a token for the caller and an invite code for the other side |
+| `join_negotiation` | Takes the other side with the invite code. The user decides, and the assistant must ask: their own limit, and whether it bids autonomously. The reply gives the terms, for the assistant to read back to the user. Round 1 begins at once |
 | `negotiation_status` | Everything the caller's side may know: the terms, its own limit, the current round and its timing, whether each side has sealed, every opened round's two offers, and the result |
 | `wait_for_next_round` | Holds the call until the table moves on (the other side joins, the round opens, the next begins, or the negotiation ends), for at most 40 seconds by default and 55 at most, then says what changed. Returns at once if the caller still owes an offer for an open round |
-| `make_offer` | Seals the caller's offer for the current round, with an optional note to its own organisation. Only the first offer in a round counts. An offer beyond the caller's own limit is refused |
+| `make_offer` | Seals the caller's offer for the current round, with an optional note to its own organisation. If the user chose to approve each offer, it must carry `approvedByUser: true`, given only once the user has approved that exact price. Only the first offer in a round counts. An offer beyond the caller's own limit is refused |
 
 MCP gives a server no way to tell an assistant that something has happened, so every reply carries a `nextStep`, and the tools' descriptions tell an assistant to keep calling `wait_for_next_round` after each offer until the negotiation is finished. With that, one request such as "negotiate this for us" is enough for an assistant to run the whole negotiation without being prompted round by round. In the first run with real assistants, before this tool existed, Claude kept checking by itself and ChatGPT waited to be asked.
 
 A conversation goes like this. Tell your assistant something like "open a Mattering negotiation to sell early payment of a £10,000 invoice, between £9,000 and £10,000; we accept no less than £9,600", and pass the invite it returns to the other side. Then ask each assistant, round by round, to make its offer, and to check the status once the round opens.
+
+## Asking the user
+
+The settings that are the user's to decide are required, and every description tells the assistant to ask for them and never to choose them itself. If an assistant calls without them, the server opens nothing and replies with what to ask: "Not yet: ask your user for how long each round should stay open; and whether you should bid autonomously or ask them to approve each offer, then call start_negotiation again."
+
+Each side chooses how its assistant bids:
+
+- **Autonomously:** the assistant makes every offer itself, waits for each round, and reports at the end.
+- **With approval:** each round's `nextStep` tells the assistant to propose an offer and ask the user to approve that exact price. `make_offer` refuses an offer without `approvedByUser: true` and says what to ask. The server cannot see the conversation, so this rests on the assistant telling the truth; what it guarantees is that an assistant which has not been told to ask is sent back to ask. Allow longer rounds, three minutes or more, so the user has time to answer.
 
 ## How a table runs
 

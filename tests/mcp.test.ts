@@ -53,8 +53,13 @@ test("two assistants negotiate at a table through MCP, and anyone can check the 
     assert.deepEqual(listed.tools, ["start_negotiation", "join_negotiation", "negotiation_status", "wait_for_next_round", "make_offer"]);
     assert.match(listed.instructions ?? "", /^Demonstration environment: .*not legally binding/);
 
-    // Acme's assistant opens the table as the buyer, with its limit.
-    const opened = await acme.call("start_negotiation", { side: "buyer", item: "Early payment of invoice INV-2041 (£10,000, due in 60 days)", minPrice: 9000, maxPrice: 10000, limit: 9750, organisation: "Acme Treasury Ltd", rounds: 3, roundSeconds: 30 });
+    // An assistant that has not asked its user is sent back to ask, and nothing is opened.
+    const unasked = await acme.call("start_negotiation", { side: "buyer", item: "A Sony TV", minPrice: 500, maxPrice: 1500, limit: 1200 });
+    assert.equal(unasked.isError, true);
+    assert.match(unasked.content[0]!.text, /^Not yet: ask your user for how long each round should stay open; and whether you should bid autonomously or ask them to approve each offer/);
+
+    // Acme's assistant opens the table as the buyer, with its limit, bidding by itself.
+    const opened = await acme.call("start_negotiation", { side: "buyer", item: "Early payment of invoice INV-2041 (£10,000, due in 60 days)", minPrice: 9000, maxPrice: 10000, limit: 9750, organisation: "Acme Treasury Ltd", rounds: 3, roundSeconds: 30, autonomous: true });
     assert.equal(opened.isError, undefined, opened.content[0]?.text);
     // Every reply says so too, in words and as data.
     assert.match(opened.content[0]!.text, /^\[Demonstration environment: /);
@@ -68,11 +73,18 @@ test("two assistants negotiate at a table through MCP, and anyone can check the 
     const waiting = (await acme.call("negotiation_status", { token: acmeToken })).structuredContent as unknown as Status;
     assert.equal(waiting.state, "waiting for the other side to join");
 
-    // Bolt's assistant joins as the seller. An invite cannot be used twice.
-    const joined = await bolt.call("join_negotiation", { invite, limit: 9600, organisation: "Bolt Ltd" });
+    // Bolt's assistant joins as the seller, asking its user to approve each offer. An invite cannot be used twice.
+    assert.match((await bolt.call("join_negotiation", { invite, limit: 9600 })).content[0]!.text, /ask your user for whether you should bid autonomously/);
+    const joined = await bolt.call("join_negotiation", { invite, limit: 9600, organisation: "Bolt Ltd", autonomous: false });
     assert.equal(joined.structuredContent!.side, "seller");
+    assert.match(joined.content[0]!.text, /asking your user to approve each offer\. Read the terms back to your user/);
     const boltToken = joined.structuredContent!.token as string;
-    assert.equal((await bolt.call("join_negotiation", { invite, limit: 9600 })).isError, true);
+    assert.equal((await bolt.call("join_negotiation", { invite, limit: 9600, autonomous: true })).isError, true);
+    // Its next step is to propose to its user, and an offer without the user's approval is sent back.
+    assert.match(((await bolt.call("negotiation_status", { token: boltToken })).structuredContent!.nextStep as string), /^Propose an offer for round 1 to your user/);
+    const unapproved = await bolt.call("make_offer", { token: boltToken, price: 9950 });
+    assert.equal(unapproved.isError, true);
+    assert.match(unapproved.content[0]!.text, /ask them to approve 9950 GBP for round 1, then call make_offer again with approvedByUser: true/);
 
     // The mandate binds: an offer beyond the side's own limit is refused.
     const beyond = await acme.call("make_offer", { token: acmeToken, price: 9800 });
@@ -82,7 +94,7 @@ test("two assistants negotiate at a table through MCP, and anyone can check the 
     // Round 1: far apart. Only the first offer in a round counts.
     assert.equal((await acme.call("make_offer", { token: acmeToken, price: 9400, note: "We open low." })).structuredContent!.round, 1);
     assert.equal((await acme.call("make_offer", { token: acmeToken, price: 9450 })).isError, true, "a second offer in the same round is refused");
-    await bolt.call("make_offer", { token: boltToken, price: 9950 });
+    assert.equal((await bolt.call("make_offer", { token: boltToken, price: 9950, approvedByUser: true })).structuredContent!.round, 1);
     const mid = (await bolt.call("negotiation_status", { token: boltToken })).structuredContent as unknown as Status;
     assert.equal(mid.currentRound?.youHaveSealed, true);
     assert.equal(mid.currentRound?.otherSideHasSealed, true);
@@ -99,7 +111,7 @@ test("two assistants negotiate at a table through MCP, and anyone can check the 
     const r2 = await until(async () => (await bolt.call("negotiation_status", { token: boltToken })).structuredContent as unknown as Status, (s) => s.currentRound?.round === 2, "round 2");
     assert.deepEqual(r2.openedRounds.map((r) => [r.yourOffer, r.theirOffer, r.outcome.deal]), [[9950, 9400, false]]);
     await acme.call("make_offer", { token: acmeToken, price: 9700 });
-    await bolt.call("make_offer", { token: boltToken, price: 9650 });
+    await bolt.call("make_offer", { token: boltToken, price: 9650, approvedByUser: true });
     const finished = await acme.call("wait_for_next_round", { token: acmeToken, maxSeconds: 20 });
     assert.match(finished.structuredContent!.changed as string, /negotiation is over: round 2 opened and the offers crossed, a deal at 9675/);
     assert.match(finished.content[0]!.text, /Report the result/);
