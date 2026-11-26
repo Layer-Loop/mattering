@@ -7,6 +7,8 @@ Purpose: Seal digital information until a future time, and let anyone check the 
 
 **See it running:** [mattering.ai/demo](https://mattering.ai/demo) runs a sealed-bid auction between three software agents, and a sealed negotiation between two, on this code, against a public clock.
 
+**Try it from your AI assistant:** connect Claude, ChatGPT or any MCP client to `https://mattering.ai/mcp`, and two assistants can negotiate a price in sealed rounds ([below](#connect-an-ai-assistant)).
+
 Mattering uses existing cryptography. The time lock is [drand](https://drand.love)'s tlock, called through drand's own library. What Mattering adds is a documented envelope format, a witness log with receipts and deadlines, a verifier that recomputes an outcome from published evidence, and a demo that shows all of it working.
 
 ## How it was built
@@ -44,7 +46,12 @@ Three rules shaped it:
 - **Sealed negotiation**: a buyer and a seller, such as two firms' software agents, each seal an offer to the other; the offers open together, and if they cross the deal is at the midpoint. The witness cannot read them; a party can disclose them to an auditor.
 - **Agent mandates**: an organisation signs that its agent's key may negotiate up to a limit. The limit is committed, not shown, so the other side cannot learn it and the organisation cannot change it later; shown to an auditor, it proves whether a deal was within the agent's authority.
 - A **registry view**: everything one key has committed to, and what each commitment opened to.
-- An **MCP server**: AI assistants such as Claude and ChatGPT can open or join a negotiation table and negotiate for one side, round by round, through five tools. Anyone with the watch link can follow and check it ([docs/mcp.md](docs/mcp.md)).
+- An **MCP server**: AI assistants such as Claude and ChatGPT can open or join a negotiation table and negotiate for one side, round by round, through five tools, by themselves or with the user's approval for each offer. Anyone with the watch link can follow and check it ([docs/mcp.md](docs/mcp.md)).
+
+**For other implementations**
+
+- **Test vectors**: known inputs and outputs for every format, including two real drand rounds and a complete cosigned auction and negotiation, checked against this library on every test run ([test-vectors](test-vectors/README.md)).
+- **An npm package**, `@mattering/core`, built and tested but not yet published ([below](#the-npm-package)).
 
 The service runs the demo at mattering.ai, where each visitor gets a room of their own and every room writes into one shared log. It is still a proof of concept. Not yet built: range proofs, durable storage. [docs/claims.md](docs/claims.md) lists every claim with its status.
 
@@ -60,6 +67,18 @@ npm run showcase
 Then open http://127.0.0.1:8790/demo. Use `npm run showcase:offline` if you have no internet connection. More in [docs/showcase.md](docs/showcase.md).
 
 **The Negotiation Room**, at http://127.0.0.1:8790/demo/negotiation from the same command, shows two firms' agents negotiating early payment of an invoice in sealed steps, each under a mandate with a limit the other side cannot see. With a Claude API key, a language model chooses each agent's offer, held to the same mandate. Your browser checks every step from what the firms disclose to it. More in [docs/negotiation-room.md](docs/negotiation-room.md).
+
+## Connect an AI assistant
+
+Mattering is also an MCP server. Add a connector with the address `https://mattering.ai/mcp` in Claude, ChatGPT or any assistant that supports MCP connectors; no sign-in is needed. In Claude Code:
+
+```bash
+claude mcp add --transport http mattering https://mattering.ai/mcp
+```
+
+Then ask one assistant to open a negotiation, for example to sell something, and give the invite code it returns to the other party's assistant. Each assistant asks its user for the settings that are theirs to decide (the item and price range, their own limit, the round length, and whether to bid by itself or check each offer with them), then bids round by round. Neither can see the other's offer before making its own, and an offer beyond a user's limit is refused. A watch link shows the negotiation and checks every round in the browser.
+
+It is a demonstration: offers are sealed and recorded for real, but they are not legally binding, no payment is made, and Mattering's server holds both parties' keys. `npm run showcase` serves the same endpoint on a laptop at http://127.0.0.1:8790/mcp. More in [docs/mcp.md](docs/mcp.md).
 
 ## Try it
 
