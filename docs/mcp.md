@@ -6,7 +6,7 @@ Mattering offers its sealed negotiation to AI assistants through the [Model Cont
 
 ## Connecting an assistant
 
-The server is at `https://mattering.ai/mcp`. It uses MCP's Streamable HTTP transport, needs no sign-in, and offers four tools.
+The server is at `https://mattering.ai/mcp`. It uses MCP's Streamable HTTP transport, needs no sign-in, and offers five tools.
 
 - **Claude** (claude.ai, the Claude apps, Claude Code): add a custom connector with that URL. In Claude Code: `claude mcp add --transport http mattering https://mattering.ai/mcp`.
 - **ChatGPT**: in a plan and mode that allow custom connectors to MCP servers, add a connector with that URL and no authentication.
@@ -21,7 +21,10 @@ On a laptop, `npm run showcase` serves the same endpoint at `http://127.0.0.1:87
 | `start_negotiation` | Opens a table: what is negotiated, the price range, the unit, how many rounds (1 to 5, default 3) and how long each stays open (30 to 600 seconds, default 120). The caller takes a side and sets its private limit. Returns a token for the caller and an invite code for the other side |
 | `join_negotiation` | Takes the other side with the invite code, setting its own private limit. Round 1 begins at once |
 | `negotiation_status` | Everything the caller's side may know: the terms, its own limit, the current round and its timing, whether each side has sealed, every opened round's two offers, and the result |
+| `wait_for_next_round` | Holds the call until the table moves on (the other side joins, the round opens, the next begins, or the negotiation ends), for at most 40 seconds by default and 55 at most, then says what changed. Returns at once if the caller still owes an offer for an open round |
 | `make_offer` | Seals the caller's offer for the current round, with an optional note to its own organisation. Only the first offer in a round counts. An offer beyond the caller's own limit is refused |
+
+MCP gives a server no way to tell an assistant that something has happened, so every reply carries a `nextStep`, and the tools' descriptions tell an assistant to keep calling `wait_for_next_round` after each offer until the negotiation is finished. With that, one request such as "negotiate this for us" is enough for an assistant to run the whole negotiation without being prompted round by round. In the first run with real assistants, before this tool existed, Claude kept checking by itself and ChatGPT waited to be asked.
 
 A conversation goes like this. Tell your assistant something like "open a Mattering negotiation to sell early payment of a £10,000 invoice, between £9,000 and £10,000; we accept no less than £9,600", and pass the invite it returns to the other side. Then ask each assistant, round by round, to make its offer, and to check the status once the round opens.
 
@@ -46,4 +49,4 @@ On mattering.ai, tables open at most `TABLES_PER_DAY` times a day across everyon
 
 ## Not covered by automated tests
 
-`tests/mcp.test.ts` drives two tables through the laptop server with the official MCP TypeScript client: two assistants open and join, an offer beyond a limit and a second offer in a round are refused, the rounds run to a deal, and the result is worked out again from the evidence. It also checks the endpoint's answers to other methods and other origins. The Cloudflare version was run by hand in Cloudflare's local runtime with the simulated clock on 2026-11-26, driven by the same client, and the watch page reached the deal with every check passing. Neither has been run from Claude or ChatGPT themselves, or against live drand on Cloudflare.
+`tests/mcp.test.ts`, which also covers waiting for a round to open and the end of the negotiation, drives two tables through the laptop server with the official MCP TypeScript client: two assistants open and join, an offer beyond a limit and a second offer in a round are refused, the rounds run to a deal, and the result is worked out again from the evidence. It also checks the endpoint's answers to other methods and other origins. The Cloudflare version was run by hand in Cloudflare's local runtime with the simulated clock on 2026-11-26, driven by the same client, and the watch page reached the deal with every check passing. On 2026-11-26 the deployed server was used from Claude and ChatGPT, against live drand: three rounds ran and ended without a deal, as the offers had not crossed. Waiting was then added, and checked in Cloudflare's local runtime (one wait held for 35 seconds and returned as the round opened); it has not yet been tried from Claude or ChatGPT.

@@ -144,6 +144,17 @@ function side(value: unknown): Side {
   return value;
 }
 
+/** What the side should do now, in a sentence an assistant can act on. */
+function nextStep(st: TableState, s: Side, current: RoundState | undefined, now: number): string {
+  if (!st.parties[other(s)]) return st.host === s ? "Share the invite with the other party, then call wait_for_next_round until they join." : "Wait for the other side to join: call wait_for_next_round.";
+  if (st.done) return "The negotiation is over. Report the result.";
+  if (!current) return "Call wait_for_next_round until the next round begins.";
+  const left = Math.max(0, Math.ceil((current.closeAt - now) / 1000));
+  if (!current.submitted[s] && now < current.closeAt) return `Make your offer for round ${current.policy.step} with make_offer within ${left} seconds. Then call wait_for_next_round.`;
+  if (!current.submitted[s]) return `Round ${current.policy.step} closed without an offer from you. Call wait_for_next_round until the next round begins.`;
+  return `Your offer for round ${current.policy.step} is sealed. Call wait_for_next_round until the round opens.`;
+}
+
 export class Table {
   private busy: Promise<unknown> = Promise.resolve();
 
@@ -329,6 +340,7 @@ export class Table {
           : null,
         openedRounds: st.rounds.filter((r) => r.outcome).map((r) => ({ round: r.policy.step, yourOffer: r.opened?.[s] ?? null, theirOffer: r.opened?.[other(s)] ?? null, outcome: r.outcome })),
         result: st.done && last?.outcome ? last.outcome : null,
+        nextStep: nextStep(st, s, current, now),
       };
     });
   }

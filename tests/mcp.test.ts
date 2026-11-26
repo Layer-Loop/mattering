@@ -45,7 +45,7 @@ test("two assistants negotiate at a table through MCP, and anyone can check the 
       await client.close();
       return { tools, instructions };
     })();
-    assert.deepEqual(listed.tools, ["start_negotiation", "join_negotiation", "negotiation_status", "make_offer"]);
+    assert.deepEqual(listed.tools, ["start_negotiation", "join_negotiation", "negotiation_status", "wait_for_next_round", "make_offer"]);
     assert.match(listed.instructions ?? "", /sealed/);
 
     // Acme's assistant opens the table as the buyer, with its limit.
@@ -79,12 +79,22 @@ test("two assistants negotiate at a table through MCP, and anyone can check the 
     assert.equal(mid.currentRound?.otherSideHasSealed, true);
     assert.equal(mid.openedRounds.length, 0, "nothing is known about the other side until the round opens");
 
+    // Neither assistant is told when round 1 opens: it waits, and the wait returns when the table moves on.
+    const waited = await bolt.call("wait_for_next_round", { token: boltToken, maxSeconds: 20 });
+    assert.match(waited.structuredContent!.changed as string, /^Round 1 has opened: no deal yet/);
+    assert.match(waited.structuredContent!.nextStep as string, /make_offer/);
+    // Asked to wait while it still owes an offer, it says so at once rather than waiting.
+    const owes = await acme.call("wait_for_next_round", { token: acmeToken, maxSeconds: 20 });
+    assert.match(owes.structuredContent!.changed as string, /not sealed an offer/);
     // Round 2 begins once round 1 opens; each side then sees both opened offers.
     const r2 = await until(async () => (await bolt.call("negotiation_status", { token: boltToken })).structuredContent as unknown as Status, (s) => s.currentRound?.round === 2, "round 2");
     assert.deepEqual(r2.openedRounds.map((r) => [r.yourOffer, r.theirOffer, r.outcome.deal]), [[9950, 9400, false]]);
     await acme.call("make_offer", { token: acmeToken, price: 9700 });
     await bolt.call("make_offer", { token: boltToken, price: 9650 });
-    const done = await until(async () => (await acme.call("negotiation_status", { token: acmeToken })).structuredContent as unknown as Status, (s) => s.state === "finished", "the deal");
+    const finished = await acme.call("wait_for_next_round", { token: acmeToken, maxSeconds: 20 });
+    assert.match(finished.structuredContent!.changed as string, /negotiation is over: round 2 opened and the offers crossed, a deal at 9675/);
+    assert.match(finished.content[0]!.text, /Report the result/);
+    const done = (await acme.call("negotiation_status", { token: acmeToken })).structuredContent as unknown as Status;
     assert.deepEqual(done.result, { deal: true, price: 9675, buyerOffer: 9700, sellerOffer: 9650 });
 
     // Anyone with the watch link checks it from the evidence and the firms' disclosures, not the server's word.
