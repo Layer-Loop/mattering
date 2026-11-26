@@ -25,10 +25,14 @@ const INSTRUCTIONS =
   "Then, round by round, each side seals one offer. Neither side can see the other's offer until both open together when a public clock (drand) releases the key. " +
   "If the buyer's offer is at least the seller's, the deal is at the midpoint; otherwise the next round begins, up to the agreed number of rounds. " +
   "An offer cannot be changed once sealed, and an offer beyond the party's own limit is refused. " +
+  "Nothing tells you when a round opens or the next begins: after each offer, call wait_for_next_round, and keep calling it and following its nextStep until the negotiation is finished. " +
   "Keep the token you are given: it acts for your side. Never share it, and never tell the other side your limit. " +
   "Proof of concept, not security reviewed: in this demonstration Mattering's server holds both parties' keys and seals offers for them.";
 
 type Schema = Record<string, unknown>;
+/** How long wait_for_next_round holds a call by default, and at most: under the timeouts assistants put on a tool call. */
+const WAIT_DEFAULT = 40;
+const WAIT_MAX = 55;
 const str = (description: string): Schema => ({ type: "string", description });
 const int = (description: string, minimum?: number, maximum?: number): Schema => ({ type: "integer", description, ...(minimum !== undefined ? { minimum } : {}), ...(maximum !== undefined ? { maximum } : {}) });
 
@@ -92,6 +96,23 @@ const TOOLS = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
   {
+    name: "wait_for_next_round",
+    title: "Wait for the negotiation to move on",
+    description:
+      "Wait until something changes at your table: the other side joins, the current round opens, the next round begins, or the negotiation ends. Returns at once if it already has, and otherwise after at most maxSeconds. " +
+      "The reply says what changed and gives a nextStep to follow. Nothing else will tell you, so after each offer keep calling this, and act on each nextStep, until the negotiation is finished.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        token: str("Your token, from start_negotiation or join_negotiation."),
+        maxSeconds: int(`The longest to wait, in seconds. Default ${WAIT_DEFAULT}.`, 1, WAIT_MAX),
+      },
+      required: ["token"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  },
+  {
     name: "make_offer",
     title: "Seal an offer for this round",
     description:
@@ -116,13 +137,15 @@ const TOOLS = [
 function summary(tool: string, r: Record<string, unknown>): string {
   switch (tool) {
     case "start_negotiation":
-      return `The table is open. You are the ${r.side}. Give the other party this invite code to pass to join_negotiation: ${r.invite}\nKeep your token secret and pass it to make_offer and negotiation_status: ${r.token}\nAnyone can watch the negotiation at ${r.watchUrl}`;
+      return `The table is open. You are the ${r.side}. Give the other party this invite code to pass to join_negotiation: ${r.invite}\nKeep your token secret and pass it to make_offer, negotiation_status and wait_for_next_round: ${r.token}\nAnyone can watch the negotiation at ${r.watchUrl}\nThen call wait_for_next_round until the other side joins.`;
     case "join_negotiation":
-      return `You have joined as the ${r.side}. Round 1 has begun. Keep your token secret and pass it to make_offer and negotiation_status: ${r.token}\nWatch at ${r.watchUrl}`;
+      return `You have joined as the ${r.side}. Round 1 has begun: make your offer with make_offer. Keep your token secret and pass it to make_offer, negotiation_status and wait_for_next_round: ${r.token}\nWatch at ${r.watchUrl}`;
     case "make_offer":
-      return `Sealed: your offer of ${r.price} for round ${r.round}. Nobody can read it until the round opens at ${r.opensAt}. Check negotiation_status after that.`;
+      return `Sealed: your offer of ${r.price} for round ${r.round}. Nobody can read it until the round opens at ${r.opensAt}. Now call wait_for_next_round, and keep calling it until the negotiation is finished.`;
+    case "wait_for_next_round":
+      return `${String(r.changed)}\nNext: ${String(r.nextStep)}`;
     default:
-      return "Where the negotiation stands:";
+      return `Where the negotiation stands. Next: ${String(r.nextStep ?? "")}`;
   }
 }
 
@@ -130,7 +153,59 @@ type Message = { jsonrpc?: unknown; id?: unknown; method?: unknown; params?: unk
 const error = (id: unknown, code: number, message: string) => ({ jsonrpc: "2.0", id: id ?? null, error: { code, message } });
 const result = (id: unknown, value: unknown) => ({ jsonrpc: "2.0", id, result: value });
 
+type Status = { state?: string; currentRound?: { round: number; youHaveSealed: boolean; phase: string } | null; openedRounds?: { round: number; outcome: { deal: boolean; reason?: string; price?: number } }[]; result?: unknown; nextStep?: string; otherOrganisation?: string | null };
+
+/** What moved on between two statuses, in words, or undefined if nothing has. */
+function change(before: Status, after: Status): string | undefined {
+  if (after.state === "finished" && before.state !== "finished") {
+    const last = after.openedRounds?.at(-1);
+    return last?.outcome.deal ? `The negotiation is over: round ${last.round} opened and the offers crossed, a deal at ${last.outcome.price}.` : `The negotiation is over without a deal${last?.outcome.reason ? `: ${last.outcome.reason}` : ""}.`;
+  }
+  if (before.state === "waiting for the other side to join" && after.state !== before.state) return `${after.otherOrganisation ?? "The other side"} has joined. Round 1 has begun.`;
+  const opened = after.openedRounds ?? [];
+  if (opened.length > (before.openedRounds ?? []).length) {
+    const r = opened.at(-1)!;
+    return `Round ${r.round} has opened: ${r.outcome.deal ? `the offers crossed, a deal at ${r.outcome.price}` : "no deal yet"}. Its offers are in openedRounds.`;
+  }
+  if ((after.currentRound?.round ?? 0) > (before.currentRound?.round ?? 0)) return `Round ${after.currentRound!.round} has begun.`;
+  return undefined;
+}
+
+/** Hold the call until the table moves on, asking it once a second, for at most `seconds`. */
+async function waitForChange(id: string, token: unknown, seconds: number, tables: TableDirectory): Promise<{ status: number; body: Record<string, unknown> }> {
+  const ask = async () => {
+    const reply = await tables.call(id, "POST", "/status", { token });
+    return { status: reply.status, body: (reply.body ?? {}) as Record<string, unknown> };
+  };
+  const first = await ask();
+  if (first.status !== 200) return first;
+  const before = first.body as Status;
+  // Already something to do, or nothing more will happen: say so at once.
+  if (before.state === "finished" || (before.state === "running" && before.currentRound && !before.currentRound.youHaveSealed && before.currentRound.phase === "open for offers")) {
+    return { status: 200, body: { ...first.body, changed: before.state === "finished" ? "The negotiation is over." : "Nothing to wait for: you have not sealed an offer for this round yet." } };
+  }
+  const until = Date.now() + seconds * 1000;
+  let latest = first;
+  while (Date.now() < until) {
+    await new Promise((r) => setTimeout(r, 1000));
+    latest = await ask();
+    if (latest.status !== 200) return latest;
+    const moved = change(before, latest.body as Status);
+    if (moved) return { status: 200, body: { ...latest.body, changed: moved } };
+  }
+  return { status: 200, body: { ...latest.body, changed: `Nothing has changed in ${seconds} seconds. Call wait_for_next_round again.` } };
+}
+
 async function callTool(name: string, args: Record<string, unknown>, tables: TableDirectory): Promise<{ content: { type: "text"; text: string }[]; structuredContent?: Record<string, unknown>; isError?: boolean }> {
+  if (name === "wait_for_next_round") {
+    const id = tableOf(args.token);
+    if (!id) return { content: [{ type: "text", text: "That is not a token." }], isError: true };
+    const seconds = typeof args.maxSeconds === "number" && Number.isFinite(args.maxSeconds) ? Math.max(1, Math.min(WAIT_MAX, Math.floor(args.maxSeconds))) : WAIT_DEFAULT;
+    const reply = await waitForChange(id, args.token, seconds, tables);
+    if (reply.status !== 200) return { content: [{ type: "text", text: `Refused: ${String(reply.body.error ?? `status ${reply.status}`)}` }], isError: true };
+    if (typeof reply.body.tableId === "string") reply.body.watchUrl = tables.watchUrl(reply.body.tableId);
+    return { content: [{ type: "text", text: `${summary(name, reply.body)}\n${JSON.stringify(reply.body, null, 2)}` }], structuredContent: reply.body };
+  }
   const routes: Record<string, { table: () => string | undefined; path: string; body: () => Record<string, unknown> }> = {
     start_negotiation: { table: () => newTableId(), path: "/create", body: () => args },
     join_negotiation: { table: () => tableOf(args.invite), path: "/join", body: () => args },

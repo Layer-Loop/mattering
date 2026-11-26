@@ -44,7 +44,7 @@ Three rules shaped it:
 - **Sealed negotiation**: a buyer and a seller, such as two firms' software agents, each seal an offer to the other; the offers open together, and if they cross the deal is at the midpoint. The witness cannot read them; a party can disclose them to an auditor.
 - **Agent mandates**: an organisation signs that its agent's key may negotiate up to a limit. The limit is committed, not shown, so the other side cannot learn it and the organisation cannot change it later; shown to an auditor, it proves whether a deal was within the agent's authority.
 - A **registry view**: everything one key has committed to, and what each commitment opened to.
-- An **MCP server**: AI assistants such as Claude and ChatGPT can open or join a negotiation table and negotiate for one side, round by round, through four tools. Anyone with the watch link can follow and check it ([docs/mcp.md](docs/mcp.md)).
+- An **MCP server**: AI assistants such as Claude and ChatGPT can open or join a negotiation table and negotiate for one side, round by round, through five tools. Anyone with the watch link can follow and check it ([docs/mcp.md](docs/mcp.md)).
 
 The service runs the demo at mattering.ai, where each visitor gets a room of their own and every room writes into one shared log. It is still a proof of concept. Not yet built: range proofs, durable storage. [docs/claims.md](docs/claims.md) lists every claim with its status.
 
