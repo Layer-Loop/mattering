@@ -17,7 +17,7 @@ Three rules shaped it:
 
 1. **No new cryptography.** Established libraries only. Where the project had to compose them itself, the composition is marked for review ([docs/research-questions.md](docs/research-questions.md)).
 2. **Every claim has a test, or is marked as not made.** [docs/claims.md](docs/claims.md) lists each (and what it rests on).
-3. **Limits are clearly stated**, including on the demo page.
+3. **Limits are clearly stated**, here and in [docs/claims.md](docs/claims.md). The demo pages say what is staged in each scenario.
 
 ## Current features
 
@@ -39,7 +39,7 @@ Three rules shaped it:
 **A witness and registry service**
 
 - An **HTTP service** that keeps the log, enforces deadlines, stores envelopes and publishes the evidence for anyone to check. One log runs for a long time and carries many auctions; each auction's evidence covers only its own stretch of it.
-- **Cosigners**: independent parties who countersign the log, dated, before any bid can be read, so the witness cannot rewrite it or move the close afterwards. They speak the same protocol as the public transparency-log witness network (C2SP tlog-witness), though no public witness has been used yet.
+- **Cosigners**: independent parties who countersign the log, dated, before any bid can be read, so the witness cannot rewrite it or move the close afterwards. They speak the same protocol as the public transparency-log witness network (C2SP tlog-witness). The shared log at mattering.ai/log has been accepted onto the Witness Network's testing list, but no public witness has cosigned it yet.
 - **Sealed statements**: commit to a prediction or decision before a deadline; it opens for everyone at a set time.
 - **Sealed negotiation**: a buyer and a seller, such as two firms' software agents, each seal an offer to the other; the offers open together, and if they cross the deal is at the midpoint. The witness cannot read them; a party can disclose them to an auditor.
 - **Agent mandates**: an organisation signs that its agent's key may negotiate up to a limit. The limit is committed, not shown, so the other side cannot learn it and the organisation cannot change it later; shown to an auditor, it proves whether a deal was within the agent's authority.
@@ -138,7 +138,7 @@ The full list is in [docs/threat-model.md](docs/threat-model.md).
 | `apps/cloudflare` | The same room as a Cloudflare Worker, for the website |
 | `examples/agent-auction` | Three agents, one auction, and a standalone verifier |
 | `examples/hosted-registry` | The same through the hosted service, plus sealed predictions |
-| `tests` | 92 tests: sealing, sealing to recipients, sealed negotiation, agent mandates, the negotiation demo, tampering, replay, early opening, cheating bidders, a cheating witness, a cheating coordinator, the witness protocol and its formats, the service over HTTP, and one log shared by many auctions |
+| `tests` | 95 tests (one, against live drand, runs only with `npm run test:live`): sealing, sealing to recipients, sealed negotiation, agent mandates, the negotiation demo, tampering, replay, early opening, cheating bidders, a cheating witness, a cheating coordinator, the witness protocol and its formats, the service over HTTP, and one log shared by many auctions |
 | `docs/protocol.md` | The envelope, submission, log, auction and statement formats |
 | `docs/service.md` | Running the witness service, its interface, and what it lacks |
 | `docs/showcase.md` | The demonstration page: what is real and what is staged |
@@ -163,7 +163,8 @@ The full list is in [docs/threat-model.md](docs/threat-model.md).
 | [@noble/curves](https://github.com/paulmillr/noble-curves) | 1.9.7 | MIT | Beacon signature verification (BLS12-381), Ed25519 signatures, Ristretto255 commitments |
 | [@noble/hashes](https://github.com/paulmillr/noble-hashes) | 1.8.0 | MIT | SHA-256, SHA3-512 |
 | [canonicalize](https://github.com/erdtman/canonicalize) | 2.1.0 | Apache-2.0 | RFC 8785 canonical JSON |
-| [@anthropic-ai/sdk](https://github.com/anthropics/anthropic-sdk-typescript) | showcase only | MIT | Optional: a language model decides the demo agents' bids. Not used by the core |
+| [age-encryption](https://github.com/FiloSottile/typage) | 0.3.1 | BSD-3-Clause | Sealing to recipients (age X25519), version 2 envelopes |
+| [@anthropic-ai/sdk](https://github.com/anthropics/anthropic-sdk-typescript) | showcase only | MIT | Optional: a language model chooses the demo agents' bids and offers. Not used by the core |
 | [esbuild](https://esbuild.github.io) | development only | MIT | Bundling the library for the showcase page |
 
 Versions are pinned exactly. `tlock-js` was last published in July 2025; whether it is maintained actively enough to build on is an open question in [docs/research-questions.md](docs/research-questions.md).

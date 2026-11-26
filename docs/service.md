@@ -101,4 +101,4 @@ None of this is done:
 - **Scale.** Measured on this machine, 100,000 entries held as objects took about 58 MB, which is why the service keeps only their hashes, about 3 MB. Nothing has been load-tested. A start reads every leaf hash, and the registry view reads the whole log.
 - **Transport.** Plain HTTP. Put it behind TLS.
 - **Operations.** No monitoring, no key rotation, no plan for what a compromised key means for past receipts.
-- **Independent cosigners.** The design needs cosigners run by other parties. The formats now allow witnesses on the public witness network to be those parties, but no log has been registered with that network, and no cosigner run by anyone else exists yet.
+- **Independent cosigners.** The design needs cosigners run by other parties. The formats now allow witnesses on the public witness network to be those parties, and the shared log at mattering.ai/log has been accepted onto that network's testing list, but no public witness has cosigned it yet, so the only cosigner that has run is this repository's own.
