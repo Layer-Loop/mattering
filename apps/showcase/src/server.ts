@@ -143,6 +143,7 @@ export async function startShowcase(options: ShowcaseOptions): Promise<{ server:
       return table.handle(method, path, async () => body);
     },
     watchUrl: (tableId) => `${baseUrl}/demo/table?id=${tableId}`,
+    clock: simulated ? "simulated" : "live",
   };
 
   // One piece of work at a time: a decision by a language model can take seconds.

@@ -40,17 +40,26 @@ test("two assistants negotiate at a table through MCP, and anyone can check the 
     const listed = await (async () => {
       const client = new Client({ name: "lister", version: "1.0.0" });
       await client.connect(new StreamableHTTPClientTransport(new URL(`${url}/mcp`)));
-      const tools = (await client.listTools()).tools.map((t) => t.name);
+      const all = (await client.listTools()).tools;
       const instructions = client.getInstructions();
       await client.close();
-      return { tools, instructions };
+      // Every tool says it is a demonstration, not binding and with no payment, and that it acts only on Mattering's tables.
+      for (const t of all) {
+        assert.match(t.description ?? "", /^Demonstration environment: .*not legally binding and no payment is made/, t.name);
+        assert.equal(t.annotations?.openWorldHint, false, t.name);
+      }
+      return { tools: all.map((t) => t.name), instructions };
     })();
     assert.deepEqual(listed.tools, ["start_negotiation", "join_negotiation", "negotiation_status", "wait_for_next_round", "make_offer"]);
-    assert.match(listed.instructions ?? "", /sealed/);
+    assert.match(listed.instructions ?? "", /^Demonstration environment: .*not legally binding/);
 
     // Acme's assistant opens the table as the buyer, with its limit.
     const opened = await acme.call("start_negotiation", { side: "buyer", item: "Early payment of invoice INV-2041 (£10,000, due in 60 days)", minPrice: 9000, maxPrice: 10000, limit: 9750, organisation: "Acme Treasury Ltd", rounds: 3, roundSeconds: 30 });
     assert.equal(opened.isError, undefined, opened.content[0]?.text);
+    // Every reply says so too, in words and as data.
+    assert.match(opened.content[0]!.text, /^\[Demonstration environment: /);
+    assert.deepEqual([(opened.structuredContent!.environment as { name: string }).name, (opened.structuredContent!.environment as { legallyBinding: boolean }).legallyBinding, (opened.structuredContent!.environment as { paymentsMade: boolean }).paymentsMade], ["demonstration", false, false]);
+    assert.match((opened.structuredContent!.environment as { clock: string }).clock, /simulated/);
     const acmeToken = opened.structuredContent!.token as string;
     const invite = opened.structuredContent!.invite as string;
     const tableId = opened.structuredContent!.tableId as string;
