@@ -81,7 +81,7 @@ The showcase (`apps/showcase`) runs its rooms on one such log through a small lo
 | Module | Role |
 | --- | --- |
 | `apps/platform/src/session.ts` | The session engine: one auction, negotiation or limit match from creation to result, on the shared log. No server, files or timers |
-| `apps/platform/src/hosted.ts` | Beside each session: idempotent requests and signed webhook delivery. Beside each integrator: webhooks, a daily allowance |
+| `apps/platform/src/hosted.ts` | Beside each session: idempotent requests and signed webhook delivery. Beside each integrator: webhooks, a daily allowance, and its own records: its sessions, its webhook deliveries and its usage per day |
 | `apps/platform/src/api.ts` | The HTTP API: who is calling, routing, the event stream, and an in-memory host for tests and laptops |
 | `apps/platform/src/openapi.ts` | The OpenAPI description, tested against the routes served |
 | `packages/client` | `@mattering/client`: keys made and kept locally, sealing on the caller's machine, retries, disclosure, and `verify` |

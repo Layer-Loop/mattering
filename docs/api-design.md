@@ -222,7 +222,7 @@ The tools become a thin layer over the API, keeping what works today (asking the
 | HTTP API v1, API keys, webhooks, event stream, OpenAPI spec | Built (`apps/platform`), served by the Worker at `/api/v1` |
 | `@mattering/client` | Built (`packages/client`), not yet packaged for npm |
 | MCP over the platform, with auctions | Built: the MCP server is an integrator of the platform |
-| Demo: a receivables funding desk, built only on the public API | Not yet, as a separate app |
+| Demo: a receivables funding desk, built only on the public API | Built (#35), with a London rental listing beside it ([scenarios.md](scenarios.md)) |
 
 ## 11. Not in version 1
 
@@ -234,7 +234,9 @@ Identity and onboarding, payments and checkout, custody, on-chain settlement (se
 2. Auction policy version 4 (PR #28), and the session engine with auctions (#29), negotiations and limit matches (#30).
 3. The HTTP API on the Worker, with API keys (#31), and `@mattering/client` sealing locally (#32).
 4. The MCP server rebuilt on the platform, with auctions (#33).
-5. Next: the receivables funding desk demo and a quickstart.
+5. The receivables funding desk and a London rental listing, as scenario demos (#35).
+6. The hosted service moved to a private repository (#36), with integrators' own records here (#37) and, there, an invite-only integrator console in the sandbox.
+7. Next: signed outcome statements and audit packs (the statement's format and verifier here, issuing them in the hosted service), and a quickstart.
 
 ## 13. Assumptions for version 1
 

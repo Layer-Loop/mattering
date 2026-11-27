@@ -56,6 +56,7 @@ Three rules shaped it:
 - A **session engine** that runs sealed-bid auctions, negotiations in rounds, and limit matches (one round in which each side seals only its limit), with invitations, a quorum, cancelling, and results checked against the evidence before they are published.
 - An **HTTP API** at `/api/v1`, with API keys, idempotent requests, events by stream or signed webhook, and an OpenAPI description ([docs/api.md](docs/api.md)).
 - An **SDK**, `@mattering/client`, that makes and keeps each participant's keys, seals on its machine, and checks every result against the evidence, sealing only to a public clock it accepts.
+- **Integrators' own records**: their sessions, every webhook delivery attempt, and usage per day, read through the API.
 - **Server sealing** for callers that cannot run code, such as assistants in a chat: Mattering then holds the keys, and every response says so.
 
 **For other implementations**
