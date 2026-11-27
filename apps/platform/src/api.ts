@@ -41,13 +41,13 @@ function json(status: number, body: unknown): Response {
 }
 const problem = (status: number, code: string, message: string): Response => json(status, { error: { code, message } });
 
-const SESSION_PATH = /^\/sessions\/(ses_[0-9a-f]{24})(\/[a-z-]+)?$/;
+const SESSION_PATH = /^\/sessions\/(ses_[0-9a-f]{24})(\/[a-z-]*)?$/;
 const WEBHOOK_PATH = /^\/webhooks\/(whk_[0-9a-f]{16})$/;
 const API_KEY = /^mk_(?:live|test)_[A-Za-z0-9]{16,64}$/;
 const TOKEN = /^tok_[0-9a-f]{24}_[0-9a-f]{32}$/;
 /** Engine routes reachable from the API, by method. */
 const SESSION_ROUTES: Record<string, string[]> = {
-  GET: ["/", "/round", "/result", "/evidence", "/events"],
+  GET: ["/", "/invitation", "/round", "/result", "/evidence", "/events"],
   POST: ["/join", "/check-in", "/bids", "/open", "/cancel", "/disclose"],
 };
 
@@ -114,7 +114,8 @@ export async function handleApi(request: Request, host: PlatformHost): Promise<R
     const m = SESSION_PATH.exec(path);
     if (!m) return problem(404, "not-found", "no such route");
     const id = m[1]!;
-    const sub = m[2] ?? "/";
+    // A trailing slash is the session itself.
+    const sub = m[2] && m[2] !== "/" ? m[2] : "/";
     if (!SESSION_ROUTES[method]?.includes(sub)) {
       const known = SESSION_ROUTES.GET!.includes(sub) || SESSION_ROUTES.POST!.includes(sub);
       return known ? problem(405, "method-not-allowed", `${method} is not allowed on ${sub}`) : problem(404, "not-found", `no route ${sub}`);

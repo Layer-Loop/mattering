@@ -152,6 +152,7 @@ The full list is in [docs/threat-model.md](docs/threat-model.md).
 | Path | Contents |
 | --- | --- |
 | `packages/core` | The SDK, `@mattering/core`: envelopes, recipients, witness log, commitments, auction and negotiation verifiers |
+| `packages/client` | The platform SDK, `@mattering/client`: joins, seals locally, retries safely and checks results ([guide](docs/api.md#the-sdk)) |
 | `apps/cli` | The `mattering` command |
 | `apps/witness` | The witness and registry service, a cosigner, and a client |
 | `apps/showcase` | The Sealed Room: a web page for demonstrations |
@@ -160,7 +161,7 @@ The full list is in [docs/threat-model.md](docs/threat-model.md).
 | `examples/agent-auction` | Three agents, one auction, and a standalone verifier |
 | `examples/hosted-registry` | The same through the hosted service, plus sealed predictions |
 | `test-vectors` | Known inputs and outputs for every format, for a second implementation ([README](test-vectors/README.md)) |
-| `tests` | 126 tests (one, against live drand, runs only with `npm run test:live`): sealing, sealing to recipients, sealed negotiation, agent mandates, the negotiation demo, tampering, replay, early opening, cheating bidders, a cheating witness, a cheating coordinator, the witness protocol and its formats, the service over HTTP, one log shared by many auctions, the test vectors, and the platform's sessions and API |
+| `tests` | 129 tests (one, against live drand, runs only with `npm run test:live`): sealing, sealing to recipients, sealed negotiation, agent mandates, the negotiation demo, tampering, replay, early opening, cheating bidders, a cheating witness, a cheating coordinator, the witness protocol and its formats, the service over HTTP, one log shared by many auctions, the test vectors, and the platform's sessions and API |
 | `docs/protocol.md` | The envelope, submission, log, auction and statement formats |
 | `docs/service.md` | Running the witness service, its interface, and what it lacks |
 | `docs/showcase.md` | The demonstration page: what is real and what is staged |

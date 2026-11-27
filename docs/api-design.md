@@ -197,14 +197,15 @@ As built: [api.md](api.md).
 ```ts
 import { Mattering } from "@mattering/client";
 
-const mattering = new Mattering({ apiKey: process.env.MATTERING_KEY });
-const session = await mattering.sessions.join("inv_…", { role: "bidder" }); // makes and keeps the bidder's keys
-await session.bid(640);                     // sealed here; only the envelope leaves this machine
-const result = await session.result();      // waits for the release
-const checked = await mattering.verify(result); // recomputes the outcome from the evidence, trusting no one
+const mattering = new Mattering();                // no API key needed to take part
+const bidder = await mattering.join("inv_…");     // makes and keeps the bidder's keys
+await bidder.next();                              // waits for bidding to open
+await bidder.bid(640);                            // sealed here; only the envelope leaves this machine
+const result = await bidder.result();             // waits for the release
+const checked = await bidder.verify();            // recomputes the outcome from the evidence, trusting no one
 ```
 
-The SDK builds on `@mattering/core`, which does the sealing and the verifying; `mattering.verify` runs the same verifiers as the watch page and `mattering check-demo`.
+The SDK builds on `@mattering/core`, which does the sealing and the verifying; `verify` runs the same verifiers as the watch page and `mattering check-demo`, on the beacons the client accepts rather than the one the server names. As built: [api.md](api.md#the-sdk).
 
 ## 9. The MCP server
 

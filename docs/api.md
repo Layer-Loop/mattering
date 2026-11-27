@@ -12,11 +12,39 @@ Base URL: `https://mattering.ai/api/v1`. JSON in and out. Errors are `{ "error":
 | --- | --- | --- |
 | `Bearer mk_test_…` | An integrator, by its API key | Create and run sessions, see everything in its own, manage webhooks |
 | `Bearer tok_…` | A participant, by the token it got on joining | Bid, check in, disclose, cancel (negotiations), in its own session only |
-| none | Anyone | Join with an invitation (`inv_…`), read a round's policy, and see what a session shows the public |
+| none | Anyone | Join with an invitation (`inv_…`), ask what an invitation is for (`GET /sessions/{id}/invitation?code=…`), read a round's policy, and see what a session shows the public |
 
 API keys are issued by Mattering; there is no sign-up. Identity stays with you: a participant is its keys and the label you give it.
 
 Send `Idempotency-Key: <anything unique>` on any POST you might retry. The same key with the same request returns the first reply, so a retried bid is not a second bid; with a different request it is refused (`idempotency-mismatch`).
+
+## The SDK
+
+`@mattering/client` does all of the below from your code: it makes and keeps each participant's keys, seals on your machine, retries safely, discloses where its own keys open the bids, and checks every result against the evidence. It refuses to seal under a policy whose beacon it does not accept (drand quicknet unless you say otherwise), that names another session, or that seals bids differently from what the session says.
+
+```ts
+import { Mattering } from "@mattering/client";
+
+// The organiser: an invoice-funding desk. Its age key is made here and never sent.
+const desk = new Mattering({ apiKey: process.env.MATTERING_KEY });
+const session = await desk.sessions.create({
+  mechanism: "sealed-bid-auction",
+  terms: { item: "Funding of invoice INV-88213", unit: "bps", minBid: 50, maxBid: 1500, rule: "lowest-bid", reserve: 900 },
+  invitations: [{ label: "Funder A" }, { label: "Funder B" }],
+});
+save(session.secrets()); // the desk's age identity: keep it
+
+// Each funder, on its own machine, with only its invitation.
+const funder = await new Mattering().join("inv_…");
+await funder.next();       // waits for bidding to open
+await funder.bid(640);     // sealed here; only the envelope and a signature leave
+
+// The desk's client opens the bids with its own key and publishes the result.
+const result = await session.result();
+const checked = await session.verify(); // { ok: true, matchesReported: true, outcome: … }
+```
+
+For a negotiation, `join(invitation, { limit, organisation: { keys, name } })` issues the agent's mandate locally. Then `next()` and `offer(price)` run round by round, and the client discloses each opened round for you. `secrets()` and `resume()` let a participant or organiser pick a session up again, in another process.
 
 ## A reverse auction, client-sealed
 

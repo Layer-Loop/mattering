@@ -503,6 +503,12 @@ export class Session {
     });
   }
 
+  /** What an invitation is for, to whoever holds it: the role and label, and whether it has been used. */
+  invitation(code: string | undefined): Record<string, unknown> {
+    const invitation = this.state!.invitations.find((i) => i.code === code) ?? refuse("not-found", "no such invitation", 404);
+    return { sessionId: this.state!.id, role: invitation.role, label: invitation.label, used: invitation.usedBy !== undefined };
+  }
+
   /** A negotiation's side says it is present. Once both are, round 1 begins. */
   checkIn(caller: Caller): Promise<Record<string, unknown>> {
     return this.exclusive(async () => {
@@ -918,6 +924,8 @@ export class Session {
           return { status: 200, body: await this.cancel(caller) };
         case "POST /disclose":
           return { status: 200, body: await this.disclose(caller, await input()) };
+        case "GET /invitation":
+          return { status: 200, body: this.invitation(query.code) };
         case "GET /result":
           return { status: 200, body: this.result(caller) };
         case "GET /events":
