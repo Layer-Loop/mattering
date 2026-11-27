@@ -214,7 +214,7 @@ The tools become a thin layer over the API, keeping what works today (asking the
 | --- | --- |
 | Sealing, opening, recipients, commitments, mandates, verifiers (`@mattering/core`) | Built. Auction policy version 4 (lowest bid, reserve, bids sealed to recipients) is the first step |
 | Witness log, receipts, cosigning, public read-only log | Built, unchanged |
-| Negotiation rounds, check-in, approval per offer, receipts | Built in the MCP tables; to be moved into the session engine |
+| Negotiation rounds, check-in, approval per offer, receipts | Rounds, check-in, limit match and receipts are in the session engine; approval per offer stays in the MCP layer |
 | Session engine (one engine, mechanisms as plug-ins) | New: unifies today's auction room, negotiation room and tables |
 | HTTP API v1, API keys, webhooks, event stream, OpenAPI spec | New |
 | `@mattering/client` | New |
@@ -245,6 +245,8 @@ There is no design partner in this market yet to answer the questions below, so 
 6. **The hand-off** is the result, the receipt and the evidence; nothing signed beyond them in version 1.
 7. **Timing** is fixed windows. Closing early once everyone has sealed is later, after review.
 8. **Hosting** is the hosted service first; running it yourself remains possible, as all of it is open.
+9. **Negotiation offers** open to the two parties only. To decide whether to go on, the engine needs each opened round's outcome, so a client-sealed round waits until either side discloses its file keys, which the engine checks against the evidence; from then on the organiser sees that round's offers too.
+10. **Results stay private** to the organiser and the participants unless the session is `public`: anyone else sees the terms and the phase, not the outcome.
 
 ## 14. Open questions for review
 
