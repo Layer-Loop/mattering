@@ -171,7 +171,7 @@ test("API: who may call what, and every route is in the OpenAPI description", as
   const spec = (await w.call("GET", "/openapi.json")).body!;
   assert.equal(spec.openapi, "3.1.0");
   const described = Object.entries(OPENAPI.paths).flatMap(([path, ops]) => Object.keys(ops).map((m) => `${m.toUpperCase()} ${path}`));
-  const served = ["POST /sessions", "POST /join", "GET /sessions/{id}", ...["round", "result", "evidence", "events"].map((s) => `GET /sessions/{id}/${s}`), ...["join", "check-in", "bids", "open", "cancel", "disclose"].map((s) => `POST /sessions/{id}/${s}`), "POST /webhooks", "GET /webhooks", "DELETE /webhooks/{webhookId}"];
+  const served = ["POST /sessions", "POST /join", "GET /sessions/{id}", ...["invitation", "round", "result", "evidence", "events"].map((s) => `GET /sessions/{id}/${s}`), ...["join", "check-in", "bids", "open", "cancel", "disclose"].map((s) => `POST /sessions/{id}/${s}`), "POST /webhooks", "GET /webhooks", "DELETE /webhooks/{webhookId}"];
   assert.deepEqual(described.sort(), served.sort());
 });
 

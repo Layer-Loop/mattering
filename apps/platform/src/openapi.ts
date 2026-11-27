@@ -49,6 +49,9 @@ export const OPENAPI = {
     "/sessions/{id}/join": {
       post: { operationId: "joinSession", summary: "Join with an invitation", security: [{}], parameters: [sessionId, idempotency], requestBody: body({ $ref: "#/components/schemas/Join" }), responses: { "201": ok("The participant and its token", { $ref: "#/components/schemas/Joined" }), "400": error, "404": error, "409": error } },
     },
+    "/sessions/{id}/invitation": {
+      get: { operationId: "getInvitation", summary: "What an invitation is for: its role and label, and whether it has been used", security: [{}], parameters: [sessionId, { name: "code", in: "query", required: true, schema: { type: "string", pattern: "^inv_" } }], responses: { "200": ok("The invitation", { type: "object", properties: { sessionId: { type: "string" }, role: { enum: ["bidder", "buyer", "seller"] }, label: { type: "string" }, used: { type: "boolean" } } }), "404": error } },
+    },
     "/sessions/{id}/check-in": {
       post: { operationId: "checkIn", summary: "A negotiation's side is present; round 1 begins once both are", security: [{ participantToken: [] }], parameters: [sessionId, idempotency], responses: { "200": ok("The session"), "403": error, "409": error } },
     },
