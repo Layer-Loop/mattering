@@ -161,6 +161,10 @@ What it does not give you:
 
 The full list is in [docs/threat-model.md](docs/threat-model.md).
 
+## What is open, and what is not
+
+Everything needed to seal, open and verify, and to run the whole platform yourself, is in this repository under the MIT licence: the format and its specification, the SDK and its verifiers, the witness and cosigner, the session engine, its API and SDK, the MCP server, the demos, and a server that runs them all (`npm run showcase`). Mattering's hosted service, the Worker behind mattering.ai and the accounts, console and operations around it, is built from these packages in a private repository. Nothing private sits between a seal and its verifier: every result the hosted service gives can be checked with the code here.
+
 ## Layout
 
 | Path | Contents |
@@ -171,7 +175,6 @@ The full list is in [docs/threat-model.md](docs/threat-model.md).
 | `apps/witness` | The witness and registry service, a cosigner, and a client |
 | `apps/showcase` | The Sealed Room: a web page for demonstrations |
 | `apps/platform` | The platform: the session engine (auctions, negotiations, limit matches), its HTTP API, webhooks and OpenAPI description |
-| `apps/cloudflare` | The rooms, the MCP server and the platform API as a Cloudflare Worker, for the website |
 | `examples/agent-auction` | Three agents, one auction, and a standalone verifier |
 | `examples/hosted-registry` | The same through the hosted service, plus sealed predictions |
 | `test-vectors` | Known inputs and outputs for every format, for a second implementation ([README](test-vectors/README.md)) |
