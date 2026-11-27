@@ -50,10 +50,10 @@ const template = document.documentElement.dataset.roomBase;
 const HAD_ROOM = template !== undefined && sessionStorage.getItem("mattering-room") !== null;
 function roomBase(): string {
   if (!template) return "";
-  // A watched table is named in the page's address: /demo/table?id=<table>.
+  // A watched table is named in the page's address: /demo/table?id=<table>, or a session's id.
   if (WATCH) {
     const table = new URLSearchParams(location.search).get("id") ?? "";
-    return template.replace("{table}", /^[0-9a-f]{24}$/.test(table) ? table : "none");
+    return template.replace("{table}", /^(ses_)?[0-9a-f]{24}$/.test(table) ? table : "none");
   }
   let id = sessionStorage.getItem("mattering-room");
   if (!id) {

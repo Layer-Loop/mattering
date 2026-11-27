@@ -63,6 +63,8 @@ export const SESSION_LIMITS = {
   defaultBiddingSeconds: 600,
   maxRounds: 10,
   maxText: 200,
+  maxNote: 280,
+  maxMetadataKeys: 10,
   maxEvents: 500,
 } as const;
 
@@ -98,6 +100,8 @@ interface Invitation {
   code: string;
   role: Role;
   label: string;
+  /** Whether the organiser chose the label. If not, the participant may name itself on joining. */
+  labelled?: boolean;
   /** The participant who used it. An invitation lets one party join, once. */
   usedBy?: string;
 }
@@ -120,6 +124,8 @@ interface Participant {
   opening?: MandateOpening;
   /** Negotiations: present and ready. Round 1 begins once both sides are. */
   checkedIn?: boolean;
+  /** The integrator's own data about this participant: shown to the organiser and to the participant. */
+  metadata?: Record<string, string>;
   joinedAt: number;
 }
 
@@ -128,6 +134,8 @@ interface BidRecord {
   envelopeId: string;
   logIndex: number;
   at: number;
+  /** A line from the participant to its own side, shown only once the session has ended. */
+  note?: string;
 }
 
 interface Round {
@@ -136,6 +144,8 @@ interface Round {
   hash: string;
   closeAt: number;
   releaseAt: number;
+  /** When the round began. */
+  openedAt?: number;
   bids: BidRecord[];
   /** File keys of this round's bids, by envelope id: disclosed by whoever could open them, or by this engine when it holds the key. */
   disclosure?: Record<string, string>;
@@ -183,6 +193,10 @@ export interface SessionState {
   outcome?: SessionOutcome;
   /** A negotiation that one side walked away from. */
   leftBy?: string;
+  /** The integrator's own data about the session: shown to the organiser only. */
+  metadata?: Record<string, string>;
+  /** Negotiations, server-sealed: anyone with the session id may watch it, as the demonstration's watch page does. */
+  watch?: boolean;
   createdAt: number;
   events: SessionEvent[];
 }
@@ -246,6 +260,16 @@ function instant(value: unknown, field: string): number | undefined {
   const t = typeof value === "string" ? Date.parse(value) : NaN;
   if (!Number.isFinite(t)) refuse("invalid", `${field}: want an ISO 8601 time`, 400);
   return t;
+}
+/** An integrator's own data: a few short strings, by name. */
+function metadata(value: unknown, field: string): Record<string, string> | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) refuse("invalid", `${field}: want an object of short strings`, 400);
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length > SESSION_LIMITS.maxMetadataKeys || entries.some(([k, v]) => !/^[A-Za-z0-9_.-]{1,40}$/.test(k) || typeof v !== "string" || v.length > SESSION_LIMITS.maxText)) {
+    refuse("invalid", `${field}: want at most ${SESSION_LIMITS.maxMetadataKeys} names, each a string of at most ${SESSION_LIMITS.maxText} characters`, 400);
+  }
+  return Object.fromEntries(entries) as Record<string, string>;
 }
 function fileKeys(value: unknown): Record<string, string> {
   if (value === null || typeof value !== "object" || Array.isArray(value) || Object.values(value).some((k) => typeof k !== "string")) refuse("invalid", "fileKeys: want an object of envelope id to file key", 400);
@@ -363,15 +387,19 @@ export class Session {
       let invitations: Invitation[];
       if (auction) {
         if (invites.length < 1 || invites.length > SESSION_LIMITS.maxParticipants) refuse("invalid", `invitations: want 1 to ${SESSION_LIMITS.maxParticipants}`, 400);
-        invitations = invites.map((inv, i) => ({ code: codeFor("inv", id), role: "bidder", label: text(inv.label, `invitations[${i}].label`, `Bidder ${i + 1}`) }));
+        invitations = invites.map((inv, i) => ({ code: codeFor("inv", id), role: "bidder", label: text(inv.label, `invitations[${i}].label`, `Bidder ${i + 1}`), labelled: inv.label !== undefined }));
       } else {
         const roles = invites.map((inv) => inv.role);
         if (invites.length !== 2 || !roles.includes("buyer") || !roles.includes("seller")) refuse("invalid", 'invitations: a negotiation wants two, one with role "buyer" and one with role "seller"', 400);
-        invitations = invites.map((inv, i) => ({ code: codeFor("inv", id), role: inv.role as Side, label: text(inv.label, `invitations[${i}].label`, inv.role === "buyer" ? "The buyer" : "The seller") }));
+        invitations = invites.map((inv, i) => ({ code: codeFor("inv", id), role: inv.role as Side, label: text(inv.label, `invitations[${i}].label`, inv.role === "buyer" ? "The buyer" : "The seller"), labelled: inv.label !== undefined }));
       }
+      if (input.watch !== undefined && input.watch !== false && (input.watch !== true || auction || sealing !== "server")) refuse("invalid", "watch: only a server-sealed negotiation can be watched", 400);
+      const meta = metadata(input.metadata, "metadata");
       this.state = {
         version: 1,
         id,
+        ...(meta ? { metadata: meta } : {}),
+        ...(input.watch === true ? { watch: true } : {}),
         integrator,
         mechanism,
         terms,
@@ -462,7 +490,11 @@ export class Session {
       const invitation = st.invitations.find((i) => i.code === input.invitation) ?? refuse("not-found", "no such invitation", 404);
       if (invitation.usedBy) refuse("used", "this invitation has been used");
       if (st.phase !== "created" && (st.phase !== "open" || !this.isAuction)) refuse("wrong-phase", `the session is ${st.phase}`);
-      const participant: Participant = { id: `par_${randomHex(8)}`, label: invitation.label, role: invitation.role, token: codeFor("tok", st.id), publicKey: "", joinedAt: Date.now() };
+      // The participant may name itself where the organiser did not.
+      if (input.label !== undefined && invitation.labelled) refuse("invalid", "label: this invitation's label was chosen by the organiser", 400);
+      const label = input.label === undefined ? invitation.label : text(input.label, "label");
+      const meta = metadata(input.metadata, "metadata");
+      const participant: Participant = { id: `par_${randomHex(8)}`, label, role: invitation.role, token: codeFor("tok", st.id), publicKey: "", ...(meta ? { metadata: meta } : {}), joinedAt: Date.now() };
       if (st.sealing === "client") {
         if (typeof input.publicKey !== "string" || !/^[0-9a-f]{64}$/.test(input.publicKey)) refuse("invalid", "publicKey: a client-sealed session needs the participant's Ed25519 public key, 64 hex characters", 400);
         participant.publicKey = input.publicKey as string;
@@ -591,7 +623,8 @@ export class Session {
         if (s === "buyer" ? price > limit : price < limit) refuse("beyond-mandate", `refused: the mandate lets this side ${s === "buyer" ? `pay at most ${limit}` : `accept no less than ${limit}`} ${t.unit}`);
         sealed = await this.offerFor(participant, round, price);
       }
-      const receipt = await this.record(participant, round, sealed);
+      const note = input.note === undefined ? undefined : typeof input.note === "string" ? input.note.replace(/\s+/g, " ").trim().slice(0, SESSION_LIMITS.maxNote) : refuse("invalid", "note: want a line of text", 400);
+      const receipt = await this.record(participant, round, sealed, note || undefined);
       await this.options.saveState(st);
       return { round: round.n, receipt, closesAt: iso(round.closeAt), closeRound: round.policy.closeRound, opensAt: iso(round.releaseAt), releaseRound: round.policy.releaseRound };
     });
@@ -601,7 +634,7 @@ export class Session {
     return prepareOffer(round.policy as NegotiationPolicy, participant.role as Side, price, generateKeyPair(participant.secretKey!), participant.opening);
   }
 
-  private async record(participant: Participant, round: Round, sealed: { submission: Submission; envelope: Envelope }) {
+  private async record(participant: Participant, round: Round, sealed: { submission: Submission; envelope: Envelope }, note?: string) {
     let receipt;
     try {
       receipt = await this.options.log.submit(sealed.submission, sealed.envelope);
@@ -609,7 +642,7 @@ export class Session {
       // The log refuses anything not signed, not for this policy, not sealed as it says, or late.
       refuse("refused", (error as Error).message);
     }
-    round.bids.push({ participant: participant.id, envelopeId: sealed.submission.envelopeId, logIndex: receipt!.index, at: Date.now() });
+    round.bids.push({ participant: participant.id, envelopeId: sealed.submission.envelopeId, logIndex: receipt!.index, at: Date.now(), ...(note ? { note } : {}) });
     this.emit("bid.sealed", { round: round.n, participant: participant.id });
     return receipt!;
   }
@@ -637,7 +670,7 @@ export class Session {
       policy = { format: NEGOTIATION_POLICY_FORMAT, negotiationId: st.id, step: n, previous: st.rounds.at(-1)?.hash ?? "", item: t.item, unit: t.unit, minPrice: t.minPrice, maxPrice: t.maxPrice, buyer: party("buyer"), seller: party("seller"), rule: "midpoint-if-crossed", ...common };
     }
     const hash = await this.options.log.registerPolicy(policy);
-    const round: Round = { n, policy, hash, closeAt: this.options.timeOfRound(closeRound), releaseAt: this.options.timeOfRound(releaseRound), bids: [] };
+    const round: Round = { n, policy, hash, closeAt: this.options.timeOfRound(closeRound), releaseAt: this.options.timeOfRound(releaseRound), openedAt: Date.now(), bids: [] };
     st.rounds.push(round);
     st.phase = "open";
     this.emit("round.opened", { round: n, policyHash: hash, closesAt: iso(round.closeAt) });
@@ -805,7 +838,12 @@ export class Session {
     }
     let yours: Record<string, unknown> | undefined;
     if (me) {
-      yours = { id: me.id, label: me.label, role: me.role, hasBid: hasBid(me), ...(me.opening ? { limit: me.opening.limit } : {}) };
+      yours = { id: me.id, label: me.label, role: me.role, hasBid: hasBid(me), ...(me.checkedIn !== undefined ? { checkedIn: me.checkedIn } : {}), ...(me.opening ? { limit: me.opening.limit } : {}), ...(me.metadata ? { metadata: me.metadata } : {}) };
+      // A negotiation's two sides know who they face, and whether the other has sealed this round's offer.
+      if (!this.isAuction) {
+        const them = this.sideOf(otherSide(me.role as Side));
+        yours.counterparty = them ? { label: them.label, role: them.role, hasBid: hasBid(them) } : null;
+      }
       if (this.isAuction && outcome?.kind === "auction") yours.yourBid = outcome.bids.find((b) => b.participant === me.id) ?? null;
     }
     return {
@@ -819,14 +857,92 @@ export class Session {
       trust: st.sealing === "client" ? `client-sealed: ${sealedBy} sealed and signed on their own machines; Mattering could not read or forge a bid` : `server-sealed: Mattering held ${sealedBy}' keys and sealed for them, so it could have read or forged a bid`,
       timing: { ...(st.timing.opensAt ? { opensAt: iso(st.timing.opensAt) } : {}), biddingSeconds: st.timing.biddingSeconds, ...(st.timing.quorumBy ? { quorumBy: iso(st.timing.quorumBy) } : {}) },
       ...(round ? { round: { round: round.n, policyHash: round.hash, closesAt: iso(round.closeAt), closeRound: round.policy.closeRound, opensAt: iso(round.releaseAt), releaseRound: round.policy.releaseRound, bids: round.bids.length } } : {}),
-      ...(!this.isAuction && insider && readsBids ? { openedRounds: st.rounds.filter((r) => r.outcome).map((r) => ({ round: r.n, buyerOffer: r.opened?.buyer ?? null, sellerOffer: r.opened?.seller ?? null, outcome: r.outcome })) } : {}),
-      ...(organiser ? { organiserRecipient: st.organiser.recipient ?? null, invitations: st.invitations.map((i) => ({ code: i.usedBy ? null : i.code, role: i.role, label: i.label, joined: i.usedBy !== undefined })), participants: st.participants.map((p) => ({ id: p.id, label: p.label, role: p.role, joined: iso(p.joinedAt), hasBid: hasBid(p) })) } : {}),
+      ...(!this.isAuction && insider && readsBids ? { openedRounds: st.rounds.filter((r) => r.outcome).map((r) => ({ round: r.n, buyerOffer: r.opened?.buyer ?? null, sellerOffer: r.opened?.seller ?? null, outcome: r.outcome, ...(this.ended && this.notesOf(r) ? { notes: this.notesOf(r) } : {}) })) } : {}),
+      ...(organiser ? { organiserRecipient: st.organiser.recipient ?? null, invitations: st.invitations.map((i) => ({ code: i.usedBy ? null : i.code, role: i.role, label: i.label, joined: i.usedBy !== undefined })), participants: st.participants.map((p) => ({ id: p.id, label: p.label, role: p.role, joined: iso(p.joinedAt), hasBid: hasBid(p), ...(p.metadata ? { metadata: p.metadata } : {}) })), ...(st.metadata ? { metadata: st.metadata } : {}) } : {}),
       ...(yours ? { you: yours } : {}),
       ...(awaiting ? { awaiting } : {}),
       ...(left && insider ? { leftBy: { id: left.id, label: left.label, role: left.role } } : {}),
       ...(shownOutcome ? { outcome: shownOutcome } : {}),
       ...(st.phase === "finished" && insider ? { receipt: this.receipt() } : {}),
     };
+  }
+
+  private get ended(): boolean {
+    return ["finished", "cancelled", "expired"].includes(this.state!.phase);
+  }
+
+  /** A negotiation round's notes, by side, or undefined if there are none. */
+  private notesOf(round: Round): Partial<Record<Side, string>> | undefined {
+    const notes: Partial<Record<Side, string>> = {};
+    for (const b of round.bids) {
+      const p = this.state!.participants.find((x) => x.id === b.participant);
+      if (b.note && p && p.role !== "bidder") notes[p.role as Side] = b.note;
+    }
+    return Object.keys(notes).length ? notes : undefined;
+  }
+
+  /**
+   * A watched negotiation as the demonstration's watch page reads it (the
+   * Negotiation Room's view), for anyone with the session id. Notes are shown
+   * only once it has ended, as they may give a side's strategy away.
+   */
+  async watchState(): Promise<Record<string, unknown>> {
+    const st = this.state ?? refuse("not-found", "no such session", 404);
+    if (!st.watch) refuse("forbidden", "this session cannot be watched", 403);
+    const t = this.negotiationTerms;
+    const log = await this.options.log.terms();
+    const labelOf = (s: Side) => this.sideOf(s)?.label ?? (s === "buyer" ? "The buyer" : "The seller");
+    const firm = (s: Side) => ({ organisation: labelOf(s), agent: `${labelOf(s)}’s agent`, role: s === "buyer" ? "Pays" : "Is paid" });
+    const left = st.leftBy ? st.participants.find((p) => p.id === st.leftBy) : undefined;
+    const base = {
+      mode: this.options.mode,
+      beacon: this.beacon,
+      table: { id: st.id, terms: { item: t.item, unit: t.unit, minPrice: t.minPrice, maxPrice: t.maxPrice, rounds: t.rounds, roundSeconds: st.timing.biddingSeconds }, waiting: !this.quorum(), ended: left ? `${left.label} left the negotiation` : st.phase === "expired" ? "The table expired before both sides joined" : null },
+      invoice: { item: t.item, unit: t.unit, minPrice: t.minPrice, maxPrice: t.maxPrice },
+      firms: { buyer: firm("buyer"), seller: firm("seller") },
+      decider: "each firm’s own AI assistant",
+      serverTime: Date.now(),
+      ...(log.ownCosigner ? { ownCosigner: log.ownCosigner } : {}),
+    };
+    if (st.rounds.length === 0) return { ...base, run: null };
+    const side = (b: BidRecord) => st.participants.find((p) => p.id === b.participant)?.role as Side;
+    const steps = [];
+    for (const r of st.rounds) {
+      const phase = await this.options.log.phase(r.hash);
+      const bySide = <T>(pick: (b: BidRecord) => T) => Object.fromEntries(r.bids.map((b) => [side(b), pick(b)]));
+      steps.push({
+        step: r.n,
+        hash: r.hash,
+        closeAt: r.closeAt,
+        releaseAt: r.releaseAt,
+        phase: phase.state,
+        cosigned: phase.cosignatures >= r.policy.cosignerThreshold && phase.state !== "open",
+        submitted: { buyer: r.bids.some((b) => side(b) === "buyer"), seller: r.bids.some((b) => side(b) === "seller") },
+        sealedAt: bySide((b) => b.at),
+        logIndex: bySide((b) => b.logIndex),
+        closeRound: r.policy.closeRound,
+        releaseRound: r.policy.releaseRound,
+        decidedBy: {},
+        notes: this.ended ? (this.notesOf(r) ?? {}) : {},
+        withheld: [],
+      });
+    }
+    return { ...base, run: { id: 1, rogue: false, useModel: true, done: this.ended, startedAt: st.rounds[0]!.openedAt, negotiationId: st.id, mandates: { buyer: this.sideOf("buyer")!.mandate, seller: this.sideOf("seller")!.mandate }, steps, maxSteps: t.rounds } };
+  }
+
+  /**
+   * What anyone watching may check an opened round with: its evidence and its
+   * file keys. The mandates' openings, which give each side's limit, only once
+   * the negotiation has ended: before that they would tell each side the
+   * other's limit.
+   */
+  async watchDisclosure(n: number): Promise<Record<string, unknown>> {
+    const st = this.state ?? refuse("not-found", "no such session", 404);
+    if (!st.watch) refuse("forbidden", "this session cannot be watched", 403);
+    const round = st.rounds[n - 1] ?? refuse("not-found", "no such round", 404);
+    if (!round.disclosure) refuse("wrong-phase", "the offers have not opened yet");
+    const openings = this.ended ? { buyer: this.sideOf("buyer")!.opening, seller: this.sideOf("seller")!.opening } : {};
+    return { evidence: await this.options.log.evidence(round.hash), fileKeys: round.disclosure, openings };
   }
 
   /** Events after `after`, for a host to deliver as webhooks or a stream. */
@@ -924,6 +1040,10 @@ export class Session {
           return { status: 200, body: await this.cancel(caller) };
         case "POST /disclose":
           return { status: 200, body: await this.disclose(caller, await input()) };
+        case "GET /watch/state":
+          return { status: 200, body: await this.watchState() };
+        case "GET /watch/disclosure":
+          return { status: 200, body: await this.watchDisclosure(Number(query.round)) };
         case "GET /invitation":
           return { status: 200, body: this.invitation(query.code) };
         case "GET /result":
