@@ -5,8 +5,22 @@
   "license": "MIT",
   "type": "module",
   "dependencies": {
-    "@anthropic-ai/sdk": "^1.13.0",
+    "@anthropic-ai/sdk": "1.13.0",
     "@mattering/core": "0.1.0",
-    "@mattering/witness": "0.1.0"
+    "@mattering/witness": "0.1.0",
+    "@mattering/platform": "0.1.0",
+    "@mattering/client": "0.1.0"
+  },
+  "exports": {
+    "./llm": "./src/llm.ts",
+    "./log-host": "./src/log-host.ts",
+    "./room": "./src/room.ts",
+    "./negotiation-room": "./src/negotiation-room.ts",
+    "./mcp": "./src/mcp.ts",
+    "./table": "./src/table.ts",
+    "./scenario": "./src/scenario.ts",
+    "./pages": "./src/pages.ts",
+    "./scenario-pages": "./src/scenario-pages.ts",
+    "./server": "./src/server.ts"
   }
 }

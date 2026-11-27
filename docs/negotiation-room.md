@@ -64,7 +64,7 @@ Without a key, the scripts decide: each agent concedes toward its limit, reachin
 
 ## On the website
 
-The website serves the page at `/demo/negotiation`, built from this repository with the Sealed Room's (`npm run build:site`; see [showcase.md](showcase.md)). The old address, `/negotiate`, redirects to it.
+The website serves the page at `/demo/negotiation`, built from this repository's pages with the Sealed Room's (see [showcase.md](showcase.md)). The old address, `/negotiate`, redirects to it.
 
 - **One room per visitor holds both demonstrations.** The negotiation runs in the same Durable Object as the visitor's auction room, under `/room/<id>/negotiation/…`, on the shared log, and is deleted with it 30 minutes after last use. A room runs at most 10 negotiations.
 - **Nothing happens until the visitor starts.** Before that the page asks only `/demo-info`, which the Worker answers without creating a room, for the name of the model that will choose the offers, if any. The website's `wrangler.jsonc` must send `/demo-info` to the Worker.

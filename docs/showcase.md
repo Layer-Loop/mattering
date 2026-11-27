@@ -81,13 +81,7 @@ The request to the model is covered by a test against a stand-in for the API (`t
 
 ## On the website
 
-The same room runs on Cloudflare for mattering.ai, as a Durable Object behind the site's Worker (`apps/cloudflare`). The website is a separate repository and commits the files built from this one:
-
-```bash
-npm run build:site -- ../mattering
-```
-
-That writes the Worker to `src/worker.js`, the three pages to `public/demo.html` and `public/demo/{auction,negotiation}.html`, and their script and styles to `public/assets/rooms.<hash>.js` and `.css`, named by their content so that browsers never keep an old copy. Files from earlier builds are removed. Rebuild and commit there whenever this repository changes. The old address `/negotiate` is redirected by the site's `_redirects`.
+The same room runs on Cloudflare for mattering.ai, as a Durable Object behind the site's Worker. That Worker, the hosted service around these rooms, is Mattering's operations and lives in a private repository; it is built from this repository's packages, unchanged, and the pages and scripts it serves are the ones here (`apps/showcase/src/pages.ts`, `web/`). To run everything yourself, use `npm run showcase` (above), which serves the same pages, rooms, MCP server and platform API from one process. The old address `/negotiate` is redirected by the site.
 
 How the hosted version differs from the laptop one:
 
