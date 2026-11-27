@@ -25,9 +25,9 @@ import { DEFAULT_MODEL, claudeDecider, claudeNegotiator, modelLabel, type OfferD
 import { LocalLogHost } from "./log-host.ts";
 import { Room, type RoomState } from "./room.ts";
 import { NegotiationRoom, type NegotiationRoomState } from "./negotiation-room.ts";
-import { handleMcpHttp, type TableDirectory } from "./mcp.ts";
+import { handleMcpHttp, type McpBackend } from "./mcp.ts";
+import { localPlatform } from "../../platform/src/api.ts";
 import { chooserPage, roomPage, type PageOptions } from "./pages.ts";
-import { Table, type TableState } from "./table.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const web = join(here, "..", "web");
@@ -54,6 +54,8 @@ export interface ShowcaseOptions {
   negotiationReleaseAfter?: number;
   /** Tests only: shortens the negotiation tables' round windows by this factor. */
   tableTimeScale?: number;
+  /** The platform API's keys, at /api/v1: API key to integrator name. None by default. */
+  apiKeys?: Record<string, string>;
 }
 
 /** Bundle a page's script for the browser: the rooms' page by default, or another entry under web/. */
@@ -118,33 +120,33 @@ export async function startShowcase(options: ShowcaseOptions): Promise<{ server:
     ...(options.decideTimeoutMs ? { decideTimeoutMs: options.decideTimeoutMs } : {}),
   });
 
-  // Negotiation tables for MCP clients, in memory, each on the same shared log.
+  // The platform's sessions, in memory, on the same shared log: for the API at /api/v1, and for MCP clients.
   let baseUrl = "";
-  const tables = new Map<string, Table>();
-  const tableDirectory: TableDirectory = {
-    async call(id, method, path, body) {
-      let table = tables.get(id);
-      if (!table) {
-        if (path !== "/create") return { status: 404, body: { error: "no such table" } };
-        let saved: TableState | undefined;
-        table = await Table.open({
-          mode: options.mode,
-          sourceFor,
-          timeOfRound: (round) => (clock ? clock.timeOfRound(round) : timeOfRound(QUICKNET, round) * 1000),
-          log,
-          loadState: async () => saved,
-          saveState: async (state) => void (saved = state),
-          roundMs,
-          releaseAfter: simulated ? 6 : 3,
-          timeScale: options.tableTimeScale ?? 1,
-        });
-        tables.set(id, table);
-      }
-      return table.handle(method, path, async () => body);
-    },
-    watchUrl: (tableId) => `${baseUrl}/demo/table?id=${tableId}`,
-    clock: simulated ? "simulated" : "live",
+  const platform = localPlatform({
+    keys: options.apiKeys ?? {},
+    base: "/api/v1",
     evidenceUrl: (hash) => `${baseUrl}/api/policies/${hash}/evidence`,
+    session: {
+      mode: options.mode,
+      sourceFor,
+      timeOfRound: (round) => (clock ? clock.timeOfRound(round) : timeOfRound(QUICKNET, round) * 1000),
+      log,
+      roundMs,
+      releaseAfter: simulated ? 6 : 3,
+      timeScale: options.tableTimeScale ?? 1,
+      fetch: async (url, init) => {
+        const reply = await fetch(url, init);
+        return { ok: reply.ok, status: reply.status };
+      },
+    },
+  });
+  const mcpBackend: McpBackend = {
+    session: platform.host.session,
+    integrator: "mattering-mcp",
+    allow: async () => true,
+    watchUrl: (id) => `${baseUrl}/demo/table?id=${id}`,
+    evidenceUrl: (hash) => `${baseUrl}/api/policies/${hash}/evidence`,
+    clock: simulated ? "simulated" : "live",
   };
 
   // One piece of work at a time: a decision by a language model can take seconds.
@@ -152,7 +154,7 @@ export async function startShowcase(options: ShowcaseOptions): Promise<{ server:
   const timer = setInterval(() => {
     if (working) return;
     working = true;
-    void Promise.all([room.work().catch(() => {}), negotiation.work().catch(() => {}), ...[...tables.values()].map((t) => t.work().catch(() => {}))]).finally(() => (working = false));
+    void Promise.all([room.work().catch(() => {}), negotiation.work().catch(() => {}), platform.work().catch(() => {})]).finally(() => (working = false));
   }, Math.min(500, roundMs));
 
   const roomsJs = await bundlePage();
@@ -186,7 +188,7 @@ export async function startShowcase(options: ShowcaseOptions): Promise<{ server:
     // MCP clients, and pages on this machine only: guard against other sites calling through the browser.
     if (url.pathname === "/mcp") {
       const headers = { get: (name: string) => (request.headers[name.toLowerCase()] as string | undefined) ?? null };
-      void handleMcpHttp(request.method ?? "GET", headers, () => readText(request), tableDirectory, (origin) => /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin)).then((reply) => {
+      void handleMcpHttp(request.method ?? "GET", headers, () => readText(request), mcpBackend, (origin) => /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin)).then((reply) => {
         response.writeHead(reply.status, reply.headers);
         response.end(reply.body);
       });
@@ -197,11 +199,22 @@ export async function startShowcase(options: ShowcaseOptions): Promise<{ server:
       response.writeHead(200, { "content-type": html, "cache-control": "no-store" });
       return response.end(roomPage("negotiation", { ...pages, roomBase: "/table/{table}", watch: true }));
     }
-    const tableRoute = /^\/table\/([0-9a-f]{24})(\/negotiation\/.*)$/.exec(url.pathname);
-    if (tableRoute && request.method === "GET") {
-      const table = tables.get(tableRoute[1]!);
-      if (!table) return send(response, 404, { error: "no such table" });
-      void table.handle("GET", tableRoute[2]!, async () => undefined).then((reply) => send(response, reply.status, reply.body));
+    // A watched negotiation: the state and each opened round's disclosure, as the page asks for them.
+    const watched = /^\/table\/(ses_[0-9a-f]{24})\/negotiation\/(state|disclosure\/(\d+))$/.exec(url.pathname);
+    if (watched && request.method === "GET") {
+      const path = watched[2] === "state" ? "/watch/state" : "/watch/disclosure";
+      void platform.host.session(watched[1]!).call({ method: "GET", path, query: watched[3] ? { round: watched[3] } : {}, caller: { role: "public" } }).then((reply) => send(response, reply.status, reply.body));
+      return;
+    }
+    // The platform API.
+    if (url.pathname === "/api/v1" || url.pathname.startsWith("/api/v1/")) {
+      void (async () => {
+        const body = request.method === "GET" || request.method === "HEAD" ? undefined : await readText(request);
+        const headers = new Headers(Object.entries(request.headers).flatMap(([k, v]) => (typeof v === "string" ? [[k, v] as [string, string]] : [])));
+        const reply = await platform.fetch(new Request(new URL(url.pathname + url.search, "http://localhost"), { method: request.method ?? "GET", headers, ...(body !== undefined ? { body } : {}) }));
+        response.writeHead(reply.status, Object.fromEntries(reply.headers));
+        response.end(await reply.text());
+      })();
       return;
     }
     const target = url.pathname.startsWith("/negotiation/") ? negotiation : room;

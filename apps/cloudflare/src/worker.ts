@@ -20,7 +20,7 @@ import { DEFAULT_MODEL, claudeDecider, claudeNegotiator, modelLabel } from "../.
 import { LocalLogHost, RemoteLogHost, handleLogHost } from "../../showcase/src/log-host.ts";
 import { Room, type RoomState } from "../../showcase/src/room.ts";
 import { NegotiationRoom, type NegotiationRoomState } from "../../showcase/src/negotiation-room.ts";
-import { handleMcpHttp, type TableDirectory } from "../../showcase/src/mcp.ts";
+import { handleMcpHttp, type McpBackend } from "../../showcase/src/mcp.ts";
 import { Table, type TableState } from "../../showcase/src/table.ts";
 import { handleApi, type PlatformHost } from "../../platform/src/api.ts";
 import { HostedSession, HOST_LIMITS, IntegratorDesk, type DeskCall, type KV, type SessionCall, type Webhook } from "../../platform/src/hosted.ts";
@@ -481,23 +481,25 @@ export class SealedRoom extends DurableObject<Env> {
 
 const ROOM_PATH = /^\/room\/([0-9a-f-]{36})(\/.*)$/;
 const TABLE_PATH = /^\/table\/([0-9a-f]{24})(\/negotiation\/.*)$/;
+/** A negotiation session's watch routes, as the watch page asks for them. */
+const WATCH_PATH = /^\/table\/(ses_[0-9a-f]{24})\/negotiation\/(state|disclosure\/(\d+))$/;
 
-/** Negotiation tables, each in a Durable Object named for it. Opening one draws on a daily allowance. */
-function tableDirectory(env: Env, origin: string): TableDirectory {
-  const stub = (id: string) => env.ROOMS.get(env.ROOMS.idFromName(`table:${id}`));
+/** The integrator MCP clients' tables and auctions belong to, on the platform. */
+const MCP_INTEGRATOR = "mattering-mcp";
+
+/** MCP's tables and auctions: platform sessions, each in a Durable Object named for it. Opening one draws on a daily allowance. */
+function mcpBackend(env: Env, origin: string): McpBackend {
   return {
-    async call(id, method, path, body) {
-      if (path === "/create") {
-        const budget = env.ROOMS.get(env.ROOMS.idFromName(BUDGET_NAME));
-        const taken = await budget.fetch(new Request("https://budget/take?kind=tables", { method: "POST" }));
-        if (!taken.ok || ((await taken.json()) as { allowed?: boolean }).allowed !== true) return { status: 429, body: { error: "today's allowance of new negotiation tables is used up; try again tomorrow" } };
-      }
-      const reply = await stub(id).fetch(new Request(`https://table${path}`, { method, ...(body === undefined ? {} : { body: JSON.stringify(body), headers: { "content-type": "application/json" } }) }));
-      return { status: reply.status, body: await reply.json() };
+    session: (id) => platformHost(env, origin).session(id),
+    integrator: MCP_INTEGRATOR,
+    async allow() {
+      const perDay = Number(env.TABLES_PER_DAY ?? DEFAULT_TABLES_PER_DAY) || DEFAULT_TABLES_PER_DAY;
+      const reply = await deskStub(env, MCP_INTEGRATOR).fetch(new Request("https://desk/call", { method: "POST", body: JSON.stringify({ op: "session.allow", perDay } satisfies DeskCall) }));
+      return reply.ok;
     },
     watchUrl: (id) => `${origin}/demo/table?id=${id}`,
-    clock: env.SIMULATED === "1" ? "simulated" : "live",
     evidenceUrl: (hash) => `${origin}/log/policies/${hash}/evidence`,
+    clock: env.SIMULATED === "1" ? "simulated" : "live",
   };
 }
 const LOG_PATH = /^\/log(\/.*)?$/;
@@ -542,10 +544,17 @@ export default {
         const text = await request.text();
         if (text.length > MAX_BODY) throw new Error("request body too large");
         return text;
-      }, tableDirectory(env, url.origin));
+      }, mcpBackend(env, url.origin));
       return new Response(reply.body || null, { status: reply.status, headers: reply.headers });
     }
-    // Watching a table: the read-only routes its page polls.
+    // Watching a negotiation run through MCP: read-only, as the page polls it.
+    const watched = WATCH_PATH.exec(url.pathname);
+    if (watched && request.method === "GET") {
+      const path = watched[2] === "state" ? "/watch/state" : "/watch/disclosure";
+      const reply = await platformHost(env, url.origin).session(watched[1]!).call({ method: "GET", path, query: watched[3] ? { round: watched[3] } : {}, caller: { role: "public" } });
+      return json(reply.status, reply.body);
+    }
+    // Watching a table opened before tables became platform sessions.
     const table = TABLE_PATH.exec(url.pathname);
     if (table && request.method === "GET") {
       return env.ROOMS.get(env.ROOMS.idFromName(`table:${table[1]}`)).fetch(new Request(`https://table${table[2]}`));

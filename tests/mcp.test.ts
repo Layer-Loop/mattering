@@ -8,7 +8,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { BeaconInfo, MandateOpening, Side } from "@mattering/core";
+import { verifyAuction, type AuctionInputs, type BeaconInfo, type MandateOpening, type Side } from "@mattering/core";
+import { bidOpenerWithFileKeys } from "@mattering/core/recipients";
 import { verifyNegotiation, verifyNegotiationStep, withFileKeys, type StepInputs } from "@mattering/core/negotiation";
 import { startShowcase } from "../apps/showcase/src/server.ts";
 
@@ -50,7 +51,7 @@ test("two assistants negotiate at a table through MCP, and anyone can check the 
       }
       return { tools: all.map((t) => t.name), instructions };
     })();
-    assert.deepEqual(listed.tools, ["start_negotiation", "join_negotiation", "wait_for_next_round", "make_offer", "negotiation_status", "leave_negotiation"]);
+    assert.deepEqual(listed.tools, ["start_negotiation", "join_negotiation", "wait_for_next_round", "make_offer", "negotiation_status", "leave_negotiation", "start_auction", "join_auction", "place_bid", "open_auction", "auction_status"]);
     assert.match(listed.instructions ?? "", /^Demonstration environment: .*not legally binding/);
 
     // An assistant that has not asked its user is sent back to ask, and nothing is opened.
@@ -73,7 +74,9 @@ test("two assistants negotiate at a table through MCP, and anyone can check the 
     assert.match(invite, /^inv_[0-9a-f]{24}_[0-9a-f]{32}$/);
     assert.match(opened.content[0]!.text, /Share only this invite with the other party: inv_/);
     assert.match(opened.content[0]!.text, /Defaults used, tell your user: unit: GBP, organisation: The buyer\./);
-    assert.match(opened.structuredContent!.rules as string, /Two parties only.*midpoint/);
+    assert.match(opened.structuredContent!.rules as string, /two parties only.*midpoint/);
+    // A table is a session on Mattering's platform.
+    assert.match(tableId, /^ses_[0-9a-f]{24}$/);
     assert.match(opened.structuredContent!.watchUrl as string, new RegExp(`/demo/table\\?id=${tableId}$`));
     const waiting = (await acme.call("negotiation_status", { token: acmeToken })).structuredContent as unknown as Status;
     assert.equal(waiting.state, "waiting for the other side to join");
@@ -126,6 +129,10 @@ test("two assistants negotiate at a table through MCP, and anyone can check the 
     const midState = (await (await fetch(`${url}/table/${tableId}/negotiation/state`)).json()) as { run: { steps: { notes: Partial<Record<Side, string>> }[] } };
     assert.deepEqual(midState.run.steps[0]!.notes, {}, "no note is shown while the negotiation runs");
     // Round 2 begins once round 1 opens; each side then sees both opened offers.
+    // Anyone watching can check each opened round, but neither side's limit is given until the end.
+    const early = (await (await fetch(`${url}/table/${tableId}/negotiation/disclosure/1`)).json()) as { fileKeys: Record<string, string>; openings: Record<string, unknown> };
+    assert.equal(Object.keys(early.fileKeys).length, 2);
+    assert.deepEqual(early.openings, {}, "the limits stay hidden while the negotiation runs");
     const r2 = await until(async () => (await bolt.call("negotiation_status", { token: boltToken })).structuredContent as unknown as Status, (s) => s.currentRound?.round === 2, "round 2");
     assert.deepEqual(r2.openedRounds.map((r) => [r.yourOffer, r.theirOffer, r.outcome.deal]), [[9950, 9400, false]]);
     await acme.call("make_offer", { token: acmeToken, price: 9700 });
@@ -136,7 +143,7 @@ test("two assistants negotiate at a table through MCP, and anyone can check the 
     // The receipt: what anyone can check the result against, with where to fetch each round's evidence.
     const receipt = finished.structuredContent!.receipt as { negotiationId: string; rounds: { round: number; policyHash: string; openedAtDrandRound: number; evidence: string }[] };
     assert.equal(receipt.rounds.length, 2);
-    assert.match(finished.content[0]!.text, /Receipt \(table-[0-9a-f]{24}\): round 1: policy [0-9a-f]{16}…, opened at drand round \d+, evidence http/);
+    assert.match(finished.content[0]!.text, /Receipt \(ses_[0-9a-f]{24}\): round 1: policy [0-9a-f]{16}…, opened at drand round \d+, evidence http/);
     const evidence = (await (await fetch(receipt.rounds[1]!.evidence)).json()) as { policyHash: string; state: string };
     assert.equal(evidence.state, "released", "each round's evidence is public at the receipt's address");
     const done = (await acme.call("negotiation_status", { token: acmeToken })).structuredContent as unknown as Status;
@@ -200,6 +207,66 @@ test("the MCP endpoint answers POST only, and on a laptop only to pages on this 
     const note = await fetch(`${url}/mcp`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) });
     assert.equal(note.status, 202);
   } finally {
+    stop();
+  }
+});
+
+test("an organiser's assistant runs a sealed-bid auction through MCP; three bidders' assistants bid, and the result checks out", async () => {
+  const KEY = "mk_test_mcpauctioncheck00000";
+  // The test may read the evidence and keys as the MCP's own integrator would.
+  const { url, stop } = await startShowcase({ mode: "simulated", roundMs: 100, tableTimeScale: 0.04, apiKeys: { [KEY]: "mattering-mcp" } });
+  const desk = await assistant(url, "desk-assistant");
+  const funders = await Promise.all(["a", "b", "c"].map((n) => assistant(url, `funder-${n}`)));
+  try {
+    const unasked = await desk.call("start_auction", { item: "Funding of invoice INV-88213", minBid: 50, maxBid: 1500 });
+    assert.match(unasked.content[0]!.text, /^Not yet: ask your user for whether the highest or the lowest bid wins; how many bidders to invite; and how long bidding should stay open/);
+    const opened = await desk.call("start_auction", { item: "Funding of invoice INV-88213: £250,000, due in 90 days", unit: "bps", minBid: 50, maxBid: 1500, rule: "lowest-bid", reserve: 900, bidders: 3, biddingSeconds: 30, organisation: "Northbank Receivables" });
+    assert.equal(opened.isError, undefined, opened.content[0]?.text);
+    assert.match(opened.structuredContent!.rules as string, /organiser, who does not bid/);
+    const deskToken = opened.structuredContent!.token as string;
+    const invites = opened.structuredContent!.invites as string[];
+    const auctionId = opened.structuredContent!.auctionId as string;
+    assert.equal(invites.length, 3);
+    assert.match(opened.content[0]!.text, /Give each bidder one of these invites/);
+
+    // Each funder's assistant joins with its user's limit: for a funding auction, the least it will accept.
+    assert.match((await funders[0]!.call("join_negotiation", { invite: invites[0], limit: 600, autonomous: true })).content[0]!.text, /That invite is for an auction: use join_auction/);
+    const limits = [700, 650, 880];
+    const tokens: string[] = [];
+    for (const [i, f] of funders.entries()) {
+      const joined = await f.call("join_auction", { invite: invites[i], limit: limits[i], autonomous: i !== 2, organisation: `Funder ${"ABC"[i]}` });
+      assert.equal(joined.isError, undefined, joined.content[0]?.text);
+      tokens.push(joined.structuredContent!.token as string);
+      if (i < 2) assert.match((await desk.call("auction_status", { token: deskToken })).structuredContent!.state as string, new RegExp(`waiting for bidders: ${i + 1} of 3`));
+    }
+    // The last to join opened bidding.
+    assert.match((await funders[0]!.call("wait_for_next_round", { token: tokens[0], maxSeconds: 5 })).structuredContent!.changed as string, /^Bidding is open and you have not placed your bid yet/);
+    assert.equal((await desk.call("place_bid", { token: deskToken, amount: 500 })).isError, true, "the organiser does not bid");
+    assert.match((await funders[0]!.call("place_bid", { token: tokens[0], amount: 690 })).content[0]!.text, /limit lets you bid no less than 700/);
+    assert.equal((await funders[0]!.call("place_bid", { token: tokens[0], amount: 731 })).structuredContent!.sealed, true);
+    assert.equal((await funders[0]!.call("place_bid", { token: tokens[0], amount: 720 })).isError, true, "one bid only");
+    await funders[1]!.call("place_bid", { token: tokens[1], amount: 677 });
+    assert.match((await funders[2]!.call("place_bid", { token: tokens[2], amount: 905 })).content[0]!.text, /ask them to approve 905 bps, then call place_bid again with approvedByUser: true/);
+    await funders[2]!.call("place_bid", { token: tokens[2], amount: 905, approvedByUser: true });
+    const sealed = (await desk.call("auction_status", { token: deskToken })).structuredContent!;
+    assert.equal(sealed.result, null, "nothing is known until the bids open");
+
+    const done = await desk.call("wait_for_next_round", { token: deskToken, maxSeconds: 30 });
+    const doneNow = done.structuredContent!.state === "finished" ? done : await until(() => desk.call("wait_for_next_round", { token: deskToken, maxSeconds: 30 }), (r) => r.structuredContent!.state === "finished", "the result");
+    assert.match(doneNow.content[0]!.text, /Funder B won with 677|Report the result/);
+    const result = doneNow.structuredContent!.result as { winner: { name: string; amount: number }; reserveMet: boolean; bids: { name: string; amount: number }[] };
+    assert.deepEqual([result.winner.name, result.winner.amount, result.reserveMet], ["Funder B", 677, true]);
+    assert.deepEqual(result.bids.map((b) => [b.name, b.amount]), [["Funder B", 677], ["Funder A", 731], ["Funder C", 905]], "the organiser sees every bid");
+    const asLoser = (await funders[2]!.call("auction_status", { token: tokens[2] })).structuredContent!.result as { winner: { name: string }; yourBid: number; bids?: unknown };
+    assert.deepEqual([asLoser.winner.name, asLoser.yourBid, asLoser.bids], ["Funder B", 905, undefined], "a bidder sees the winner and its own bid");
+
+    // The result is worked out again from the public log's evidence and the disclosed keys, not taken from the server.
+    const evidence = (await (await fetch(`${url}/api/v1/sessions/${auctionId}/evidence`, { headers: { authorization: `Bearer ${KEY}` } })).json()) as { beacon: BeaconInfo; rounds: AuctionInputs[]; fileKeys: Record<string, string> };
+    const checked = await verifyAuction(evidence.rounds[0]!, { acceptedBeacons: [evidence.beacon] }, bidOpenerWithFileKeys(evidence.fileKeys));
+    assert.equal(checked.winner?.amount, 677);
+  } finally {
+    await desk.close();
+    for (const f of funders) await f.close();
     stop();
   }
 });
