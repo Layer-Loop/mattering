@@ -1,6 +1,6 @@
 # Mattering platform API: design
 
-**Status:** draft for review. Nothing here is built yet beyond what it reuses. Comments are welcome on anything, and especially on the [open questions](#13-open-questions-for-review) at the end.
+**Status:** draft. Version 1 rests on the [assumptions](#13-assumptions-for-version-1) in section 13; comments are welcome on them and on the [open questions](#14-open-questions-for-review). Being built in order (section 12); auction policy version 4 is the first step.
 
 ## 1. What it is
 
@@ -40,12 +40,12 @@ Every mechanism follows the same pattern: participants seal before the round clo
 | --- | --- |
 | **Who** | One organiser, two or more bidders |
 | **Bids** | One per bidder, a whole number in the session's unit, within `[minBid, maxBid]`, with a Pedersen commitment to it |
-| **Rule** | `highest-wins` (selling) or `lowest-wins` (buying, funding, procurement). First price: the winner's bid is the price. Optional `reserve`: no winner unless the best bid reaches it |
+| **Rule** | `highest-bid` (selling) or `lowest-bid` (buying, funding, procurement). First price: the winner's bid is the price. Optional `reserve`: no winner unless the best bid reaches it |
 | **Ties** | Broken by the release round's signature, as today: unpredictable before release, and the same for everyone after |
 | **Confidentiality** | `public` (bids open to everyone at release, as in today's auction), or `organiser` (bids sealed to the organiser's and each bidder's own recipient keys; outsiders see only that each bid was in on time, and the result is checkable by anyone the organiser discloses to) |
 | **Example** | A receivables funding desk: an invoice of £250,000 due in 90 days; funders bid the discount in basis points; lowest wins |
 
-New compared with today: `lowest-wins`, `reserve`, and `organiser` confidentiality. The auction policy's `rule` field already exists for this.
+New compared with today: `lowest-bid`, `reserve`, and `organiser` confidentiality, in auction policy version 4 ([protocol.md](protocol.md), section 7.1).
 
 ### 3.2 Negotiation in rounds
 
@@ -125,7 +125,7 @@ POST /v1/sessions
     "unit": "bps",
     "minBid": 50,
     "maxBid": 1500,
-    "rule": "lowest-wins",
+    "rule": "lowest-bid",
     "reserve": 900
   },
   "timing": { "opensAt": "2026-12-01T10:00:00Z", "biddingSeconds": 600, "quorumBy": "2026-12-01T10:05:00Z" },
@@ -212,7 +212,7 @@ The tools become a thin layer over the API, keeping what works today (asking the
 
 | Part | State |
 | --- | --- |
-| Sealing, opening, recipients, commitments, mandates, verifiers (`@mattering/core`) | Built. Add `lowest-wins` and `reserve` to the auction rule and its verifier |
+| Sealing, opening, recipients, commitments, mandates, verifiers (`@mattering/core`) | Built. Auction policy version 4 (lowest bid, reserve, bids sealed to recipients) is the first step |
 | Witness log, receipts, cosigning, public read-only log | Built, unchanged |
 | Negotiation rounds, check-in, approval per offer, receipts | Built in the MCP tables; to be moved into the session engine |
 | Session engine (one engine, mechanisms as plug-ins) | New: unifies today's auction room, negotiation room and tables |
@@ -233,7 +233,20 @@ Identity and onboarding, payments and checkout, custody, on-chain settlement (se
 4. The MCP server rebuilt on the API.
 5. The receivables funding desk demo and a quickstart.
 
-## 13. Open questions for review
+## 13. Assumptions for version 1
+
+There is no design partner in this market yet to answer the questions below, so version 1 is built on these assumptions. Each can be changed later without changing what is already on the log.
+
+1. **Losing bids** are seen by the organiser after release; bidders see the result and their own bid. Confidentiality is `organiser` by default, `public` on request.
+2. **Amounts** are whole numbers in a unit the integrator names (`bps`, `GBP`); the API does not convert.
+3. **The reserve** is public, in the policy.
+4. **One winner** per auction. Splitting an amount between several winners is later.
+5. **Participants** are their keys and the integrator's label for them. Identity stays with the integrator.
+6. **The hand-off** is the result, the receipt and the evidence; nothing signed beyond them in version 1.
+7. **Timing** is fixed windows. Closing early once everyone has sealed is later, after review.
+8. **Hosting** is the hosted service first; running it yourself remains possible, as all of it is open.
+
+## 14. Open questions for review
 
 1. **Who reads the losing bids?** With `organiser` confidentiality, the organiser sees every bid after release. Should bidders see the others' bids, or only the result and their own rank?
 2. **Price or rate?** Should funding auctions be bid as a discount in basis points, an advance rate, or a price, and should the API convert between them?
