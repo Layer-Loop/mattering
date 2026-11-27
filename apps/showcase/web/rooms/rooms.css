@@ -45,6 +45,7 @@ main.page { padding-top: clamp(20px, 4vw, 40px); padding-bottom: 48px; display: 
 .chooser { padding-top: clamp(28px, 5vw, 56px); padding-bottom: 64px; gap: 28px; }
 .chooser-intro { display: flex; flex-direction: column; gap: 10px; max-width: 62ch; }
 .chooser-intro h1 { margin: 0; font-family: var(--display); font-size: clamp(30px, 4vw, 44px); font-weight: 800; line-height: 1.1; }
+.chooser-intro h2 { margin: 12px 0 0; font-family: var(--display); font-size: clamp(24px, 3vw, 32px); font-weight: 800; line-height: 1.15; }
 .chooser-intro p { margin: 0; font-size: 18px; line-height: 1.5; color: var(--soft); }
 .doors { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
 .door { display: flex; flex-direction: column; text-decoration: none; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
@@ -186,3 +187,70 @@ code { font-family: var(--mono); font-size: 0.92em; }
   .cheats li { grid-template-columns: 1fr; }
   .cheats li .ghost { justify-self: start; }
 }
+
+/*
+ * Scenario demos: a rental listing and a funding desk. They look like the
+ * real thing, with nobody's branding, and say at the top that they are demos.
+ */
+.scenario { gap: 18px; }
+.demo-banner { margin: 0; padding: 10px 14px; border-radius: 10px; background: var(--amber-bg); color: var(--amber-ink); font-size: 15px; line-height: 1.45; border: 1px solid #EBD493; }
+.crumbs { font-size: 14px; color: var(--soft); }
+.listing { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 28px; align-items: start; }
+@media (max-width: 900px) { .listing { grid-template-columns: 1fr; } }
+.listing-main { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+.gallery { display: grid; grid-template-columns: 2fr 1fr; gap: 8px; border-radius: 14px; overflow: hidden; height: clamp(220px, 30vw, 360px); }
+.gallery .thumbs { min-height: 0; }
+.gallery .thumbs svg { min-height: 0; }
+.gallery .photo { width: 100%; height: 100%; display: block; }
+.gallery .thumbs { display: grid; grid-template-rows: 1fr 1fr; gap: 8px; }
+.gallery .plan { width: 100%; height: 100%; display: block; background: #F7F8FB; }
+.listing-head h1 { margin: 0; font-family: var(--display); font-size: clamp(28px, 3.4vw, 40px); font-weight: 800; line-height: 1.1; }
+.listing-head .addr { margin: 6px 0 0; font-size: 17px; color: var(--soft); }
+.listing-head .eyebrow { margin-bottom: 6px; }
+.chips { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.chips li { padding: 5px 12px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); font-size: 14px; }
+.block { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; }
+.block h2 { margin: 0 0 10px; font-family: var(--display); font-size: 20px; font-weight: 700; }
+.block p { margin: 0; font-size: 16px; line-height: 1.6; }
+.features { margin: 0; padding-left: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 6px 24px; font-size: 16px; line-height: 1.5; }
+.how-offers { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; font-size: 16px; line-height: 1.55; }
+.listing-side { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 16px; }
+@media (max-width: 900px) { .listing-side { position: static; } }
+.price-card, .offer-panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; }
+.price { margin: 0; font-family: var(--display); font-size: 34px; font-weight: 800; }
+.price span { font-size: 17px; font-weight: 600; color: var(--soft); }
+.pw { margin: 2px 0 0; color: var(--soft); }
+.ceiling { margin: 10px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--teal-bg); color: var(--teal-ink); font-size: 14px; font-weight: 700; }
+.facts { margin: 14px 0 0; display: grid; gap: 8px; }
+.facts div { display: flex; justify-content: space-between; gap: 12px; font-size: 15px; border-bottom: 1px solid var(--grid); padding-bottom: 6px; }
+.facts dt { color: var(--soft); }
+.facts dd { margin: 0; font-weight: 700; text-align: right; }
+.facts.wide { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 24px; }
+.agent { margin: 14px 0 0; font-size: 14px; color: var(--soft); }
+.offer-panel h2 { margin: 0 0 10px; font-family: var(--display); font-size: 22px; font-weight: 800; }
+#offer { display: flex; flex-direction: column; gap: 12px; }
+#offer p { margin: 0; font-size: 15px; line-height: 1.5; }
+#offer .hint { color: var(--soft); font-size: 14px; }
+#offer .primary { padding: 12px 18px; border: 0; border-radius: 10px; background: var(--btn); color: var(--btn-ink); font-size: 16px; font-weight: 700; }
+.countdown { font-family: var(--mono); font-size: 14px; color: var(--soft); }
+.amount-row { display: flex; gap: 8px; align-items: center; }
+.amount-row input { flex: 1; min-width: 0; padding: 10px 12px; font: 700 18px var(--mono); border: 1px solid var(--line); border-radius: 10px; }
+.amount-row .unit { color: var(--soft); font-size: 14px; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.presets button { padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 14px; }
+.others { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.others li { display: flex; justify-content: space-between; border-bottom: 1px solid var(--grid); padding: 4px 0; }
+.others .done { color: var(--teal-ink); font-weight: 700; }
+.others .wait { color: var(--soft); }
+.sealed-note { padding: 10px 12px; border-radius: 10px; background: var(--teal-bg); color: var(--teal-ink); font-size: 14px; }
+.error { color: var(--red); font-size: 14px; }
+.result-head { font-family: var(--display); font-size: 22px; font-weight: 800; margin: 0; }
+.bids { width: 100%; border-collapse: collapse; font-size: 14px; }
+.bids th, .bids td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--grid); }
+.bids td.num, .bids th.num { text-align: right; font-family: var(--mono); }
+.bids tr.win td { font-weight: 700; background: var(--teal-bg); }
+.bids tr.you td:first-child { font-style: italic; }
+.draw { padding: 10px 12px; border-radius: 10px; background: var(--amber-bg); color: var(--amber-ink); font-size: 14px; line-height: 1.5; }
+.checks { margin: 0; padding-left: 18px; font-size: 13px; color: var(--soft); }
+.checked { font-weight: 700; color: var(--teal-ink); }
+.foot-note { margin: 0; font-size: 14px; color: var(--soft); max-width: 80ch; }

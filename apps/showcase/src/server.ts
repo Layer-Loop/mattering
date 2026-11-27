@@ -27,6 +27,8 @@ import { Room, type RoomState } from "./room.ts";
 import { NegotiationRoom, type NegotiationRoomState } from "./negotiation-room.ts";
 import { handleMcpHttp, type McpBackend } from "./mcp.ts";
 import { localPlatform } from "../../platform/src/api.ts";
+import { Scenario, type ScenarioState } from "./scenario.ts";
+import { fundingPage, rentalPage } from "./scenario-pages.ts";
 import { chooserPage, roomPage, type PageOptions } from "./pages.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -122,8 +124,10 @@ export async function startShowcase(options: ShowcaseOptions): Promise<{ server:
 
   // The platform's sessions, in memory, on the same shared log: for the API at /api/v1, and for MCP clients.
   let baseUrl = "";
+  // The scenario demos act as an integrator of the platform, with a key only this process knows.
+  const demoKey = `mk_test_${Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("")}`;
   const platform = localPlatform({
-    keys: options.apiKeys ?? {},
+    keys: { ...(options.apiKeys ?? {}), [demoKey]: "mattering-demos" },
     base: "/api/v1",
     evidenceUrl: (hash) => `${baseUrl}/api/policies/${hash}/evidence`,
     session: {
@@ -149,15 +153,27 @@ export async function startShowcase(options: ShowcaseOptions): Promise<{ server:
     clock: simulated ? "simulated" : "live",
   };
 
+  let savedScenario: ScenarioState | undefined;
+  const scenario = await Scenario.open({
+    mode: options.mode,
+    sourceFor,
+    apiFetch: platform.fetch,
+    apiKey: demoKey,
+    loadState: async () => savedScenario,
+    saveState: async (state) => void (savedScenario = state),
+  });
+
   // One piece of work at a time: a decision by a language model can take seconds.
   let working = false;
   const timer = setInterval(() => {
     if (working) return;
     working = true;
-    void Promise.all([room.work().catch(() => {}), negotiation.work().catch(() => {}), platform.work().catch(() => {})]).finally(() => (working = false));
+    void Promise.all([room.work().catch(() => {}), negotiation.work().catch(() => {}), platform.work().catch(() => {}), scenario.work().catch(() => {})]).finally(() => (working = false));
   }, Math.min(500, roundMs));
 
   const roomsJs = await bundlePage();
+  const scenariosJs = await bundlePage(false, "scenarios/scenarios.ts");
+  const scenarioPages: PageOptions = { script: "/scenarios.js", stylesheet: "/rooms.css", site: "https://mattering.ai", paths: { demos: "/demo", auction: "/demo/auction", negotiation: "/demo/negotiation" } };
   // The demo pages, as the website has them: the way in, and a page per room.
   const pages: PageOptions = { script: "/rooms.js", stylesheet: "/rooms.css", site: "https://mattering.ai", paths: { demos: "/demo", auction: "/demo/auction", negotiation: "/demo/negotiation" } };
   const html = "text/html; charset=utf-8";
@@ -169,6 +185,9 @@ export async function startShowcase(options: ShowcaseOptions): Promise<{ server:
     "/demo/negotiation": [html, () => roomPage("negotiation", pages)],
     "/rooms.css": ["text/css; charset=utf-8", () => readFileSync(join(web, "rooms", "rooms.css"), "utf8")],
     "/rooms.js": ["text/javascript; charset=utf-8", () => roomsJs],
+    "/scenarios.js": ["text/javascript; charset=utf-8", () => scenariosJs],
+    "/demo/rental": [html, () => rentalPage(scenarioPages)],
+    "/demo/funding": [html, () => fundingPage(scenarioPages)],
     "/demo-info": ["application/json", () => JSON.stringify({ decider, mode: options.mode })],
   };
 
@@ -215,6 +234,10 @@ export async function startShowcase(options: ShowcaseOptions): Promise<{ server:
         response.writeHead(reply.status, Object.fromEntries(reply.headers));
         response.end(await reply.text());
       })();
+      return;
+    }
+    if (url.pathname.startsWith("/scenario/")) {
+      void scenario.handle(request.method ?? "GET", url.pathname, () => readJson(request)).then((reply) => send(response, reply.status, reply.body));
       return;
     }
     const target = url.pathname.startsWith("/negotiation/") ? negotiation : room;

@@ -20,12 +20,12 @@ export interface PageOptions {
   watch?: boolean;
 }
 
-const GITHUB = "https://github.com/Layer-Loop/mattering";
+export const GITHUB = "https://github.com/Layer-Loop/mattering";
 const FONTS = "https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=JetBrains+Mono:wght@400;600&display=swap";
 
 const LOGO = `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l2.5 2"></path><path d="M9 2h6"></path></svg>`;
 
-function head(o: PageOptions, title: string, description: string, extra = ""): string {
+export function head(o: PageOptions, title: string, description: string, extra = ""): string {
   return `<!doctype html>
 <html lang="en-GB"${extra}>
 <head>
@@ -41,7 +41,7 @@ function head(o: PageOptions, title: string, description: string, extra = ""): s
 <body>`;
 }
 
-function siteHeader(o: PageOptions, demos: boolean): string {
+export function siteHeader(o: PageOptions, demos: boolean): string {
   return `<header class="site-head"><div class="in">
 <div class="brand-row"><a class="brand" href="${o.site}/">${LOGO}<span>Mattering</span></a><span class="poc">Proof of concept · no security review yet</span></div>
 <nav class="site-nav" aria-label="Site"><ul>
@@ -53,7 +53,7 @@ function siteHeader(o: PageOptions, demos: boolean): string {
 </div></header>`;
 }
 
-function siteFooter(o: PageOptions): string {
+export function siteFooter(o: PageOptions): string {
   return `<footer class="site-foot"><div class="in">
 <p>Mattering is an open SDK and draft standard for sealing data until a set time.</p>
 <ul><li><a href="${o.site}/#how">How it works</a></li><li><a href="${GITHUB}/blob/main/docs/protocol.md">Draft standard</a></li><li><a href="${GITHUB}">Source on GitHub</a></li></ul>
@@ -82,6 +82,17 @@ ${siteHeader(o, true)}
 <a class="door" href="${o.paths.negotiation}">
 <div class="door-art" aria-hidden="true">${g(50)}${b("34px", "18%", 46)}${b("44%", "18%", 46)}${g(96)}${b("42px", "16%", 92)}${b("46%", "16%", 92)}<i class="o" style="left:34%"></i><i class="o" style="left:68%"></i></div>
 <div class="door-text"><p class="eyebrow">Negotiation · up to 75 seconds</p><h2>The Negotiation Room</h2><p>Two firms’ agents agree a price for paying an invoice early. Each round, both offers stay sealed until they open together.</p><span class="go">Enter the room</span></div>
+</a>
+</div>
+<div class="chooser-intro"><h2>Scenarios on the platform</h2><p>Two sealed auctions run through Mattering's public API and SDK, as a business would run them. You make an offer; it is sealed in your browser.</p></div>
+<div class="doors">
+<a class="door" href="/demo/rental">
+<div class="door-art" aria-hidden="true">${g(40)}${b("30px", "62%", 36)}${g(76)}${b("30px", "62%", 72)}${g(112)}${b("30px", "54%", 108)}<i class="o" style="left:calc(30px + 62%)"></i></div>
+<div class="door-text"><p class="eyebrow">Rental · about a minute</p><h2>A flat to rent in London</h2><p>Applicants make sealed offers up to the advertised rent, the legal ceiling. If several offer the full rent, a public draw anyone can check picks one.</p><span class="go">See the listing</span></div>
+</a>
+<a class="door" href="/demo/funding">
+<div class="door-art" aria-hidden="true">${g(40)}${b("30px", "34%", 36)}${g(76)}${b("30px", "40%", 72)}${g(112)}${b("30px", "52%", 108)}<i class="o" style="left:calc(30px + 34%)"></i></div>
+<div class="door-text"><p class="eyebrow">Funding · about a minute</p><h2>An invoice-funding desk</h2><p>Funders quote sealed discounts to pay a £250,000 invoice today. The lowest within the supplier's reserve wins.</p><span class="go">See the invoice</span></div>
 </a>
 </div>
 </main>

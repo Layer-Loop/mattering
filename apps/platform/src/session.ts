@@ -689,7 +689,9 @@ export class Session {
     const who = (key: string) => st.participants.find((p) => p.publicKey === key);
     // Valid bids first, best first; then the rest, as the evidence lists them.
     const better = this.auctionTerms.rule === "lowest-bid" ? (a: number, b: number) => a - b : (a: number, b: number) => b - a;
-    const ranked = [...result.bids.filter((b) => b.status === "valid").sort((a, b) => better(a.amount!, b.amount!)), ...result.bids.filter((b) => b.status !== "valid")];
+    // Equal bids: the one the tie-break chose comes first.
+    const first = (b: { envelopeId: string }) => (b.envelopeId === result.winner?.envelopeId ? 0 : 1);
+    const ranked = [...result.bids.filter((b) => b.status === "valid").sort((a, b) => better(a.amount!, b.amount!) || first(a) - first(b)), ...result.bids.filter((b) => b.status !== "valid")];
     const winner = result.winner ? who(result.winner.submitter) : undefined;
     return {
       kind: "auction",
