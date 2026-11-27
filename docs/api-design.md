@@ -1,6 +1,6 @@
 # Mattering platform API: design
 
-**Status:** draft. Version 1 rests on the [assumptions](#13-assumptions-for-version-1) in section 13; comments are welcome on them and on the [open questions](#14-open-questions-for-review). Being built in order (section 12); auction policy version 4 is the first step.
+**Status:** version 1 is built (section 12), on the [assumptions](#13-assumptions-for-version-1) in section 13; comments are welcome on them and on the [open questions](#14-open-questions-for-review). How to use it: [api.md](api.md).
 
 ## 1. What it is
 
@@ -218,11 +218,11 @@ The tools become a thin layer over the API, keeping what works today (asking the
 | Sealing, opening, recipients, commitments, mandates, verifiers (`@mattering/core`) | Built. Auction policy version 4 (lowest bid, reserve, bids sealed to recipients) is the first step |
 | Witness log, receipts, cosigning, public read-only log | Built, unchanged |
 | Negotiation rounds, check-in, approval per offer, receipts | Rounds, check-in, limit match and receipts are in the session engine; approval per offer stays in the MCP layer |
-| Session engine (one engine, mechanisms as plug-ins) | New: unifies today's auction room, negotiation room and tables |
-| HTTP API v1, API keys, webhooks, event stream, OpenAPI spec | New |
-| `@mattering/client` | New |
-| MCP over the API, with auctions | Rework |
-| Demo: a receivables funding desk, built only on the public API | New, as a separate app |
+| Session engine | Built (`apps/platform/src/session.ts`): auctions, negotiations and limit matches. The demonstration rooms keep their own code |
+| HTTP API v1, API keys, webhooks, event stream, OpenAPI spec | Built (`apps/platform`), served by the Worker at `/api/v1` |
+| `@mattering/client` | Built (`packages/client`), not yet packaged for npm |
+| MCP over the platform, with auctions | Built: the MCP server is an integrator of the platform |
+| Demo: a receivables funding desk, built only on the public API | Not yet, as a separate app |
 
 ## 11. Not in version 1
 
@@ -230,11 +230,11 @@ Identity and onboarding, payments and checkout, custody, on-chain settlement (se
 
 ## 12. Order of work
 
-1. This design, reviewed.
-2. The session engine, with the reverse sealed auction beside negotiation, and the core's new auction rule.
-3. The HTTP API on the Worker, with API keys, and `@mattering/client` sealing locally.
-4. The MCP server rebuilt on the API.
-5. The receivables funding desk demo and a quickstart.
+1. This design (PR #27).
+2. Auction policy version 4 (PR #28), and the session engine with auctions (#29), negotiations and limit matches (#30).
+3. The HTTP API on the Worker, with API keys (#31), and `@mattering/client` sealing locally (#32).
+4. The MCP server rebuilt on the platform, with auctions (#33).
+5. Next: the receivables funding desk demo and a quickstart.
 
 ## 13. Assumptions for version 1
 
