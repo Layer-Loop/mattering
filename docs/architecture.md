@@ -74,6 +74,27 @@ The showcase (`apps/showcase`) runs its rooms on one such log through a small lo
  verifiers ◄── evidence: policy, log, closing, witnessed checkpoint, envelopes, release
 ```
 
+## The platform
+
+`apps/platform` runs sealed sessions for integrators ([api-design.md](api-design.md), [api.md](api.md)); `packages/client` is the SDK they and their participants use.
+
+| Module | Role |
+| --- | --- |
+| `apps/platform/src/session.ts` | The session engine: one auction, negotiation or limit match from creation to result, on the shared log. No server, files or timers |
+| `apps/platform/src/hosted.ts` | Beside each session: idempotent requests and signed webhook delivery. Beside each integrator: webhooks, a daily allowance |
+| `apps/platform/src/api.ts` | The HTTP API: who is calling, routing, the event stream, and an in-memory host for tests and laptops |
+| `apps/platform/src/openapi.ts` | The OpenAPI description, tested against the routes served |
+| `packages/client` | `@mattering/client`: keys made and kept locally, sealing on the caller's machine, retries, disclosure, and `verify` |
+
+On Cloudflare each session and each integrator's desk is a Durable Object, reached only from the Worker. The MCP server (`apps/showcase/src/mcp.ts`) is itself an integrator: its tables and auctions are server-sealed sessions.
+
+| Boundary | What crosses it | How it is checked |
+| --- | --- | --- |
+| Participant → platform, client-sealed | A signed submission and an envelope; never an amount | The submitter must be the participant's key, and the log checks the seal against the policy |
+| Platform → participant | The round's policy | The SDK accepts only its own beacons, this session, its own keys, and the confidentiality the session states |
+| Discloser → platform | File keys | They must open every bid and give a valid outcome from the evidence |
+| Platform → integrator | Signed webhook deliveries | HMAC-SHA256 under the webhook's secret, with a timestamp |
+
 ## Planned
 
 | Component | Owned and run by |

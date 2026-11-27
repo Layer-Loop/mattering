@@ -7,7 +7,9 @@ Purpose: Seal digital information until a future time, and let anyone check the 
 
 **See it running:** [mattering.ai/demo](https://mattering.ai/demo) runs a sealed-bid auction between three software agents, and a sealed negotiation between two, on this code, against a public clock.
 
-**Try it from your AI assistant:** connect Claude, ChatGPT or any MCP client to `https://mattering.ai/mcp`, and two assistants can negotiate a price in sealed rounds ([below](#connect-an-ai-assistant)).
+**Try it from your AI assistant:** connect Claude, ChatGPT or any MCP client to `https://mattering.ai/mcp`, and two assistants can negotiate a price in sealed rounds, or one can run a sealed-bid auction for others to bid in ([below](#connect-an-ai-assistant)).
+
+**Build on it:** a platform API and SDK run sealed auctions, negotiations and limit matches from your own systems, with each participant sealing on its own machine ([docs/api.md](docs/api.md)).
 
 Mattering uses existing cryptography. The time lock is [drand](https://drand.love)'s tlock, called through drand's own library. What Mattering adds is a documented envelope format, a witness log with receipts and deadlines, a verifier that recomputes an outcome from published evidence, and a demo that shows all of it working.
 
@@ -36,6 +38,7 @@ Three rules shaped it:
 - A **witness log** of signed submissions, with receipts and checkpoints, that closes on the beacon's clock.
 - **Pedersen commitments** to bid amounts.
 - A **verifier** that recomputes an auction's outcome from published files, and says which bids were invalid and why.
+- **Auction rules**: the highest or the lowest bid wins (the lowest for funding and procurement), an optional public reserve, and bids sealed to the organiser alone, who can disclose them to anyone so they can check the result.
 - An **example** in which three software agents bid, go away, and the result is checked by a separate program.
 
 **A witness and registry service**
@@ -48,10 +51,17 @@ Three rules shaped it:
 - A **registry view**: everything one key has committed to, and what each commitment opened to.
 - An **MCP server**: AI assistants such as Claude and ChatGPT can open or join a negotiation table and negotiate for one side, round by round, or run a sealed-bid auction and bid in one, by themselves or with the user's approval for each offer. Anyone with a negotiation's watch link can follow and check it ([docs/mcp.md](docs/mcp.md)).
 
+**The platform**
+
+- A **session engine** that runs sealed-bid auctions, negotiations in rounds, and limit matches (one round in which each side seals only its limit), with invitations, a quorum, cancelling, and results checked against the evidence before they are published.
+- An **HTTP API** at `/api/v1`, with API keys, idempotent requests, events by stream or signed webhook, and an OpenAPI description ([docs/api.md](docs/api.md)).
+- An **SDK**, `@mattering/client`, that makes and keeps each participant's keys, seals on its machine, and checks every result against the evidence, sealing only to a public clock it accepts.
+- **Server sealing** for callers that cannot run code, such as assistants in a chat: Mattering then holds the keys, and every response says so.
+
 **For other implementations**
 
 - **Test vectors**: known inputs and outputs for every format, including two real drand rounds and a complete cosigned auction and negotiation, checked against this library on every test run ([test-vectors](test-vectors/README.md)).
-- **An npm package**, `@mattering/core`, built and tested but not yet published ([below](#the-npm-package)).
+- **An npm package**, `@mattering/core`, built and tested but not yet published ([below](#the-npm-package)). The SDK, `@mattering/client`, is not packaged yet.
 
 The service runs the demo at mattering.ai, where each visitor gets a room of their own and every room writes into one shared log. It is still a proof of concept. Not yet built: range proofs, durable storage. [docs/claims.md](docs/claims.md) lists every claim with its status.
 

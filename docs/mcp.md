@@ -25,7 +25,7 @@ Every tool description, the server's instructions, and every reply say which env
 
 Only the demonstration exists. A live environment, if there is one, will be a separate server address with its own terms, and will say so in the same fields. Assistants may still be cautious: in the first runs, ChatGPT's own checks blocked one offer, and Claude reported a note "blocked before sending"; neither came from Mattering, which refuses only offers beyond a limit, a second offer in a round, or an offer after the round's window.
 
-The tools are also marked as acting only on Mattering's own tables (`openWorldHint: false`), and none of them as destructive.
+The tools are also marked as acting only on Mattering's own sessions (`openWorldHint: false`). Only `leave_negotiation` is marked as destructive, as it ends the negotiation for both sides.
 
 ## Connecting an assistant
 

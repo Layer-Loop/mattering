@@ -164,7 +164,7 @@ ${siteHeader(o, true)}
 <section id="s-intro" class="screen" aria-label="Waiting">
 <p class="lead">Waiting for both sides to join the table.</p>
 <p class="how">Each party’s own AI assistant opens or joins the table, and makes its offers, through Mattering’s MCP server. This page follows along and checks each round in your browser once it opens.</p>
-<p class="small">This is a demonstration: the offers are sealed and recorded for real, but they are not legally binding and no payment is made. The parties name their own organisations, which are not verified. Mattering’s server holds both parties’ keys and seals their offers for them. Anyone with this page’s address sees each round’s offers, notes and both limits once the round opens. <a href="${GITHUB}/blob/main/docs/mcp.md">How it works, in full</a></p>
+<p class="small">This is a demonstration: the offers are sealed and recorded for real, but they are not legally binding and no payment is made. The parties name their own organisations, which are not verified. Mattering’s server holds both parties’ keys and seals their offers for them. Anyone with this page’s address sees each round’s offers once the round opens, and the notes and both limits once the negotiation has ended. <a href="${GITHUB}/blob/main/docs/mcp.md">How it works, in full</a></p>
 </section>
 <section id="s-live" class="screen" aria-label="Live" hidden></section>
 <section id="s-result" class="screen" aria-label="Result" hidden></section>
