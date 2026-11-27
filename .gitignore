@@ -6,3 +6,5 @@ examples/agent-auction/out/
 witness-data/
 cosigner-data/
 .npm/
+.DS_Store
+.claude/

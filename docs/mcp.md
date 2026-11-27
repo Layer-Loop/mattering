@@ -103,7 +103,7 @@ On mattering.ai, tables and auctions together open at most `TABLES_PER_DAY` time
 
 ## Not covered by automated tests
 
-`tests/mcp.test.ts` also runs an auction: an organiser's assistant and three funders' assistants, a bid beyond a limit and a second bid refused, a bid waiting for approval, and the result worked out again from the evidence and the disclosed keys. On 2026-11-27 the rebuilt server was run in Cloudflare's local runtime with the simulated clock: a negotiation and an auction ran to their results through the tools, and the watch page reached the negotiation's deal with every check passing. Neither has yet been tried from Claude or ChatGPT.
+`tests/mcp.test.ts` also runs an auction: an organiser's assistant and three funders' assistants, a bid beyond a limit and a second bid refused, a bid waiting for approval, and the result worked out again from the evidence and the disclosed keys. On 2026-11-27 the rebuilt server was run in Cloudflare's local runtime with the simulated clock: a negotiation and an auction ran to their results through the tools, and the watch page reached the negotiation's deal with every check passing. After the deploy that day, Claude and ChatGPT were offered the auction tools once their connectors were refreshed, and Claude asked its user for the auction's settings as the tools require; a full auction between assistants has not yet been reported.
 
 Before the rebuild:
 

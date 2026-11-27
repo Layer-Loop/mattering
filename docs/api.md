@@ -14,7 +14,7 @@ Base URL: `https://mattering.ai/api/v1`. JSON in and out. Errors are `{ "error":
 | `Bearer tok_…` | A participant, by the token it got on joining | Bid, check in, disclose, cancel (negotiations), in its own session only |
 | none | Anyone | Join with an invitation (`inv_…`), ask what an invitation is for (`GET /sessions/{id}/invitation?code=…`), read a round's policy, and see what a session shows the public |
 
-API keys are issued by Mattering; there is no sign-up. Identity stays with you: a participant is its keys and the label you give it.
+API keys are issued through Mattering's console, which is invite-only for now; there is no sign-up. Identity stays with you: a participant is its keys and the label you give it.
 
 Send `Idempotency-Key: <anything unique>` on any POST you might retry. The same key with the same request returns the first reply, so a retried bid is not a second bid; with a different request it is refused (`idempotency-mismatch`).
 
