@@ -10,7 +10,9 @@
  * after it only the recipients can, unless one of them discloses the file key.
  */
 import { bytesToHex } from "@noble/hashes/utils";
-import { RECIPIENT_ENVELOPE_FORMAT, assertRecipients, isRecipientEnvelope, type Envelope } from "./envelope.ts";
+import { RECIPIENT_ENVELOPE_FORMAT, assertRecipients, envelopeId, isRecipientEnvelope, type Envelope } from "./envelope.ts";
+import { bidRecipients, policyHash, prepareBidWith, suppliedEnvelope, type AnyAuctionPolicy, type AuctionInputs, type BidOpener, type PreparedBid } from "./auction.ts";
+import type { KeyPair } from "./signing.ts";
 import type { Release } from "./beacon.ts";
 import { MatteringError } from "./errors.ts";
 import { ageDecryptWithFileKey, ageDecryptWithIdentity, ageEncrypt, ageFileKey, ageHeader } from "./recipients.ts";
@@ -98,4 +100,52 @@ export async function verifyDisclosure(
   }
   const ok = checks.every((c) => c.ok);
   return pre.envelopeId === undefined ? { ok, checks } : { ok, checks, envelopeId: pre.envelopeId };
+}
+
+// --- auctions whose bids are sealed to recipients (policy version 4) ----------------
+
+/**
+ * Seal a bid to an auction whose policy names recipients: to the release round
+ * and to those recipients only. Everything else is as `prepareBid`.
+ */
+export async function prepareBidTo(policy: AnyAuctionPolicy, amount: number, keys: KeyPair): Promise<PreparedBid> {
+  const recipients = bidRecipients(policy);
+  if (recipients.length === 0) throw new MatteringError("MALFORMED", "this auction names no recipients: use prepareBid");
+  return prepareBidWith(policy, amount, keys, (options) => sealTo({ ...options, recipients }));
+}
+
+/** Open bids as one of the recipients, with its age identity. */
+export function bidOpenerAs(identity: string): BidOpener {
+  return (envelope, release, verifier) => openAs(envelope, release, identity, { acceptedBeacons: verifier.acceptedBeacons });
+}
+
+/** Open bids with file keys a recipient disclosed, by envelope id. A bid with no key stays unresolved. */
+export function bidOpenerWithFileKeys(keys: Readonly<Record<string, string>>): BidOpener {
+  return async (envelope, release, verifier) => {
+    const key = keys[envelopeId(envelope)];
+    return key === undefined ? undefined : openWithFileKey(envelope, release, key, { acceptedBeacons: verifier.acceptedBeacons });
+  };
+}
+
+/**
+ * What a recipient (the organiser) discloses about a released auction, to an
+ * auditor or to the bidders: the file key of every bid it can open. With
+ * these, `verifyAuction(inputs, verifier, bidOpenerWithFileKeys(keys))` reaches
+ * the same result without the recipient's identity.
+ */
+export async function discloseBids(inputs: AuctionInputs, identity: string, verifier: VerifierPolicy): Promise<Record<string, string>> {
+  const envelopes = inputs.envelopes instanceof Map ? inputs.envelopes : new Map(Object.entries(inputs.envelopes));
+  const hash = policyHash(inputs.policy);
+  const keys: Record<string, string> = {};
+  for (const entry of inputs.entries) {
+    if (!("submitter" in entry) || entry.policyHash !== hash) continue;
+    const envelope = suppliedEnvelope(envelopes, entry.envelopeId);
+    if (!envelope || !isRecipientEnvelope(envelope)) continue;
+    try {
+      keys[entry.envelopeId] = await fileKeyOf(envelope, inputs.release, identity, { acceptedBeacons: verifier.acceptedBeacons });
+    } catch {
+      // Not openable with this identity: nothing to disclose for it.
+    }
+  }
+  return keys;
 }

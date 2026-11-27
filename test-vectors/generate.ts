@@ -1,7 +1,8 @@
 /**
  * Writes the test vectors in this folder. Run it only when a format changes:
  *
- *   npm run vectors
+ *   npm run vectors                       all of them
+ *   npm run vectors -- auction-v4.json    only the files named, leaving the rest as recorded
  *
  * Most vectors are deterministic: canonical JSON, hashes, commitments,
  * signatures, Merkle proofs and signed notes come out the same every time.
@@ -24,6 +25,7 @@ import {
   Cosigner,
   NEGOTIATION_POLICY_FORMAT,
   POLICY_FORMAT,
+  AUCTION_POLICY_FORMAT,
   QUICKNET,
   SIGNATURE_ED25519,
   canonicalBytes,
@@ -49,11 +51,12 @@ import {
   verifyAuction,
   type AuctionInputs,
   type AuctionPolicy,
+  type SealedAuctionPolicy,
   type NegotiationPolicy,
 } from "@mattering/core";
 import { fetchRelease } from "@mattering/core/drand-http";
 import { discloseStep, negotiationPolicyHash, prepareOffer, verifyNegotiationStep, withFileKeys, type StepInputs } from "@mattering/core/negotiation";
-import { fileKeyOf, generateRecipientKeys, sealTo } from "@mattering/core/recipients";
+import { bidOpenerAs, bidOpenerWithFileKeys, discloseBids, fileKeyOf, generateRecipientKeys, prepareBidTo, sealTo } from "@mattering/core/recipients";
 import { TestBeacon, TestClock } from "@mattering/core/testing";
 import { WitnessService, memoryStore } from "@mattering/witness";
 
@@ -62,7 +65,10 @@ const hex = (b: Uint8Array): string => bytesToHex(b);
 const text = (s: string): string => hex(utf8ToBytes(s));
 /** A fixed secret key, so the same name gives the same key in every run. */
 const secret = (name: string): string => hex(sha256(utf8ToBytes(`mattering test vector key: ${name}`)));
+/** Files named on the command line, if any: only these are written, so recorded vectors elsewhere stay as published. */
+const only = process.argv.slice(2);
 const write = (name: string, description: string, vectors: unknown): void => {
+  if (only.length > 0 && !only.includes(name)) return;
   writeFileSync(join(here, name), JSON.stringify({ description, vectors }, null, 2) + "\n");
   console.log(`wrote ${name}`);
 };
@@ -218,6 +224,45 @@ async function witnessWorld(name: string) {
     evidence,
     expected: { ok: true, winner: { submitter: result.winner!.submitter, amount: result.winner!.amount }, bids: result.bids.map((b) => ({ submitter: b.submitter, amount: b.amount, status: b.status })), checks: result.checks.map((c) => c.name) },
     tampered: { why: "a bid's entry is removed from the log after the close", failingCheck: "log-matches-closing-checkpoint" },
+  });
+}
+
+// --- an auction whose bids are sealed to the organiser (policy version 4) ---------------------------
+{
+  const { clock, cosigner, service } = await witnessWorld("funding");
+  const organiser = await generateRecipientKeys();
+  const policy: SealedAuctionPolicy = { format: AUCTION_POLICY_FORMAT, auctionId: "test-vector-INV-88213-funding", unit: "bps", beacon: beacon.info, closeRound: 100, releaseRound: 110, witness: service.publicKey, origin: service.origin, logFrom: 0, cosigners: [cosigner.vkey], cosignerThreshold: 1, minBid: 50, maxBid: 1500, rule: "lowest-bid", reserve: 900, recipients: [organiser.recipient], tieBreak: "release-round-signature" };
+  await service.registerPolicy(policy);
+  const funders = ["a", "b", "c"].map((n) => generateKeyPair(secret(`funder ${n}`)));
+  for (const [i, amount] of [720, 640, 910].entries()) {
+    const bid = await prepareBidTo(policy, amount, funders[i]!);
+    await service.submit(bid.submission, bid.envelope);
+  }
+  clock.advanceTo(100);
+  await service.tick();
+  clock.advanceTo(110);
+  await service.tick();
+  const evidence = (await service.evidence(policyHash(policy))) as unknown as AuctionInputs;
+  const result = await verifyAuction(evidence, testVerifier, bidOpenerAs(organiser.identity));
+  if (!result.ok) throw new Error(`the funding auction vector does not verify: ${JSON.stringify(result.checks)}`);
+  const fileKeys = await discloseBids(evidence, organiser.identity, testVerifier);
+  const outsider = await verifyAuction(evidence, testVerifier);
+  const disclosed = await verifyAuction(evidence, testVerifier, bidOpenerWithFileKeys(fileKeys));
+  if (JSON.stringify(disclosed.winner) !== JSON.stringify(result.winner)) throw new Error("disclosure gives a different winner");
+  write("auction-v4.json", "A funding auction under policy version 4: the lowest bid wins, with a public reserve of 900 bps, and every bid sealed to the organiser alone. The organiser's identity, or the file keys it discloses, open the bids and must give the result below; with neither, every bid is unresolved though the evidence itself checks out. Bid 910 does not meet the reserve but is still valid; the winner is the lowest bid, 640.", {
+    beacon: "testBeacon",
+    policyHash: policyHash(policy),
+    organiser,
+    evidence,
+    fileKeys,
+    expected: {
+      ok: true,
+      reserveMet: result.reserveMet,
+      winner: { submitter: result.winner!.submitter, amount: result.winner!.amount },
+      bids: result.bids.map((b) => ({ submitter: b.submitter, amount: b.amount, status: b.status })),
+      checks: result.checks.map((c) => c.name),
+      withoutKeys: { ok: outsider.ok, bids: outsider.bids.map((b) => b.status) },
+    },
   });
 }
 

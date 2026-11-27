@@ -14,6 +14,7 @@ Known inputs and outputs for Mattering's formats, so that another implementation
 | `envelope.json` | Version 1 envelopes, one to the test beacon and one to real drand quicknet round 1,000,000: their ids, the payload each opens to with its round's release, a release that must not open it, and a tampered envelope that must not open | recorded once |
 | `recipients.json` | A version 2 envelope sealed to two age X25519 recipients: each recipient opens it, the file key opens it for anyone, a stranger cannot | recorded once |
 | `auction.json` | A complete sealed-bid auction on a witness log with one cosigner: the evidence, and the result verifying it must give | recorded once |
+| `auction-v4.json` | A funding auction under policy version 4: lowest bid wins, a public reserve, bids sealed to the organiser alone. The organiser's identity, or the file keys it discloses, give the result; without them every bid is unresolved | recorded once |
 | `negotiation.json` | One step of a sealed negotiation under both firms' mandates: the evidence, the disclosed file keys, the mandates' openings, and the outcome | recorded once |
 
 "Recorded once" means the encryption is randomised by design (tlock and age), so running the generator again produces different but equally valid vectors. The recorded ones are what is published.
@@ -27,7 +28,8 @@ Most vectors use a local test beacon whose secret key is in `beacon.json`, so th
 Only when a format changes:
 
 ```bash
-npm run vectors
+npm run vectors                       # all of them
+npm run vectors -- auction-v4.json    # only the files named; the rest stay as recorded
 ```
 
 It needs internet access to fetch the two quicknet rounds from a public drand relay. Commit the new files, and say what changed.

@@ -7,7 +7,9 @@
  */
 import {
   MatteringError,
+  AUCTION_POLICY_FORMAT,
   POLICY_FORMAT,
+  bidRecipients,
   STATEMENT_POLICY_FORMAT,
   Witness,
   assertEnvelope,
@@ -27,7 +29,7 @@ import {
   verifySealedSubmission,
   verifyStatements,
   verifySubmissionSignature,
-  type AuctionPolicy,
+  type AnyAuctionPolicy,
   type AuctionResult,
   type BeaconSource,
   type Checkpoint,
@@ -45,7 +47,7 @@ import {
   entryLeafHash,
 } from "@mattering/core";
 
-export type AnyPolicy = AuctionPolicy | StatementPolicy | NegotiationPolicy;
+export type AnyPolicy = AnyAuctionPolicy | StatementPolicy | NegotiationPolicy;
 export type PolicyKind = "auction" | "statements" | "negotiation";
 
 /**
@@ -174,7 +176,7 @@ export interface EvidenceBundle {
 
 function describe(policy: unknown): { hash: string; kind: PolicyKind } {
   const format = (policy as { format?: unknown } | null)?.format;
-  if (format === POLICY_FORMAT) return { hash: policyHash(policy as AuctionPolicy), kind: "auction" };
+  if (format === POLICY_FORMAT || format === AUCTION_POLICY_FORMAT) return { hash: policyHash(policy as AnyAuctionPolicy), kind: "auction" };
   if (format === STATEMENT_POLICY_FORMAT) return { hash: statementPolicyHash(policy as StatementPolicy), kind: "statements" };
   if (format === NEGOTIATION_POLICY_FORMAT) return { hash: negotiationPolicyHash(policy as NegotiationPolicy), kind: "negotiation" };
   throw new MatteringError("MALFORMED", "unknown policy format");
@@ -315,7 +317,7 @@ export class WitnessService {
       const verifier = { acceptedBeacons: [this.options.source.beacon] };
       const checks =
         record.kind === "auction"
-          ? verifySealedSubmission(record.policy as AuctionPolicy, submission, envelope, verifier)
+          ? verifySealedSubmission(record.policy as AnyAuctionPolicy, submission, envelope, verifier)
           : record.kind === "negotiation"
             ? verifySealedOffer(record.policy as NegotiationPolicy, submission, envelope, verifier)
             : verifySealedStatement(record.policy as StatementPolicy, submission, envelope, verifier);
@@ -521,13 +523,15 @@ export class WitnessService {
     const bundle = await this.evidence(hash);
     // Offers open to the two parties only: the service cannot read them, and does not try.
     if (bundle.state !== "released" || record.kind === "negotiation") return { state: bundle.state, kind: record.kind };
+    // Nor, when an auction seals its bids to recipients, can it read those.
+    if (record.kind === "auction" && bidRecipients(record.policy as AnyAuctionPolicy).length > 0) return { state: bundle.state, kind: record.kind };
     let result = this.results.get(hash);
     if (!result) {
       const verifier = { acceptedBeacons: [this.options.source.beacon] };
       const inputs = { entries: bundle.entries!, prefix: bundle.prefix, closing: bundle.closing!, witnessed: bundle.witnessed, envelopes: bundle.envelopes!, release: bundle.release! };
       result =
         record.kind === "auction"
-          ? await verifyAuction({ policy: record.policy as AuctionPolicy, ...inputs }, verifier)
+          ? await verifyAuction({ policy: record.policy as AnyAuctionPolicy, ...inputs }, verifier)
           : await verifyStatements({ policy: record.policy as StatementPolicy, ...inputs }, verifier);
       this.results.set(hash, result);
       // A small cache: the oldest result goes first.
