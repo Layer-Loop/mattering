@@ -45,3 +45,7 @@ The aim is to find where this breaks. Each question says what the code or design
 16. **One file key per envelope.** Version 2 relies on age's header MAC to make one age file open to one payload for every recipient: a sender cannot give two recipients different contents in one envelope. Is that sound for multi-recipient age, given that age's payload encryption (ChaCha20-Poly1305) is not itself key-committing? Does anything weaken it when the age file sits inside a tlock ciphertext?
 
 17. **Proving a recipient was shut out.** A sender can name a recipient and give them a key stanza that does not open. Can the recipient prove it to others without revealing their identity, for example with a proof that their X25519 shared secret fails to unwrap the stanza?
+
+## About settlement on a blockchain
+
+18. **Checking evidence on Ethereum.** Since the Pectra upgrade (May 2025, EIP-2537) the EVM verifies BLS12-381 pairings natively, so a contract can check a drand quicknet signature directly. The rest of Mattering's evidence (Ed25519 signatures on submissions, checkpoints and cosignatures, Ristretto255 commitments, age and ChaCha20-Poly1305) has no native support. Is the better route a zero-knowledge proof that the existing verifier accepted the evidence, checking only the drand signature and the log's inclusion proofs on-chain and trusting attesters for the rest, or something else? What does each cost in gas and in trust?

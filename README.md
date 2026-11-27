@@ -165,6 +165,7 @@ The full list is in [docs/threat-model.md](docs/threat-model.md).
 | `docs/showcase.md` | The demonstration page: what is real and what is staged |
 | `docs/negotiation-room.md` | The negotiation demonstration: what it shows and what is staged |
 | `docs/mcp.md` | Mattering as an MCP server: negotiation tables for AI assistants |
+| `docs/api-design.md` | Draft design of the platform API: sessions, mechanisms, SDK and MCP, for review |
 | `docs/claims.md` | Every claim, what it rests on, and which test shows it |
 | `docs/threat-model.md` | Who can attack what, and what is out of scope |
 | `docs/research-questions.md` | Questions for a cryptographer |
