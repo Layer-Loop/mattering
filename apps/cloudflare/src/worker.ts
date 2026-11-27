@@ -22,6 +22,7 @@ import { Room, type RoomState } from "../../showcase/src/room.ts";
 import { NegotiationRoom, type NegotiationRoomState } from "../../showcase/src/negotiation-room.ts";
 import { handleMcpHttp, type McpBackend } from "../../showcase/src/mcp.ts";
 import { Table, type TableState } from "../../showcase/src/table.ts";
+import { Scenario, type ScenarioState } from "../../showcase/src/scenario.ts";
 import { handleApi, type PlatformHost } from "../../platform/src/api.ts";
 import { HostedSession, HOST_LIMITS, IntegratorDesk, type DeskCall, type KV, type SessionCall, type Webhook } from "../../platform/src/hosted.ts";
 
@@ -171,6 +172,7 @@ export class SealedRoom extends DurableObject<Env> {
   private negotiation: Promise<NegotiationRoom> | undefined;
   private table: Promise<Table> | undefined;
   private hosted: Promise<HostedSession> | undefined;
+  private scenario: Promise<Scenario> | undefined;
   private log: Promise<LocalLogHost> | undefined;
   private markedAsLog = false;
 
@@ -355,6 +357,29 @@ export class SealedRoom extends DurableObject<Env> {
     return this.hosted;
   }
 
+  /**
+   * The scenario demos (a rental listing, a funding desk), in the visitor's
+   * room. They act as an integrator of the platform through its public API,
+   * called in this object with a key that exists only here.
+   */
+  private openScenario(): Promise<Scenario> {
+    this.scenario ??= (async () => {
+      const storage = this.ctx.storage;
+      const context = await this.roomContext();
+      const key = `mk_test_${Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("")}`;
+      const host = { ...platformHost(this.env, "https://mattering.ai"), integratorOf: async (k: string) => (k === key ? SCENARIO_INTEGRATOR : undefined) };
+      return Scenario.open({
+        mode: context.mode,
+        sourceFor: context.sourceFor,
+        apiFetch: (request) => handleApi(request, host),
+        apiKey: key,
+        loadState: () => storage.get<ScenarioState>("scenario"),
+        saveState: (state) => storage.put("scenario", state),
+      });
+    })();
+    return this.scenario;
+  }
+
   private openRoom(): Promise<Room> {
     this.room ??= (async () => {
       const storage = this.ctx.storage;
@@ -430,6 +455,13 @@ export class SealedRoom extends DurableObject<Env> {
         }
         return respond(reply);
       }
+      // The scenario demos live in the same visitor's room, under /scenario/.
+      if (url.pathname.startsWith("/scenario/")) {
+        const reply = await (await this.openScenario()).handle(request.method, url.pathname, () => readBody(request));
+        await this.ctx.storage.put("expires", Date.now() + ROOM_LIFETIME_MS);
+        if (request.method === "POST") await this.ctx.storage.setAlarm(Date.now() + 100);
+        return respond(reply);
+      }
       // One room per visitor holds both demonstrations: the auction, and the negotiation under /negotiation/.
       const target = url.pathname.startsWith("/negotiation/") ? await this.openNegotiation() : await this.openRoom();
       const reply = await target.handle(request.method, url.pathname, url.searchParams, () => readBody(request));
@@ -461,6 +493,10 @@ export class SealedRoom extends DurableObject<Env> {
       const wait = await (await this.openTable()).work();
       if (wait !== undefined) waits.push(wait);
     }
+    if (await this.ctx.storage.get("scenario")) {
+      const wait = await (await this.openScenario()).work();
+      if (wait !== undefined) waits.push(wait);
+    }
     if (await this.ctx.storage.get("session")) {
       const wait = await (await this.openSession()).work();
       if (wait !== undefined) waits.push(wait);
@@ -473,6 +509,7 @@ export class SealedRoom extends DurableObject<Env> {
       this.negotiation = undefined;
       this.table = undefined;
       this.hosted = undefined;
+      this.scenario = undefined;
       return;
     }
     await this.ctx.storage.setAlarm(expires);
@@ -483,6 +520,9 @@ const ROOM_PATH = /^\/room\/([0-9a-f-]{36})(\/.*)$/;
 const TABLE_PATH = /^\/table\/([0-9a-f]{24})(\/negotiation\/.*)$/;
 /** A negotiation session's watch routes, as the watch page asks for them. */
 const WATCH_PATH = /^\/table\/(ses_[0-9a-f]{24})\/negotiation\/(state|disclosure\/(\d+))$/;
+
+/** The integrator the scenario demos act as, on the platform. */
+const SCENARIO_INTEGRATOR = "mattering-demos";
 
 /** The integrator MCP clients' tables and auctions belong to, on the platform. */
 const MCP_INTEGRATOR = "mattering-mcp";

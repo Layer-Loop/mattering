@@ -23,6 +23,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { chooserPage, roomPage, type PageOptions } from "../showcase/src/pages.ts";
+import { fundingPage, rentalPage } from "../showcase/src/scenario-pages.ts";
 import { bundlePage } from "../showcase/src/server.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -67,12 +68,15 @@ const hashed = (name: string, ext: string, text: string): string => `${name}.${c
 const script = `${banner}\n${await bundlePage(true, "rooms/rooms.ts")}`;
 const styles = `/* ${banner.slice(3)} */\n${readFileSync(join(here, "..", "showcase", "web", "rooms", "rooms.css"), "utf8")}`;
 const scriptFile = hashed("rooms", "js", script);
+const scenarioScript = `${banner}\n${await bundlePage(true, "scenarios/scenarios.ts")}`;
+const scenarioFile = hashed("scenarios", "js", scenarioScript);
 const stylesFile = hashed("rooms", "css", styles);
 // Earlier builds' files, including the pages' old scripts, go.
 for (const file of readdirSync(assets)) {
-  if (/^rooms\.[0-9a-f]{10}\.(js|css)$/.test(file) || ["sealed-room.js", "negotiation-room.js", "negotiation-room.css"].includes(file)) rmSync(join(assets, file));
+  if (/^(rooms|scenarios)\.[0-9a-f]{10}\.(js|css)$/.test(file) || ["sealed-room.js", "negotiation-room.js", "negotiation-room.css"].includes(file)) rmSync(join(assets, file));
 }
 writeFileSync(join(assets, scriptFile), script);
+writeFileSync(join(assets, scenarioFile), scenarioScript);
 writeFileSync(join(assets, stylesFile), styles);
 
 // The pages. Each visitor's room is at /room/<id>, handled by the Worker.
@@ -82,6 +86,10 @@ const withStamp = (html: string): string => html.replace("\n", `\n${stamp}`);
 writeFileSync(join(out, "public", "demo.html"), withStamp(chooserPage(pages)));
 writeFileSync(join(out, "public", "demo", "auction.html"), withStamp(roomPage("auction", pages)));
 writeFileSync(join(out, "public", "demo", "negotiation.html"), withStamp(roomPage("negotiation", pages)));
+// The scenario demos: a rental listing and a funding desk, each in the visitor's room.
+const scenarioPages: PageOptions = { ...pages, script: `/assets/${scenarioFile}`, roomBase: "/room/{id}" };
+writeFileSync(join(out, "public", "demo", "rental.html"), withStamp(rentalPage(scenarioPages)));
+writeFileSync(join(out, "public", "demo", "funding.html"), withStamp(fundingPage(scenarioPages)));
 // Watching a negotiation table that two parties' assistants run through MCP: /demo/table?id=<table>.
 writeFileSync(join(out, "public", "demo", "table.html"), withStamp(roomPage("negotiation", { ...pages, roomBase: "/table/{table}", watch: true })));
 console.log(`worker:  ${join(out, "src", "worker.js")}  (${Math.round(worker.outputFiles[0]!.text.length / 1024)} KB)`);
