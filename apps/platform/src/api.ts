@@ -15,7 +15,7 @@
  *   session shows the public.
  */
 import { MAX_BODY, parseBody, type Reply } from "@mattering/witness/routes";
-import { HostedSession, IntegratorDesk, memoryKV, sha256, type DeskCall, type HostedSessionOptions, type SessionCall } from "./hosted.ts";
+import { HostedSession, IntegratorDesk, memoryKV, sha256, type DeskCall, type HostedSessionOptions, type Report, type SessionCall } from "./hosted.ts";
 import { OPENAPI } from "./openapi.ts";
 import { newSessionId, sessionOf, type Caller } from "./session.ts";
 
@@ -91,6 +91,16 @@ export async function handleApi(request: Request, host: PlatformHost): Promise<R
     const idempotencyKey = request.headers.get("idempotency-key") ?? undefined;
 
     if (path === "/sessions" && method === "POST") return await createSession(request, host, caller, idempotencyKey);
+    // An integrator's own records: its sessions, its webhook deliveries, its usage.
+    if ((path === "/sessions" || path === "/usage" || path === "/webhooks/deliveries") && method === "GET") {
+      if (caller.role !== "organiser") return problem(401, "unauthorised", "this needs an integrator's API key");
+      const desk = host.desk(caller.integrator);
+      const n = (name: string) => (url.searchParams.has(name) ? Number(url.searchParams.get(name)) || undefined : undefined);
+      if (path === "/sessions") return reply(await desk.call({ op: "session.list", ...(n("limit") ? { limit: n("limit")! } : {}), ...(n("before") ? { before: n("before")! } : {}) }));
+      if (path === "/usage") return reply(await desk.call({ op: "usage.get", ...(n("days") ? { days: n("days")! } : {}) }));
+      const webhook = url.searchParams.get("webhook");
+      return reply(await desk.call({ op: "delivery.list", ...(webhook ? { webhook } : {}), ...(n("limit") ? { limit: n("limit")! } : {}) }));
+    }
     if (path === "/join" && method === "POST") {
       // Joining needs only the invitation: it names its session.
       const body = await readJson(request);
@@ -166,6 +176,8 @@ async function createSession(request: Request, host: PlatformHost, caller: Calle
   const id = newSessionId();
   const created = await host.session(id).call({ method: "POST", path: "/create", body: { ...body, id }, caller });
   if (key && created.status < 500) await desk.call({ op: "idem.put", key, fingerprint, reply: created });
+  // The integrator's own list of its sessions, for it to page through.
+  if (created.status === 201) await desk.call({ op: "session.record", id, mechanism: String(body.mechanism), createdAt: Date.now() });
   return reply(created);
 }
 
@@ -222,7 +234,8 @@ export function localPlatform(options: {
   const desks = new Map<string, IntegratorDesk>();
   const desk = (name: string) => desks.get(name) ?? desks.set(name, new IntegratorDesk(memoryKV())).get(name)!;
   const webhooks = async (integrator: string) => ((await desk(integrator).call({ op: "webhook.secrets" })).body as { webhooks: never[] }).webhooks;
-  const open = (id: string) => sessions.get(id) ?? sessions.set(id, HostedSession.open({ ...options.session, kv: memoryKV(), webhooks })).get(id)!;
+  const report = async (integrator: string, r: Report) => void (await desk(integrator).call({ op: "report", report: r }));
+  const open = (id: string) => sessions.get(id) ?? sessions.set(id, HostedSession.open({ ...options.session, kv: memoryKV(), webhooks, report })).get(id)!;
   const host: PlatformHost = {
     integratorOf: async (key) => options.keys[key],
     session: (id) => ({ call: async (req) => (await open(id)).call(req) }),

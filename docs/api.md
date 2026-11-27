@@ -110,6 +110,14 @@ The reply's `secret` is shown once. Each delivery is a POST of one event, with `
 
 Events: `session.created`, `participant.joined`, `round.opened`, `bid.sealed` (who, not how much), `round.closed`, `round.released`, `round.result`, `session.finished`, `session.cancelled`, `session.expired`.
 
+## Your records
+
+With its API key, an integrator can read its own records:
+
+- `GET /sessions`: its sessions, newest first, 50 at a time (`?limit=`, and `?before=` with the `next` value for the next page).
+- `GET /webhooks/deliveries`: its recent webhook deliveries, newest first, failed attempts and retries included (`?webhook=` for one webhook).
+- `GET /usage`: per day, sessions created, bids sealed, deliveries made and delivery attempts that failed (`?days=`, up to 60). A bid retried with the same `Idempotency-Key` counts once.
+
 ## Limits
 
 100 new sessions per integrator per day, 50 participants per session, 10 rounds per negotiation, rounds of 30 seconds to 7 days, 10 webhooks per integrator.
