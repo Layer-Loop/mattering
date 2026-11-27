@@ -235,6 +235,12 @@ function whole(value: unknown, field: string, min: number, max: number, fallback
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < min || value > max) refuse("invalid", `${field}: want a whole number from ${min} to ${max}`, 400);
   return value as number;
 }
+/** A bid's amount or an offer's price: a whole number, and `out-of-range` if outside the terms. */
+function inRange(value: unknown, field: string, min: number, max: number): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value)) refuse("invalid", `${field}: want a whole number`, 400);
+  if ((value as number) < min || (value as number) > max) refuse("out-of-range", `${field}: want ${min} to ${max}`, 400);
+  return value as number;
+}
 function instant(value: unknown, field: string): number | undefined {
   if (value === undefined) return undefined;
   const t = typeof value === "string" ? Date.parse(value) : NaN;
@@ -267,6 +273,10 @@ export class Session {
     return this.state !== undefined;
   }
   /** Where the session is in its life, or undefined if it does not exist. */
+  /** The integrator that created the session, whose webhooks hear its events. */
+  get integrator(): string | undefined {
+    return this.state?.integrator;
+  }
   get phase(): SessionPhase | undefined {
     return this.state?.phase;
   }
@@ -562,14 +572,14 @@ export class Session {
         if (submission.policyHash !== round.hash) refuse("invalid", `the submission is not for round ${round.n}'s policy`, 400);
         sealed = { submission, envelope };
       } else if (this.isAuction) {
-        const amount = whole(input.amount, "amount", this.auctionTerms.minBid, this.auctionTerms.maxBid);
+        const amount = inRange(input.amount, "amount", this.auctionTerms.minBid, this.auctionTerms.maxBid);
         const policy = round.policy as SealedAuctionPolicy;
         const keys = generateKeyPair(participant.secretKey!);
         sealed = st.organiser.recipient ? await prepareBidTo(policy, amount, keys) : await prepareBid(policy, amount, keys);
       } else {
         if (st.mechanism === "limit-match") refuse("unsupported", "a server-sealed limit match seals each side's limit itself when the round begins");
         const t = this.negotiationTerms;
-        const price = whole(input.price, "price", t.minPrice, t.maxPrice);
+        const price = inRange(input.price, "price", t.minPrice, t.maxPrice);
         const s = participant.role as Side;
         const limit = participant.opening!.limit;
         if (s === "buyer" ? price > limit : price < limit) refuse("beyond-mandate", `refused: the mandate lets this side ${s === "buyer" ? `pay at most ${limit}` : `accept no less than ${limit}`} ${t.unit}`);
@@ -819,6 +829,47 @@ export class Session {
   }
 
   /**
+   * Events after `after` as `caller` may see them: all of them for the
+   * organiser; for a participant (or anyone, in a public session) without
+   * naming the other participants.
+   */
+  eventsFor(caller: Caller, after: number): Record<string, unknown> {
+    const st = this.state ?? refuse("not-found", "no such session", 404);
+    const me = caller.role === "participant" ? this.participantOf(caller) : undefined;
+    if (!this.isOrganiser(caller) && !me && st.confidentiality !== "public") refuse("forbidden", "the events of this session are for its organiser and participants", 403);
+    const events = this.events(after).map((e) => {
+      if (this.isOrganiser(caller) || !e.data || typeof e.data.participant !== "string" || e.data.participant === me?.id) return e;
+      const { participant: _p, label: _l, ...rest } = e.data;
+      return { ...e, data: rest };
+    });
+    return { events, last: st.events.at(-1)?.n ?? 0, phase: st.phase };
+  }
+
+  /**
+   * The result, for those who may see it: the outcome, the receipt, and the
+   * file keys that let anyone holding the evidence check it, for those who may
+   * read the bids.
+   */
+  result(caller: Caller): Record<string, unknown> {
+    const view = this.view(caller);
+    const st = this.state!;
+    const me = caller.role === "participant" ? this.participantOf(caller) : undefined;
+    const keys = Object.assign({}, ...st.rounds.map((r) => r.disclosure ?? {})) as Record<string, string>;
+    const finished = st.phase === "finished";
+    return {
+      id: st.id,
+      environment: "demonstration",
+      mechanism: st.mechanism,
+      phase: st.phase,
+      trust: view.trust,
+      outcome: finished ? (view.outcome ?? null) : null,
+      receipt: finished ? (view.receipt ?? null) : null,
+      ...(finished && this.mayReadBids(caller, me) && Object.keys(keys).length ? { disclosure: { fileKeys: keys } } : {}),
+      ...(view.awaiting ? { awaiting: view.awaiting } : {}),
+    };
+  }
+
+  /**
    * Every round's evidence as the log serves it, everything `mattering
    * check-demo` needs: with the file keys of the opened bids for whoever may
    * read them.
@@ -837,7 +888,7 @@ export class Session {
    * The engine's own routes, for a host to put behind the API's
    * authentication: `caller` is who the host has established is asking.
    */
-  async handle(method: string, path: string, body: () => Promise<unknown>, caller: Caller): Promise<Reply> {
+  async handle(method: string, path: string, body: () => Promise<unknown>, caller: Caller, query: Record<string, string> = {}): Promise<Reply> {
     try {
       const input = async (): Promise<Record<string, unknown>> => {
         const v = await body();
@@ -867,6 +918,10 @@ export class Session {
           return { status: 200, body: await this.cancel(caller) };
         case "POST /disclose":
           return { status: 200, body: await this.disclose(caller, await input()) };
+        case "GET /result":
+          return { status: 200, body: this.result(caller) };
+        case "GET /events":
+          return { status: 200, body: this.eventsFor(caller, Math.max(0, Number(query.after ?? 0) || 0)) };
         case "GET /evidence":
           return { status: 200, body: await this.evidence(caller) };
         default:
