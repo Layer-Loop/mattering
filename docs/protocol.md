@@ -233,6 +233,22 @@ Arrival order does not affect who wins. The tie-break depends on a value nobody 
 
 **What the commitment is for.** In this auction, nothing that the opened bid does not already give: every bid is opened, so the amount and the range are checked in the clear. It is included so that a later version can keep losing bids sealed and prove facts about them. The link between commitment and ciphertext is checked **after** opening only. Before opening, a submission can carry a commitment to one amount beside a ciphertext holding another, and nobody can tell; the tests demonstrate this. Closing that gap needs a proof this design does not have. See research question 9.
 
+### 7.1 Version 4: lowest bid, reserve, bids sealed to recipients
+
+For buying, funding and procurement, policy version 4 adds four fields. Its hash uses the same label; version 3 policies verify exactly as above.
+
+```text
+{ format: "mattering.auction-policy/4", auctionId, unit, beacon, closeRound, releaseRound, witness, origin, logFrom,
+  cosigners, cosignerThreshold, minBid, maxBid, rule, reserve?, recipients, tieBreak: "release-round-signature" }
+```
+
+- `unit` names what the amounts count, such as `GBP` or `bps`. It is not interpreted.
+- `rule` is `"highest-bid"` or `"lowest-bid"`. With `"lowest-bid"`, step 5 takes the lowest valid amount; the tie-break is unchanged.
+- `reserve`, if present, is public and within `[minBid, maxBid]`. If the best valid amount does not reach it (at least it for `"highest-bid"`, at most it for `"lowest-bid"`), there is no winner, and the result says the reserve was not met.
+- `recipients` is a sorted list of age X25519 recipients, usually the organiser's, or empty. If it is not empty, every bid must be a version 2 envelope sealed to exactly those recipients; a bid sealed otherwise is **invalid**. Only a recipient, or someone it gives the bid's file key to, can open it. To anyone else every bid is **unresolved**, though the evidence itself checks out, so outsiders learn who bid on time and nothing about the amounts. A recipient discloses the file keys of all bids to an auditor to let it reach the same result. A bid a recipient cannot open is unresolved, not invalid, as with negotiation offers (research question 17).
+
+The witness service accepts version 4 and gives no result of its own for an auction sealed to recipients, as it cannot read the bids.
+
 ## 8. Sealed statements and the registry
 
 A **statement** is text committed before a deadline and opened for everyone at a set round: a prediction, a decision, an answer.

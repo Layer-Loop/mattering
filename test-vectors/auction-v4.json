@@ -1,0 +1,212 @@
+{
+  "description": "A funding auction under policy version 4: the lowest bid wins, with a public reserve of 900 bps, and every bid sealed to the organiser alone. The organiser's identity, or the file keys it discloses, open the bids and must give the result below; with neither, every bid is unresolved though the evidence itself checks out. Bid 910 does not meet the reserve but is still valid; the winner is the lowest bid, 640.",
+  "vectors": {
+    "beacon": "testBeacon",
+    "policyHash": "b4abe2f474f1f7484849ae905e20a615a64f3ee0ea6334d471c7136f5d8f3df2",
+    "organiser": {
+      "identity": "AGE-SECRET-KEY-1LN5A9NMGXVA42K9HMAV63S2NKJY79G285YZY89MVE95SP6FLM02S9RCMFX",
+      "recipient": "age1wzz45c4w9qu4p8rlg8sm90s23yvfzwjlq0dsemxr49wpev0yms5qgmx4kz"
+    },
+    "evidence": {
+      "policy": {
+        "format": "mattering.auction-policy/4",
+        "auctionId": "test-vector-INV-88213-funding",
+        "unit": "bps",
+        "beacon": {
+          "chainHash": "0b5ada51058ab1f145d421f96f8772ed2c7b5e4146d84235fa02f4878bc6b623",
+          "publicKey": "8eb49414c02370751fc2b2b923a993d7e6dda6e8254779466f5792fc892ffb0625e40bc46eede790f4d0b336be7e1b8505241200ddfa60d5da8a82fe184e838e438570dbf6727fc52b8df1c78b9617e2656272a8c9bbcb0147aa14daa762ee77",
+          "scheme": "bls-unchained-g1-rfc9380",
+          "genesisTime": 1,
+          "period": 1
+        },
+        "closeRound": 100,
+        "releaseRound": 110,
+        "witness": "e85708d43f632c3e07b07f4e7a18884ae3a3b114b43202dbc5355f5c8fb1b223",
+        "origin": "funding.example/log",
+        "logFrom": 0,
+        "cosigners": [
+          "funding-cosigner.example+d4806a0a+BCqF3tv995nfWJSP6l/cI8QctdbpBlrXJsMqvMzukJsk"
+        ],
+        "cosignerThreshold": 1,
+        "minBid": 50,
+        "maxBid": 1500,
+        "rule": "lowest-bid",
+        "reserve": 900,
+        "recipients": [
+          "age1wzz45c4w9qu4p8rlg8sm90s23yvfzwjlq0dsemxr49wpev0yms5qgmx4kz"
+        ],
+        "tieBreak": "release-round-signature"
+      },
+      "policyHash": "b4abe2f474f1f7484849ae905e20a615a64f3ee0ea6334d471c7136f5d8f3df2",
+      "entries": [
+        {
+          "format": "mattering.submission/1",
+          "policyHash": "b4abe2f474f1f7484849ae905e20a615a64f3ee0ea6334d471c7136f5d8f3df2",
+          "envelopeId": "b70d5187591b3d7d471fe7440d47e18744d2eb02518794312519fdd992591a5f",
+          "commitment": "24945d6838dab134efec648fccdc451d692acf1ad167259b11a627422b84f12a",
+          "submitter": "a29a24aac5711f1a24c4c1b65cd34f6385c1aabaa043de2cb07ed0643e739e68",
+          "signature": "83969a13b269d34f57a528ae6e77da2d6081cde989433716bf0e0a316ec8e402a6e960c12e31729cfbe912bdbfd619575ff37e32c1afa63a4fab73a00f015802"
+        },
+        {
+          "format": "mattering.submission/1",
+          "policyHash": "b4abe2f474f1f7484849ae905e20a615a64f3ee0ea6334d471c7136f5d8f3df2",
+          "envelopeId": "a3f4733e19eb0fe2e5c9a56508ca171f0403c584cb6e424484f59b59d5824c7d",
+          "commitment": "5e6ffb66fc5c044a140bbfedc3455b285680d459c4071f0380717e614fc9776c",
+          "submitter": "7f7f4435439f1ef85c9ff663b1cb6119a9ed89d1f7261af9192b1dd7e5708107",
+          "signature": "a842905905c871bf7ffb932c5d8fc2fbbc9527e75709bdf583cff8fa5adf3a5f3336f00542be4ba8c4cd24b9f4c57ce37d3e8516f205c639fb9d0a7ea404430a"
+        },
+        {
+          "format": "mattering.submission/1",
+          "policyHash": "b4abe2f474f1f7484849ae905e20a615a64f3ee0ea6334d471c7136f5d8f3df2",
+          "envelopeId": "66850e22dfca7648a81d908e4f7eb661c04845ba47276375da14124730402286",
+          "commitment": "beec75ae9ebf85b44dcb1c750cc30f17c2d5051dab9b1fb293237dfe08e51e08",
+          "submitter": "3a418b055e4d79eaeeec008108a81141a548ef7ac4bd793d463eda1a5fc50af6",
+          "signature": "ab1c8a48b8d2f4f56999da3ba5516420499be802aec5ee3022ca9d03310e1e984e9cc1c0878185749056210b5597fdaeb03debc21848a535b379cbb710a75f07"
+        },
+        {
+          "format": "mattering.close/1",
+          "policyHash": "b4abe2f474f1f7484849ae905e20a615a64f3ee0ea6334d471c7136f5d8f3df2",
+          "observed": {
+            "round": 100,
+            "signature": "b0fe57bf43bf9bdb0f5e415164564352a5296670360a6197078581ddcadd49da0e6a96efb075fb4202baf6de37402788"
+          }
+        }
+      ],
+      "prefix": [],
+      "closing": {
+        "format": "mattering.checkpoint/1",
+        "witness": "e85708d43f632c3e07b07f4e7a18884ae3a3b114b43202dbc5355f5c8fb1b223",
+        "size": 4,
+        "root": "f440ca025e1979e1397c2b77420a5fe2b8cf73526f0a702e8bae38e67d596bee",
+        "observed": {
+          "round": 100,
+          "signature": "b0fe57bf43bf9bdb0f5e415164564352a5296670360a6197078581ddcadd49da0e6a96efb075fb4202baf6de37402788"
+        },
+        "closes": "b4abe2f474f1f7484849ae905e20a615a64f3ee0ea6334d471c7136f5d8f3df2",
+        "signature": "995c552f9199b6b538825446bfa1458c5e16bc03ba30f062e7cd2dc341f9ec506844d908caf1b1bda52315802ce4a4b290a569062a7bc0074e8a0dbe45613905"
+      },
+      "witnessed": {
+        "checkpoint": "funding.example/log\n4\n9EDKAl4ZeeE5fCt3Qgpf4rjPc1JvCnAui6445n1Za+4=\n\n— funding.example/log lzoYppebfztOUXNJAepEJ/+CV3K3QdFRm1UCj+FIosyT5VfHp62TExt2KDiiTqEI1/aez0N27K82Z8idQUJxqQYyTQA=\n— funding-cosigner.example 1IBqCgAAAAAAAABkZaJBegAwn+a0W5DgSb+BhZcP/ihQrtNIkxOWUTqKcUL6ZI2QH8us0oEXCquzQ+XzrcU4W7J3Etwn3yUxEoXPDA==\n",
+        "proof": []
+      },
+      "envelopes": {
+        "b70d5187591b3d7d471fe7440d47e18744d2eb02518794312519fdd992591a5f": {
+          "format": "mattering.envelope/2",
+          "beacon": {
+            "chainHash": "0b5ada51058ab1f145d421f96f8772ed2c7b5e4146d84235fa02f4878bc6b623",
+            "publicKey": "8eb49414c02370751fc2b2b923a993d7e6dda6e8254779466f5792fc892ffb0625e40bc46eede790f4d0b336be7e1b8505241200ddfa60d5da8a82fe184e838e438570dbf6727fc52b8df1c78b9617e2656272a8c9bbcb0147aa14daa762ee77",
+            "scheme": "bls-unchained-g1-rfc9380",
+            "genesisTime": 1,
+            "period": 1
+          },
+          "round": 110,
+          "context": {
+            "kind": "mattering.bid/1",
+            "policyHash": "b4abe2f474f1f7484849ae905e20a615a64f3ee0ea6334d471c7136f5d8f3df2",
+            "bidder": "a29a24aac5711f1a24c4c1b65cd34f6385c1aabaa043de2cb07ed0643e739e68"
+          },
+          "recipients": [
+            "age1wzz45c4w9qu4p8rlg8sm90s23yvfzwjlq0dsemxr49wpev0yms5qgmx4kz"
+          ],
+          "ciphertext": "-----BEGIN AGE ENCRYPTED FILE-----\nYWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHRsb2NrIDExMCAwYjVhZGE1MTA1OGFi\nMWYxNDVkNDIxZjk2Zjg3NzJlZDJjN2I1ZTQxNDZkODQyMzVmYTAyZjQ4NzhiYzZi\nNjIzCm82OG9Lbm1SelByUHFGMXNpczdLa0orby8wMnpQOWtrczJ1ZzBWVHhHMEoz\nNHVpR0F3eEIyeUhwR0lKRk01WkoKQjQrRWZnSmlCWktTbk1jS0lxTEpwdmJBbVNy\nVzBZRXFIUHMrbEhxZGdxTkdnUWxlLzBSVWQxdG5TSVZ4ZTg4KwpMVjM3S085YlRF\nTm5qRXVBcHNWbzFDNFpOUnErd3ZSMnp4c3JwS08rVUt3Ci0tLSBDZXQ1YWxEQUFD\nQTFpOWIwWHBHVlh6TTZiTFdoVXN3SGc3SllBekw5WkRrCgrEnp/LlCFdBAyC5YUG\n0y5ttdLCig8FBTjZ25tUB1t2DHnHfPmpZ8T1IxLnotkQmDu2REbJaB4wbUrZAdQ/\nIhY1daCOnSuGESrRl9iU1VlcXH0JckUfAXgOIfTpmmhX2qgLt+uJJzwKBwGTmNgm\nUpYW7gnhAvykA7XtSXLU9BvymUaa52VBrhkOCah6btW/maCBR2+tSfqn0oZcyFMi\nlFpJd25qt5AQxinKiXNN6PdKAPDApkovebUNkpgxtK+nMd+Doe3UAuQ6effaHqsb\nAtYuBbFfOEkl5V/Zzco6uMcL7viaA/YDV2teCG7e7c2LC6x/YIv+1HRXVpEwndog\nokxMa1uP4howtUMNldbmCz0ufJkqb3s4yOM4Ms43E0UGu5xXQ5TWiHiPeI1yb9G5\nQs15A0VgCe9hFAtE1q8+uvGHuYyD49wboKjFSW+X4WXS1iZ1HwdYr4+NW6Qt2jXl\n1z4sjmJtg+ACFXXX5kq5dlWuHzeWg5LexESP/cOCAnjWUm4Cmiv2ycsS60J8ptiX\nQMaxb/MrZWADNFiaeNLNu/klhZPEuqEO34VzmWjdIaF+pfGJ7lesRfXm54DFOn6I\nkL7GGWOHRZzyjtU6PBLtPoleqT4J/AUeIUuHv6F39QoYZtQU5NpT0nPPhRTygCGx\nvxNYI71HvwmwBnm/974VWeQXmanl1eCNE7Q+uk3DDS+4SIQSYh3z5xzW68XUbbsH\nPaA=\n-----END AGE ENCRYPTED FILE-----\n"
+        },
+        "a3f4733e19eb0fe2e5c9a56508ca171f0403c584cb6e424484f59b59d5824c7d": {
+          "format": "mattering.envelope/2",
+          "beacon": {
+            "chainHash": "0b5ada51058ab1f145d421f96f8772ed2c7b5e4146d84235fa02f4878bc6b623",
+            "publicKey": "8eb49414c02370751fc2b2b923a993d7e6dda6e8254779466f5792fc892ffb0625e40bc46eede790f4d0b336be7e1b8505241200ddfa60d5da8a82fe184e838e438570dbf6727fc52b8df1c78b9617e2656272a8c9bbcb0147aa14daa762ee77",
+            "scheme": "bls-unchained-g1-rfc9380",
+            "genesisTime": 1,
+            "period": 1
+          },
+          "round": 110,
+          "context": {
+            "kind": "mattering.bid/1",
+            "policyHash": "b4abe2f474f1f7484849ae905e20a615a64f3ee0ea6334d471c7136f5d8f3df2",
+            "bidder": "7f7f4435439f1ef85c9ff663b1cb6119a9ed89d1f7261af9192b1dd7e5708107"
+          },
+          "recipients": [
+            "age1wzz45c4w9qu4p8rlg8sm90s23yvfzwjlq0dsemxr49wpev0yms5qgmx4kz"
+          ],
+          "ciphertext": "-----BEGIN AGE ENCRYPTED FILE-----\nYWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHRsb2NrIDExMCAwYjVhZGE1MTA1OGFi\nMWYxNDVkNDIxZjk2Zjg3NzJlZDJjN2I1ZTQxNDZkODQyMzVmYTAyZjQ4NzhiYzZi\nNjIzCmdEbzJyMnJwTU1pMHNmYnU3VVlwYUxqVUpyM0VSYmZUZGV0NDYvSS8xekV3\nTXJNMVlHOGFKYkxFd1BwMVhHajUKQi9PbmNxai8wdDhrS1FXR3FUcGUwazdhN1hs\nVVJzMlMyNVRVSVUzMTJQcGdhckI3R2lYaTRuUGRkUTg4cUIwaQpqV3VIeGEvRWNh\nZUFQTm1wNUI4UEQ4WEVzYk5BaXhURWNsaStkTkorSjE0Ci0tLSBibE43dmhZYWo5\nWlBlUjVRMDczckgydHJhN3J3TVRkSXVlTCt5cEc5TG0wCpsAawGRxFzwzPbx9xIR\nKz/nYcHfg0yPyvSoE3CQNqiubsP31BzjllKutJTsb5BxmFnWa1ohpow9Ec9yraKw\nV9see8YrKxoPkeYZc+OcsJLrQCI2buUj1Dyev+q3DoHSqFDFAXGgBsub9xxkNGil\nM2LItSJe45jb4OE68MCHqq0dzNv6ZZVLNlA80P8KSp6+EBZPR17//Zk4JpyLweVp\naxXeKcqrTgr3TgINeu9nIu4BiPkggMH+bEpDGIDCk5UzejXRKo5hXj/QSXRDPs1E\npoHeNnQQMlZzjnbRlBGvmmWiIz1g6h6ok5mfJ9P3LBlzbKluQ9Ew1cdsfonvXPZM\nEp8hRBYFWQgRqQ0S/XBTP3N493hWxwKANbKuU6M9pdFjZktmORlzXySnNJpzOSpH\nEsmdC2K4CoYYj/zgYXg6KSQpIyFjFP8buWWLofRxVudZ3GUnFns0CA2FnLTIPRR9\nCJWGWIWTbrvBGnwv+rsddmcg0DuwDDzOwsrQBdmv9YpYTIKyGNEGO4nPFiwipSgi\n7oVPLshphXDz5uIxkgtE2+WXZ7saGAB3tbd+kaDO2BWj3AKndh2j371NjX2YX0UV\n86ZOa4e/cuvVReiFyHaWWkbcFvyzBIwNYEPqHzROQsshgnQSNsC0FLDhUYxJgj97\neXBhKiLj3An5x5q3lhl7BofggQb8HK6ZF6quah+HN9KG/54D3wUWvsEhZTne8Vyz\nmqg=\n-----END AGE ENCRYPTED FILE-----\n"
+        },
+        "66850e22dfca7648a81d908e4f7eb661c04845ba47276375da14124730402286": {
+          "format": "mattering.envelope/2",
+          "beacon": {
+            "chainHash": "0b5ada51058ab1f145d421f96f8772ed2c7b5e4146d84235fa02f4878bc6b623",
+            "publicKey": "8eb49414c02370751fc2b2b923a993d7e6dda6e8254779466f5792fc892ffb0625e40bc46eede790f4d0b336be7e1b8505241200ddfa60d5da8a82fe184e838e438570dbf6727fc52b8df1c78b9617e2656272a8c9bbcb0147aa14daa762ee77",
+            "scheme": "bls-unchained-g1-rfc9380",
+            "genesisTime": 1,
+            "period": 1
+          },
+          "round": 110,
+          "context": {
+            "kind": "mattering.bid/1",
+            "policyHash": "b4abe2f474f1f7484849ae905e20a615a64f3ee0ea6334d471c7136f5d8f3df2",
+            "bidder": "3a418b055e4d79eaeeec008108a81141a548ef7ac4bd793d463eda1a5fc50af6"
+          },
+          "recipients": [
+            "age1wzz45c4w9qu4p8rlg8sm90s23yvfzwjlq0dsemxr49wpev0yms5qgmx4kz"
+          ],
+          "ciphertext": "-----BEGIN AGE ENCRYPTED FILE-----\nYWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHRsb2NrIDExMCAwYjVhZGE1MTA1OGFi\nMWYxNDVkNDIxZjk2Zjg3NzJlZDJjN2I1ZTQxNDZkODQyMzVmYTAyZjQ4NzhiYzZi\nNjIzCmx5S1R0VFV2WlVNYm9GRFg0aEhHdzNLbVc0TjdmUlVLdHRwa1BQck9xcnpH\nN3JmY1V3c203Syswa3ZnTnFJcVIKR0VHalNvd3c2UkNUUDErc0NzZC9OUW4velo4\nSk5GRWhWWHZ4dzZDdE9vTEZsZ2NuYWVRclZiZnZLa2JIazRERQpsV2l4UUxlcVJQ\nR1ByYjdDbjZMWmZ2emRYTXIzNlhCbHAzcGp0V2IxSkt3Ci0tLSBOV1I2WGhBN1Rs\nRlVRT3JSTVdjQktsYnhnK2E3bzdXa213LzBKTEZEUE1ZCo6fAfMsfdthnRVfKKIk\npB+9Ste4fFVdf23IvqHnwGaIF/hSXwAgkfC59Ywem5e1BdxhZZlGFUm54L4sNfMV\ndBtDjlVpGF0tQd+HBLY22Cc9kc1bx6r67p6Cw4rak1fX4z9V1bBnMDm/wF04zniE\n6T/Wt4dY0iRAe9Jc4RpjFHBAjzbxbGh+fF2Kxzu/doetHjQCqTp9+d/l7M+hay9B\nfLAeW9bsTpnrTemd7oGlyr2gQ0B9c8Sq8PUJQMvZ1yDEETOaY5mblFRQGxfb+ZjQ\nivzgGd+taD6G6TWXGkLOGPXtUxLR6GOzW7yvLO4gwHv9de3trs4je3bCJoKpMo1b\nZmB9s5/uMjO/UZMLb2zoXo13A0XtPMz88BIWfKla6+aMDMdhVWWy0sQQv9yfhdeS\nh6MpKlq6WkCIt45TqgS8UWWTwoBqdDdFPXR17qHmilgAfBQTL0HyTt+u61E4Cfyu\nGh/5SMbxnkBtq/FbQ6kLlJl/OpgvqoN8GilOptfJGU68Isx3zvdbh61w7dy+6KFN\nlzYkG+RP28/AeyZIy1w/3hNxCEKHfq55tgEYH5W5fPOghuisbxuhClz0hHnoeEbD\nH7ahpuKH8CS8p54+v/mFajvoo43Ah45//EBAKEbWY/C30mpvtO6x52ConlQyQNU3\nrqhHjS1YMqvCe+XucSIvBdmIzKTJHdcjrRr9IBgKd+bXugyrAFBYx43gtFH2bs0b\nGoY=\n-----END AGE ENCRYPTED FILE-----\n"
+        }
+      },
+      "state": "released",
+      "release": {
+        "round": 110,
+        "signature": "b7778271678b33e4ae7b7ee862892cb2bfc5ecae4c3ed41bf1c63085428f3de75cdfe86505be207c258630352b90b61e"
+      }
+    },
+    "fileKeys": {
+      "b70d5187591b3d7d471fe7440d47e18744d2eb02518794312519fdd992591a5f": "cb930fed75e0e97eaa75ead6563397ee",
+      "a3f4733e19eb0fe2e5c9a56508ca171f0403c584cb6e424484f59b59d5824c7d": "6b6e839aea87898f3ec5054ff48845cd",
+      "66850e22dfca7648a81d908e4f7eb661c04845ba47276375da14124730402286": "bd26e5fa637dc86b061cdec6f06d9e76"
+    },
+    "expected": {
+      "ok": true,
+      "reserveMet": true,
+      "winner": {
+        "submitter": "7f7f4435439f1ef85c9ff663b1cb6119a9ed89d1f7261af9192b1dd7e5708107",
+        "amount": 640
+      },
+      "bids": [
+        {
+          "submitter": "a29a24aac5711f1a24c4c1b65cd34f6385c1aabaa043de2cb07ed0643e739e68",
+          "amount": 720,
+          "status": "valid"
+        },
+        {
+          "submitter": "7f7f4435439f1ef85c9ff663b1cb6119a9ed89d1f7261af9192b1dd7e5708107",
+          "amount": 640,
+          "status": "valid"
+        },
+        {
+          "submitter": "3a418b055e4d79eaeeec008108a81141a548ef7ac4bd793d463eda1a5fc50af6",
+          "amount": 910,
+          "status": "valid"
+        }
+      ],
+      "checks": [
+        "policy-well-formed",
+        "beacon-accepted",
+        "closing-checkpoint-signed-by-witness",
+        "closing-checkpoint-is-for-this-policy",
+        "closed-at-the-close-round",
+        "closing-checkpoint-cosigned-before-release",
+        "log-matches-closing-checkpoint",
+        "closing-is-the-close-entry",
+        "closed-only-once",
+        "release-valid",
+        "every-on-time-bid-judged"
+      ],
+      "withoutKeys": {
+        "ok": false,
+        "bids": [
+          "unresolved",
+          "unresolved",
+          "unresolved"
+        ]
+      }
+    }
+  }
+}

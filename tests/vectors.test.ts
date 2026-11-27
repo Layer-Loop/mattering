@@ -48,7 +48,7 @@ import {
   type Side,
 } from "@mattering/core";
 import { verifyNegotiationStep, withFileKeys, type StepInputs } from "@mattering/core/negotiation";
-import { fileKeyOf, openAs, openWithFileKey } from "@mattering/core/recipients";
+import { bidOpenerAs, bidOpenerWithFileKeys, fileKeyOf, openAs, openWithFileKey } from "@mattering/core/recipients";
 import { TestBeacon } from "@mattering/core/testing";
 
 type Any = any;
@@ -162,6 +162,20 @@ test("vectors: a witnessed, cosigned auction gives the recorded result", async (
   const caught = await verifyAuction(tampered, testPolicy);
   assert.equal(caught.ok, false);
   assert.equal(caught.checks.find((c) => c.name === v.tampered.failingCheck)?.ok, false, v.tampered.why);
+});
+
+test("vectors: a funding auction with bids sealed to the organiser gives the recorded result", async () => {
+  const v = load("auction-v4.json");
+  const evidence = v.evidence as AuctionInputs;
+  const asOrganiser = await verifyAuction(evidence, testPolicy, bidOpenerAs(v.organiser.identity));
+  assert.equal(asOrganiser.ok, true);
+  assert.deepEqual(asOrganiser.checks.map((c) => c.name), v.expected.checks);
+  assert.equal(asOrganiser.reserveMet, v.expected.reserveMet);
+  assert.deepEqual({ submitter: asOrganiser.winner!.submitter, amount: asOrganiser.winner!.amount }, v.expected.winner);
+  assert.deepEqual(asOrganiser.bids.map((b) => ({ submitter: b.submitter, amount: b.amount, status: b.status })), v.expected.bids);
+  assert.deepEqual((await verifyAuction(evidence, testPolicy, bidOpenerWithFileKeys(v.fileKeys))).winner, asOrganiser.winner, "the disclosed keys give the same winner");
+  const outsider = await verifyAuction(evidence, testPolicy);
+  assert.deepEqual({ ok: outsider.ok, bids: outsider.bids.map((b) => b.status) }, v.expected.withoutKeys);
 });
 
 test("vectors: a negotiation step under mandates gives the recorded outcome", async () => {
