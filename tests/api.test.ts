@@ -150,6 +150,17 @@ test("API: a client-sealed funding auction over HTTP, from creation to a checked
   for (const d of w.deliveries) assert.ok(await verifyDelivery(secret, d.headers["mattering-signature"]!, d.body), "signed with the webhook's secret");
   assert.equal(await verifyDelivery(secret, w.deliveries[0]!.headers["mattering-signature"]!, w.deliveries[0]!.body.replace("session", "sessiom")), false, "a changed body fails");
   assert.equal(w.deliveries.some((d) => /"(amount|price)"/.test(d.body)), false);
+
+  // The integrator's own records: its sessions, each delivery, and usage counted once per bid, retries included.
+  const listed = (await w.call("GET", "/sessions", { auth: KEY })).body!;
+  assert.deepEqual(listed.sessions.map((x: { id: string }) => x.id), [id]);
+  assert.equal((await w.call("GET", "/sessions", { auth: OTHER_KEY })).body!.sessions.length, 0, "another integrator's list is its own");
+  assert.equal((await w.call("GET", "/sessions")).status, 401);
+  const record = (await w.call("GET", "/webhooks/deliveries", { auth: KEY })).body!.deliveries as { ok: boolean; event: string; webhook: string }[];
+  assert.equal(record.length, w.deliveries.length);
+  assert.ok(record.every((d) => d.ok && d.webhook === hook.body!.id));
+  const today = (await w.call("GET", "/usage?days=1", { auth: KEY })).body!.usage[0];
+  assert.deepEqual([today.sessions, today.bids, today.deliveries, today.failedDeliveries], [1, 2, w.deliveries.length, 0]);
 });
 
 test("API: who may call what, and every route is in the OpenAPI description", async () => {
@@ -171,7 +182,7 @@ test("API: who may call what, and every route is in the OpenAPI description", as
   const spec = (await w.call("GET", "/openapi.json")).body!;
   assert.equal(spec.openapi, "3.1.0");
   const described = Object.entries(OPENAPI.paths).flatMap(([path, ops]) => Object.keys(ops).map((m) => `${m.toUpperCase()} ${path}`));
-  const served = ["POST /sessions", "POST /join", "GET /sessions/{id}", ...["invitation", "round", "result", "evidence", "events"].map((s) => `GET /sessions/{id}/${s}`), ...["join", "check-in", "bids", "open", "cancel", "disclose"].map((s) => `POST /sessions/{id}/${s}`), "POST /webhooks", "GET /webhooks", "DELETE /webhooks/{webhookId}"];
+  const served = ["GET /sessions", "GET /webhooks/deliveries", "GET /usage", "POST /sessions", "POST /join", "GET /sessions/{id}", ...["invitation", "round", "result", "evidence", "events"].map((s) => `GET /sessions/{id}/${s}`), ...["join", "check-in", "bids", "open", "cancel", "disclose"].map((s) => `POST /sessions/{id}/${s}`), "POST /webhooks", "GET /webhooks", "DELETE /webhooks/{webhookId}"];
   assert.deepEqual(described.sort(), served.sort());
 });
 
@@ -215,4 +226,7 @@ test("API: a session's events as a server-sent event stream, and a webhook that 
     await new Promise((r) => setTimeout(r, 100));
   }
   assert.deepEqual(w.deliveries.map((d) => JSON.parse(d.body).type), ["session.created", "session.finished"]);
+  const attempts = (await w.call("GET", "/webhooks/deliveries", { auth: KEY })).body!.deliveries as { ok: boolean; status: number | null; attempt: number; event: string }[];
+  assert.deepEqual(attempts.map((d) => [d.event, d.ok, d.attempt]).reverse(), [["session.created", false, 1], ["session.created", true, 2], ["session.finished", true, 1]], "the failed attempt is on record, with its retry");
+  assert.equal(attempts.at(-1)!.status, 503);
 });

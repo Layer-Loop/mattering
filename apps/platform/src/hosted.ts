@@ -58,6 +58,10 @@ export const HOST_LIMITS = {
   /** Attempts at one event before a webhook skips it. */
   deliveryAttempts: 8,
   defaultSessionsPerDay: 100,
+  /** Sessions kept in an integrator's list, deliveries in its record, and days of usage. */
+  sessionsListed: 1000,
+  deliveriesKept: 200,
+  usageDays: 60,
 } as const;
 
 const toHex = (bytes: ArrayBuffer): string => Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, "0")).join("");
@@ -109,8 +113,27 @@ async function idempotent(kv: KV, scope: string, key: string | undefined, reques
 
 const callerKey = (caller: Caller): string => (caller.role === "organiser" ? `org:${caller.integrator}` : caller.role === "participant" ? `tok:${caller.token}` : "public");
 
+/** What a session tells its integrator's desk as it happens: for usage, and for the record of webhook deliveries. */
+export type Report =
+  | { kind: "bid"; sessionId: string }
+  | { kind: "delivery"; sessionId: string; webhook: string; event: string; n: number; ok: boolean; status: number | null; attempt: number };
+
+export interface DeliveryRecord {
+  at: number;
+  sessionId: string;
+  webhook: string;
+  event: string;
+  n: number;
+  ok: boolean;
+  /** The receiver's HTTP status, or null if it could not be reached. */
+  status: number | null;
+  attempt: number;
+}
+
 export interface HostedSessionOptions extends Omit<SessionOptions, "loadState" | "saveState"> {
   kv: KV;
+  /** Where to report usage and deliveries: the integrator's desk. Best effort; a failure here never fails a request. */
+  report?: (integrator: string, report: Report) => Promise<void>;
   /** The integrator's webhooks, with their secrets. */
   webhooks: (integrator: string) => Promise<Webhook[]>;
   /** How deliveries leave. */
@@ -137,7 +160,12 @@ export class HostedSession {
 
   /** One API request. POSTs with an idempotency key return the first reply on a retry. */
   async call(req: SessionCall): Promise<Reply> {
-    const run = () => this.session.handle(req.method, req.path, async () => req.body, req.caller, req.query ?? {});
+    const run = async () => {
+      const reply = await this.session.handle(req.method, req.path, async () => req.body, req.caller, req.query ?? {});
+      // Counted here, inside the idempotent run, so a retried bid is counted once.
+      if (req.method === "POST" && req.path === "/bids" && reply.status === 201) await this.tell({ kind: "bid", sessionId: this.sessionId() });
+      return reply;
+    };
     if (req.method !== "POST") return run();
     return idempotent(this.options.kv, callerKey(req.caller), req.idempotencyKey, [req.method, req.path, req.body ?? null], run);
   }
@@ -175,7 +203,9 @@ export class HostedSession {
           cursor.n = event.n;
           continue;
         }
-        const ok = await this.send(hook, integrator, event);
+        const sent = await this.send(hook, integrator, event);
+        const ok = sent.ok;
+        await this.tell({ kind: "delivery", sessionId: this.sessionId(), webhook: hook.id, event: event.type, n: event.n, ok, status: sent.status, attempt: cursor.attempts + 1 });
         if (ok || cursor.attempts + 1 >= HOST_LIMITS.deliveryAttempts) {
           cursor.n = event.n;
           cursor.attempts = 0;
@@ -194,14 +224,20 @@ export class HostedSession {
     return retry;
   }
 
-  private async send(hook: Webhook, integrator: string, event: SessionEvent): Promise<boolean> {
+  private async tell(report: Report): Promise<void> {
+    const integrator = this.session.integrator;
+    if (!integrator || !this.options.report) return;
+    await this.options.report(integrator, report).catch(() => {});
+  }
+
+  private async send(hook: Webhook, integrator: string, event: SessionEvent): Promise<{ ok: boolean; status: number | null }> {
     const body = JSON.stringify({ id: `evt_${this.sessionId()}_${event.n}`, type: event.type, sessionId: this.sessionId(), integrator, n: event.n, at: new Date(event.at).toISOString(), environment: "demonstration", ...(event.data ? { data: event.data } : {}) });
     const timestamp = Math.floor(Date.now() / 1000);
     try {
       const reply = await this.options.fetch(hook.url, { method: "POST", headers: { "content-type": "application/json", "mattering-signature": await signDelivery(hook.secret, timestamp, body), "mattering-event": event.type }, body });
-      return reply.ok;
+      return { ok: reply.ok, status: reply.status };
     } catch {
-      return false;
+      return { ok: false, status: null };
     }
   }
 
@@ -218,13 +254,45 @@ export type DeskCall =
   /** The host's own use: the webhooks with their secrets, for delivery. Never forwarded from the API. */
   | { op: "webhook.secrets" }
   | { op: "session.allow"; perDay: number }
+  /** A session this integrator created, for its list. */
+  | { op: "session.record"; id: string; mechanism: string; createdAt: number }
+  | { op: "session.list"; limit?: number; before?: number }
+  /** The host's own use: what a session reports (a bid, a delivery). */
+  | { op: "report"; report: Report }
+  | { op: "delivery.list"; webhook?: string; limit?: number }
+  | { op: "usage.get"; days?: number }
   | { op: "idem.get"; key: string; fingerprint: string }
   | { op: "idem.put"; key: string; fingerprint: string; reply: Reply };
 
 const EVENT_TYPES = ["session.created", "participant.joined", "round.opened", "bid.sealed", "round.closed", "round.released", "round.result", "session.finished", "session.cancelled", "session.expired"];
 
+interface SessionEntry {
+  id: string;
+  mechanism: string;
+  createdAt: number;
+}
+/** What an integrator used on one day. */
+export interface Usage {
+  sessions: number;
+  bids: number;
+  deliveries: number;
+  failedDeliveries: number;
+}
+const EMPTY_USAGE: Usage = { sessions: 0, bids: 0, deliveries: 0, failedDeliveries: 0 };
+
 export class IntegratorDesk {
   constructor(private readonly kv: KV) {}
+
+  /** Add to today's usage, keeping only the last few weeks. */
+  private async count(add: Partial<Usage>): Promise<void> {
+    const day = new Date().toISOString().slice(0, 10);
+    const usage = (await this.kv.get<Record<string, Usage>>("usage")) ?? {};
+    const today = { ...EMPTY_USAGE, ...usage[day] };
+    for (const [k, v] of Object.entries(add) as [keyof Usage, number][]) today[k] += v;
+    usage[day] = today;
+    for (const old of Object.keys(usage).sort().slice(0, Math.max(0, Object.keys(usage).length - HOST_LIMITS.usageDays))) delete usage[old];
+    await this.kv.put("usage", usage);
+  }
 
   async call(req: DeskCall): Promise<Reply> {
     const hooks = (await this.kv.get<Webhook[]>("webhooks")) ?? [];
@@ -261,6 +329,49 @@ export class IntegratorDesk {
         if (used >= req.perDay) return { status: 429, body: { error: { code: "limit", message: `today's allowance of ${req.perDay} new sessions is used up` } } };
         await this.kv.put("allowance", { day: today, used: used + 1 });
         return { status: 200, body: { allowed: true, used: used + 1, perDay: req.perDay } };
+      }
+      case "session.record": {
+        const list = (await this.kv.get<SessionEntry[]>("sessions")) ?? [];
+        if (!list.some((x) => x.id === req.id)) {
+          list.push({ id: req.id, mechanism: req.mechanism, createdAt: req.createdAt });
+          if (list.length > HOST_LIMITS.sessionsListed) list.splice(0, list.length - HOST_LIMITS.sessionsListed);
+          await this.kv.put("sessions", list);
+        }
+        await this.count({ sessions: 1 });
+        return { status: 200, body: {} };
+      }
+      case "session.list": {
+        const limit = Math.max(1, Math.min(200, req.limit ?? 50));
+        const list = ((await this.kv.get<SessionEntry[]>("sessions")) ?? []).filter((x) => req.before === undefined || x.createdAt < req.before).reverse();
+        const page = list.slice(0, limit);
+        return { status: 200, body: { sessions: page.map((x) => ({ id: x.id, mechanism: x.mechanism, createdAt: new Date(x.createdAt).toISOString() })), ...(list.length > limit ? { next: page.at(-1)!.createdAt } : {}) } };
+      }
+      case "report": {
+        const r = req.report;
+        if (r.kind === "bid") await this.count({ bids: 1 });
+        else {
+          const list = (await this.kv.get<DeliveryRecord[]>("deliveries")) ?? [];
+          list.push({ at: Date.now(), sessionId: r.sessionId, webhook: r.webhook, event: r.event, n: r.n, ok: r.ok, status: r.status, attempt: r.attempt });
+          if (list.length > HOST_LIMITS.deliveriesKept) list.splice(0, list.length - HOST_LIMITS.deliveriesKept);
+          await this.kv.put("deliveries", list);
+          await this.count(r.ok ? { deliveries: 1 } : { failedDeliveries: 1 });
+        }
+        return { status: 200, body: {} };
+      }
+      case "delivery.list": {
+        const limit = Math.max(1, Math.min(HOST_LIMITS.deliveriesKept, req.limit ?? 50));
+        const list = ((await this.kv.get<DeliveryRecord[]>("deliveries")) ?? []).filter((d) => !req.webhook || d.webhook === req.webhook).reverse().slice(0, limit);
+        return { status: 200, body: { deliveries: list.map((d) => ({ ...d, at: new Date(d.at).toISOString() })) } };
+      }
+      case "usage.get": {
+        const days = Math.max(1, Math.min(HOST_LIMITS.usageDays, req.days ?? 14));
+        const usage = (await this.kv.get<Record<string, Usage>>("usage")) ?? {};
+        const out = [];
+        for (let i = days - 1; i >= 0; i--) {
+          const day = new Date(Date.now() - i * 86_400_000).toISOString().slice(0, 10);
+          out.push({ day, ...EMPTY_USAGE, ...usage[day] });
+        }
+        return { status: 200, body: { usage: out } };
       }
       case "idem.get": {
         const saved = await this.kv.get<{ fingerprint: string; reply: Reply }>(`idem:${req.key}`);

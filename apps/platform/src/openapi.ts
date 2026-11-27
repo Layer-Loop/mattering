@@ -23,6 +23,13 @@ export const OPENAPI = {
   security: [{ apiKey: [] }, { participantToken: [] }, {}],
   paths: {
     "/sessions": {
+      get: {
+        operationId: "listSessions",
+        summary: "This integrator's sessions, newest first",
+        security: [{ apiKey: [] }],
+        parameters: [{ name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 200 } }, { name: "before", in: "query", description: "The `next` value from the previous page", schema: { type: "integer" } }],
+        responses: { "200": ok("Sessions", { type: "object", properties: { sessions: { type: "array", items: { type: "object", properties: { id: { type: "string" }, mechanism: { type: "string" }, createdAt: { type: "string", format: "date-time" } } } }, next: { type: "integer" } } }), "401": error },
+      },
       post: {
         operationId: "createSession",
         summary: "Create a session",
@@ -102,6 +109,24 @@ export const OPENAPI = {
     "/webhooks": {
       post: { operationId: "createWebhook", summary: "Where to send this integrator's session events", security: [{ apiKey: [] }], requestBody: body({ type: "object", required: ["url"], properties: { url: { type: "string", format: "uri" }, events: { type: "array", items: { type: "string" } } } }), responses: { "201": ok("The webhook, with its secret, shown once"), "400": error, "401": error } },
       get: { operationId: "listWebhooks", summary: "This integrator's webhooks", security: [{ apiKey: [] }], responses: { "200": ok("The webhooks, without secrets"), "401": error } },
+    },
+    "/webhooks/deliveries": {
+      get: {
+        operationId: "listDeliveries",
+        summary: "This integrator's recent webhook deliveries, newest first, including failures and retries",
+        security: [{ apiKey: [] }],
+        parameters: [{ name: "webhook", in: "query", schema: { type: "string" } }, { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 200 } }],
+        responses: { "200": ok("Deliveries", { type: "object", properties: { deliveries: { type: "array", items: { type: "object", properties: { at: { type: "string", format: "date-time" }, sessionId: { type: "string" }, webhook: { type: "string" }, event: { type: "string" }, n: { type: "integer" }, ok: { type: "boolean" }, status: { type: ["integer", "null"] }, attempt: { type: "integer" } } } } } }), "401": error },
+      },
+    },
+    "/usage": {
+      get: {
+        operationId: "getUsage",
+        summary: "This integrator's usage per day: sessions created, bids sealed, webhook deliveries and failed attempts",
+        security: [{ apiKey: [] }],
+        parameters: [{ name: "days", in: "query", schema: { type: "integer", minimum: 1, maximum: 60 } }],
+        responses: { "200": ok("Usage", { type: "object", properties: { usage: { type: "array", items: { type: "object", properties: { day: { type: "string", format: "date" }, sessions: { type: "integer" }, bids: { type: "integer" }, deliveries: { type: "integer" }, failedDeliveries: { type: "integer" } } } } } }), "401": error },
+      },
     },
     "/webhooks/{webhookId}": {
       delete: { operationId: "deleteWebhook", summary: "Stop sending to a webhook", security: [{ apiKey: [] }], parameters: [{ name: "webhookId", in: "path", required: true, schema: { type: "string", pattern: "^whk_[0-9a-f]{16}$" } }], responses: { "200": ok("Deleted"), "401": error, "404": error } },
