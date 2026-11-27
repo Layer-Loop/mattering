@@ -188,7 +188,9 @@ The integrator's own systems take the outcome from here: settlement, payment, co
 
 Delivered by webhook (signed with the integrator's webhook secret) and on the session's event stream:
 
-`session.created`, `participant.joined`, `session.opened`, `bid.sealed` (who, not how much), `round.closed`, `round.cosigned`, `round.released`, `round.result`, `session.finished`, `session.cancelled`, `session.expired`.
+`session.created`, `participant.joined`, `round.opened`, `bid.sealed` (who, not how much), `round.closed`, `round.released`, `round.result`, `session.finished`, `session.cancelled`, `session.expired`. (`round.cosigned` is for later: the log cosigns, but the engine does not yet say when.)
+
+As built: [api.md](api.md).
 
 ## 8. The SDK
 

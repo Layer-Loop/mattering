@@ -22,6 +22,8 @@ import { Room, type RoomState } from "../../showcase/src/room.ts";
 import { NegotiationRoom, type NegotiationRoomState } from "../../showcase/src/negotiation-room.ts";
 import { handleMcpHttp, type TableDirectory } from "../../showcase/src/mcp.ts";
 import { Table, type TableState } from "../../showcase/src/table.ts";
+import { handleApi, type PlatformHost } from "../../platform/src/api.ts";
+import { HostedSession, HOST_LIMITS, IntegratorDesk, type DeskCall, type KV, type SessionCall, type Webhook } from "../../platform/src/hosted.ts";
 
 interface Env {
   ROOMS: { idFromName(name: string): unknown; get(id: unknown): { fetch(request: Request): Promise<Response> } };
@@ -56,6 +58,14 @@ interface Env {
   MATTERING_OWN_COSIGNER?: string;
   /** The most negotiation tables MCP clients may open per day, across everyone. Default 100. */
   TABLES_PER_DAY?: string;
+  /**
+   * The platform API's keys, as a secret: comma-separated `key=integrator`
+   * pairs, such as `mk_test_…=Northbank Receivables`. Without it the API
+   * accepts no key, so nobody can create a session.
+   */
+  MATTERING_API_KEYS?: string;
+  /** New platform sessions per integrator per day. Default 100. */
+  SESSIONS_PER_DAY?: string;
 }
 
 /** Reserved object names. Not room ids, so visitors cannot reach them as rooms. */
@@ -67,6 +77,9 @@ const DEFAULT_TABLES_PER_DAY = 100;
 const TABLE_LIFETIME_MS = 24 * 60 * 60 * 1000;
 /** What the cosigner beside the log calls itself. Not a real address: it is not independent. */
 const OWN_COSIGNER_NAME = "cosigner.sealed-room.invalid";
+
+/** A platform session's object is deleted this long after anyone last called it, once it has nothing left to do. */
+const SESSION_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** A room is deleted this long after it was last used. */
 const ROOM_LIFETIME_MS = 30 * 60 * 1000;
@@ -157,6 +170,7 @@ export class SealedRoom extends DurableObject<Env> {
   private room: Promise<Room> | undefined;
   private negotiation: Promise<NegotiationRoom> | undefined;
   private table: Promise<Table> | undefined;
+  private hosted: Promise<HostedSession> | undefined;
   private log: Promise<LocalLogHost> | undefined;
   private markedAsLog = false;
 
@@ -308,6 +322,39 @@ export class SealedRoom extends DurableObject<Env> {
     return this.table;
   }
 
+  /** The object's storage as the platform's small key-value store. */
+  private kv(): KV {
+    const storage = this.ctx.storage;
+    return { get: (key) => storage.get(key), put: (key, value) => storage.put(key, value), delete: async (key) => void (await storage.delete(key)) };
+  }
+
+  /** A platform session, in an object of its own named for it. */
+  private openSession(): Promise<HostedSession> {
+    this.hosted ??= (async () => {
+      const context = await this.roomContext();
+      const env = this.env;
+      return HostedSession.open({
+        mode: context.mode,
+        sourceFor: context.sourceFor,
+        timeOfRound: context.timeOfRound,
+        log: context.log,
+        roundMs: context.simulated ? ROUND_MS_SIMULATED : QUICKNET.period * 1000,
+        releaseAfter: context.simulated ? 6 : 3,
+        kv: this.kv(),
+        // The integrator's webhooks, from its desk, with their secrets: delivery only.
+        webhooks: async (integrator) => {
+          const reply = await deskStub(env, integrator).fetch(new Request("https://desk/call", { method: "POST", body: JSON.stringify({ op: "webhook.secrets" } satisfies DeskCall) }));
+          return reply.ok ? ((await reply.json()) as { webhooks: Webhook[] }).webhooks : [];
+        },
+        fetch: async (url, init) => {
+          const reply = await fetch(url, { ...init, redirect: "manual", signal: AbortSignal.timeout(10_000) });
+          return { ok: reply.ok, status: reply.status };
+        },
+      });
+    })();
+    return this.hosted;
+  }
+
   private openRoom(): Promise<Room> {
     this.room ??= (async () => {
       const storage = this.ctx.storage;
@@ -365,6 +412,15 @@ export class SealedRoom extends DurableObject<Env> {
         }
         return await this.logFetch(url, request, url.hostname === LOG_NAME);
       }
+      // A platform session, and an integrator's desk: each in an object of its own, reached only from this Worker.
+      if (url.hostname === "session") {
+        const req = (await request.json()) as SessionCall;
+        const reply = await (await this.openSession()).call(req);
+        await this.ctx.storage.put("expires", Date.now() + SESSION_LIFETIME_MS);
+        if (req.method === "POST") await this.ctx.storage.setAlarm(Date.now() + 100);
+        return respond(reply);
+      }
+      if (url.hostname === "desk") return respond(await new IntegratorDesk(this.kv()).call((await request.json()) as DeskCall));
       // A negotiation table lives in an object of its own, named for it, and lasts a day after its last use.
       if (url.hostname === "table") {
         const reply = await (await this.openTable()).handle(request.method, url.pathname, () => readBody(request));
@@ -405,6 +461,10 @@ export class SealedRoom extends DurableObject<Env> {
       const wait = await (await this.openTable()).work();
       if (wait !== undefined) waits.push(wait);
     }
+    if (await this.ctx.storage.get("session")) {
+      const wait = await (await this.openSession()).work();
+      if (wait !== undefined) waits.push(wait);
+    }
     if (waits.length > 0) return this.ctx.storage.setAlarm(Date.now() + Math.min(...waits));
     const expires = (await this.ctx.storage.get<number>("expires")) ?? 0;
     if (Date.now() >= expires) {
@@ -412,6 +472,7 @@ export class SealedRoom extends DurableObject<Env> {
       this.room = undefined;
       this.negotiation = undefined;
       this.table = undefined;
+      this.hosted = undefined;
       return;
     }
     await this.ctx.storage.setAlarm(expires);
@@ -440,6 +501,30 @@ function tableDirectory(env: Env, origin: string): TableDirectory {
   };
 }
 const LOG_PATH = /^\/log(\/.*)?$/;
+const API_BASE = "/api/v1";
+
+const deskStub = (env: Env, integrator: string) => env.ROOMS.get(env.ROOMS.idFromName(`desk:${integrator}`));
+
+/** API keys from the Worker's secret, `key=integrator` pairs. */
+function apiKeys(env: Env): Map<string, string> {
+  const pairs = (env.MATTERING_API_KEYS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  return new Map(pairs.map((pair) => [pair.slice(0, pair.indexOf("=")).trim(), pair.slice(pair.indexOf("=") + 1).trim()]));
+}
+
+/** The platform API's view of this Worker: sessions and desks are Durable Objects, called with JSON. */
+function platformHost(env: Env, origin: string): PlatformHost {
+  const keys = apiKeys(env);
+  const call = (stub: { fetch(request: Request): Promise<Response> }, host: string, req: unknown) =>
+    stub.fetch(new Request(`https://${host}/call`, { method: "POST", body: JSON.stringify(req) })).then(async (r) => ({ status: r.status, body: await r.json() }));
+  return {
+    integratorOf: async (key) => keys.get(key),
+    session: (id) => ({ call: (req) => call(env.ROOMS.get(env.ROOMS.idFromName(`session:${id}`)), "session", req) }),
+    desk: (name) => ({ call: (req) => call(deskStub(env, name), "desk", req) }),
+    base: API_BASE,
+    sessionsPerDay: Number(env.SESSIONS_PER_DAY ?? HOST_LIMITS.defaultSessionsPerDay) || HOST_LIMITS.defaultSessionsPerDay,
+    evidenceUrl: (hash) => `${origin}/log/policies/${hash}/evidence`,
+  };
+}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -449,6 +534,8 @@ export default {
       const stub = env.ROOMS.get(env.ROOMS.idFromName(room[1]!));
       return stub.fetch(new Request(new URL(room[2]! + url.search, url.origin), request));
     }
+    // The platform API: sessions for integrators, by API key.
+    if (url.pathname === API_BASE || url.pathname.startsWith(`${API_BASE}/`)) return handleApi(request, platformHost(env, url.origin));
     // Mattering as an MCP server, for AI assistants to negotiate at tables.
     if (url.pathname === "/mcp") {
       const reply = await handleMcpHttp(request.method, request.headers, async () => {

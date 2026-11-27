@@ -155,17 +155,19 @@ The full list is in [docs/threat-model.md](docs/threat-model.md).
 | `apps/cli` | The `mattering` command |
 | `apps/witness` | The witness and registry service, a cosigner, and a client |
 | `apps/showcase` | The Sealed Room: a web page for demonstrations |
-| `apps/cloudflare` | The same room as a Cloudflare Worker, for the website |
+| `apps/platform` | The platform: the session engine (auctions, negotiations, limit matches), its HTTP API, webhooks and OpenAPI description |
+| `apps/cloudflare` | The rooms, the MCP server and the platform API as a Cloudflare Worker, for the website |
 | `examples/agent-auction` | Three agents, one auction, and a standalone verifier |
 | `examples/hosted-registry` | The same through the hosted service, plus sealed predictions |
 | `test-vectors` | Known inputs and outputs for every format, for a second implementation ([README](test-vectors/README.md)) |
-| `tests` | 106 tests (one, against live drand, runs only with `npm run test:live`): sealing, sealing to recipients, sealed negotiation, agent mandates, the negotiation demo, tampering, replay, early opening, cheating bidders, a cheating witness, a cheating coordinator, the witness protocol and its formats, the service over HTTP, one log shared by many auctions, and the test vectors |
+| `tests` | 126 tests (one, against live drand, runs only with `npm run test:live`): sealing, sealing to recipients, sealed negotiation, agent mandates, the negotiation demo, tampering, replay, early opening, cheating bidders, a cheating witness, a cheating coordinator, the witness protocol and its formats, the service over HTTP, one log shared by many auctions, the test vectors, and the platform's sessions and API |
 | `docs/protocol.md` | The envelope, submission, log, auction and statement formats |
 | `docs/service.md` | Running the witness service, its interface, and what it lacks |
 | `docs/showcase.md` | The demonstration page: what is real and what is staged |
 | `docs/negotiation-room.md` | The negotiation demonstration: what it shows and what is staged |
 | `docs/mcp.md` | Mattering as an MCP server: negotiation tables for AI assistants |
-| `docs/api-design.md` | Draft design of the platform API: sessions, mechanisms, SDK and MCP, for review |
+| `docs/api.md` | The platform API, version 1: keys, sessions, bids, results, events and webhooks |
+| `docs/api-design.md` | The design of the platform: sessions, mechanisms, SDK and MCP, and the assumptions version 1 is built on |
 | `docs/claims.md` | Every claim, what it rests on, and which test shows it |
 | `docs/threat-model.md` | Who can attack what, and what is out of scope |
 | `docs/research-questions.md` | Questions for a cryptographer |
